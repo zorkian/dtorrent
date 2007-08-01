@@ -13,7 +13,9 @@
 #define QUERY_STR 0
 #define QUERY_INT 1
 #define QUERY_POS 2
+#define QUERY_LONG 3
 
+size_t buf_long(const char *b,size_t len,char beginchar,char endchar,int64_t *pi);
 size_t buf_int(const char *b,size_t len,char beginchar,char endchar,size_t *pi);
 size_t buf_str(const char *b,size_t len,const char **pstr,size_t* slen);
 size_t decode_int(const char *b,size_t len);
@@ -21,7 +23,7 @@ size_t decode_str(const char *b,size_t len);
 size_t decode_dict(const char *b,size_t len,const char *keylist);
 size_t decode_list(const char *b,size_t len,const char *keylist);
 size_t decode_rev(const char *b,size_t len,const char *keylist);
-size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pi,int method);
+size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pi,int64_t *pl,int method);
 size_t decode_list2path(const char *b, size_t n, char *pathname);
 size_t bencode_buf(const char *str,size_t len,FILE *fp);
 size_t bencode_str(const char *str, FILE *fp);

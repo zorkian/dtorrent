@@ -1,6 +1,6 @@
+#include "./def.h"
 #include <sys/types.h>
 
-#include "./def.h"
 #include "./httpencode.h"
 
 #include <stdlib.h>
@@ -115,7 +115,7 @@ size_t Http_split(char *b,size_t n,char **pd,size_t *dlen)
       hlen = p - b;
       *pd = ( p + addtion );
       *dlen = n - hlen - addtion;
-    }else{			// 只有首部信息????
+    }else{		// 只有首部信息????
       hlen = n;
       *pd = (char*) 0;
       *dlen = 0;
@@ -131,8 +131,8 @@ int Http_reponse_code(char *b,size_t n)
   for(; n && *b != ' ' && *b != '\n'; b++,n--) ;
   if( !n || *b != ' ') r = -1;
   else{
-	  r = atoi(b);
-	  if( r < 100 || r > 600 ) r = -1;
+          r = atoi(b);
+          if( r < 100 || r > 600 ) r = -1;
   }
   return r;
 }
@@ -160,11 +160,11 @@ int Http_get_header(char *b,int n,char *header,char *v)
   
     if( r > header_len ){
       if( strncasecmp(b, h, header_len) == 0){
-	/* header founded */
-	b += header_len;
-	for(; *b != '\n'; v++,b++) *v = *b;
-	*v = '\0';
-	return 0;
+        /* header founded */
+        b += header_len;
+        for(; *b != '\n'; v++,b++) *v = *b;
+        *v = '\0';
+        return 0;
       }
     }
     b += r;

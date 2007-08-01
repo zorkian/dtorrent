@@ -21,25 +21,37 @@
 #include "peerlist.h"
 #include "tracker.h"
 #include "btcontent.h"
+#include "ctcs.h"
+#include "btconfig.h"
+#include "bttime.h"
+
+time_t now = (time_t) 0;
 
 void Downloader()
 {
   int nfds,maxfd,r;
   struct timeval timeout;
-  time_t now;
   fd_set rfd;
   fd_set wfd;
   int stopped = 0;
 
+  time(&now);
   do{
-    time(&now);
-    if( !stopped && BTCONTENT.SeedTimeout(&now) ) {
-	Tracker.SetStoped();
-	stopped = 1;
+    if( !stopped &&
+        ( BTCONTENT.SeedTimeout(&now) ||
+          (( cfg_exit_zero_peers || Tracker.IsQuitting() ) &&
+            !WORLD.TotalPeers()) ) ){
+        Tracker.SetStoped();
+        stopped = 1;
+        if( arg_ctcs ) CTCS.Send_Status();
     }
     
     FD_ZERO(&rfd); FD_ZERO(&wfd);
     maxfd = Tracker.IntervalCheck(&now,&rfd, &wfd);
+    if( arg_ctcs ){
+      r = CTCS.IntervalCheck(&now,&rfd, &wfd);
+      if( r > maxfd ) maxfd = r;
+    }
     r = WORLD.FillFDSET(&now,&rfd,&wfd);
     if( r > maxfd ) maxfd = r;
 
@@ -47,10 +59,13 @@ void Downloader()
     timeout.tv_usec = 0;
 
     nfds = select(maxfd + 1,&rfd,&wfd,(fd_set*) 0,&timeout);
+    time(&now);
 
-	if(nfds > 0){
+    if(nfds > 0){
       if(T_FREE != Tracker.GetStatus()) Tracker.SocketReady(&rfd,&wfd,&nfds);
-	  if( nfds ) WORLD.AnyPeerReady(&rfd,&wfd,&nfds);
-	}
-  } while(Tracker.GetStatus() != T_FINISHED);
+      if(nfds > 0 && T_FREE != CTCS.GetStatus())
+        CTCS.SocketReady(&rfd,&wfd,&nfds);
+      if(nfds > 0) WORLD.AnyPeerReady(&rfd,&wfd,&nfds);
+    }
+  } while(Tracker.GetStatus() != T_FINISHED || Tracker.IsPaused());
 }

@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT([CTorrent], [devel], [bsdi@sina.com])
-AM_INIT_AUTOMAKE(ctorrent,devel)
+AC_INIT([CTorrent], [dnh2], [dholmes@ct.boxmail.com])
+AM_INIT_AUTOMAKE(ctorrent,dnh2)
 AC_CONFIG_HEADER([config.h])
 
 AC_CONFIG_SRCDIR([ctorrent.cpp])
@@ -14,7 +14,7 @@ AC_CHECK_LIB([ssl],[SHA1_Init],,
 	[AC_CHECK_LIB([crypt],[SHA1_Init],,
 	[AC_CHECK_LIB([crypto],[SHA1_Init],,
 	[AC_CHECK_LIB([md],[SHA1_Init],,
-	[AC_MSG_ERROR([error, Please install OpenSSL first!])])])])])
+	[AC_DEFINE([USE_STANDALONE_SHA1],,[Define to 1 to use the Steve Reid's public-domain SHA-1 code.])])])])])
 
 # Checks for header files.
 AC_HEADER_DIRENT
@@ -32,6 +32,10 @@ AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MEMCMP
 AC_TYPE_SIGNAL
 AC_FUNC_STAT
-AC_CHECK_FUNCS([ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select socket strchr strerror strncasecmp strstr strtol strnstr])
+AC_CHECK_FUNCS([ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select socket strchr strerror strncasecmp strstr strtol strtoll strnstr])
+
+# Enable/check large file support
+AC_SYS_LARGEFILE
+AC_FUNC_FSEEKO
 
 AC_OUTPUT(Makefile)

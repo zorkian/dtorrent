@@ -1,9 +1,9 @@
 #ifndef RATE_H
 #define RATE_H
 
+#include "def.h"
 #include <sys/types.h>
 #include <time.h>
-#include "def.h"
 
 #define MAX_SAMPLES 20
 

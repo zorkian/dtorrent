@@ -1,6 +1,6 @@
+#include "./def.h"
 #include <sys/types.h>
 
-#include "./def.h"
 #include "bencode.h"
 
 #ifndef WINDOWS
@@ -29,7 +29,7 @@ static size_t compare_key(const char *key,size_t keylen,const char *keylist)
   return keylen;
 }
 
-size_t buf_int(const char *b,size_t len,char beginchar,char endchar,size_t *pi)
+size_t buf_long(const char *b,size_t len,char beginchar,char endchar,int64_t *pi)
 {
   const char *p = b;
   const char *psave;
@@ -46,10 +46,24 @@ size_t buf_int(const char *b,size_t len,char beginchar,char endchar,size_t *pi)
   if(!len || MAX_INT_SIZ < (p - psave) || *p != endchar) return 0;
 
   if( pi ){
-    if( beginchar ) *pi = (size_t)strtol(b + 1,(char**) 0,10);
-    else  *pi=(size_t)strtol(b,(char**) 0,10);
+    if( beginchar ) *pi = strtoll(b + 1,(char**) 0,10);
+    else  *pi=strtoll(b,(char**) 0,10);
   }
   return (size_t)( p - b + 1 );
+}
+
+size_t buf_int(const char *b,size_t len,char beginchar,char endchar,size_t *pi)
+{
+  size_t r;
+
+  if( pi ){
+    int64_t pl;
+    r = buf_long(b,len,beginchar,endchar,&pl);
+    *pi = (size_t) pl;
+  }else{
+    r = buf_long(b,len,beginchar,endchar,(int64_t*) 0);
+  }
+  return r;
 }
 
 size_t buf_str(const char *b,size_t len,const char **pstr,size_t* slen)
@@ -69,7 +83,7 @@ size_t buf_str(const char *b,size_t len,const char **pstr,size_t* slen)
 
 size_t decode_int(const char *b,size_t len)
 {
-  return(buf_int(b,len,'i','e',(size_t*) 0));
+  return(buf_long(b,len,'i','e',(int64_t*) 0));
 }
 
 size_t decode_str(const char *b,size_t len)
@@ -136,7 +150,7 @@ size_t decode_rev(const char *b,size_t len,const char *keylist)
   }
 }
 
-size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pi,int method)
+size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pi,int64_t *pl,int method)
 {
   size_t pos;
   char kl[KEYNAME_LISTSIZ];
@@ -147,8 +161,9 @@ size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps
   case QUERY_STR: return(buf_str(b + pos,len - pos, ps, pi));
   case QUERY_INT: return(buf_int(b + pos,len - pos, 'i', 'e', pi));
   case QUERY_POS:
-	  if(pi) *pi = decode_rev(b + pos, len - pos, (const char*) 0);
-	  return pos;
+          if(pi) *pi = decode_rev(b + pos, len - pos, (const char*) 0);
+          return pos;
+  case QUERY_LONG: return(buf_long(b + pos,len - pos, 'i', 'e', pl));
   default: return 0;
   }
 }

@@ -19,6 +19,7 @@
 #include "btstream.h"
 #include "bitfield.h"
 #include "rate.h"
+#include "btconfig.h"
 
 #define P_CONNECTING (unsigned char) 0		// connecting
 #define P_HANDSHAKE  (unsigned char) 1		// handshaking
@@ -37,13 +38,20 @@ typedef struct _btstatus{
 size_t get_nl(char *from);
 void set_nl(char *to, size_t from);
 
+int TextPeerID(unsigned char *peerid, char *txtid);
+
 class btBasic
 {
 private:
   Rate rate_dl;
   Rate rate_ul;
+  size_t m_current_dl, m_current_ul;
+  unsigned char m_use_current:1;
+  unsigned char m_reserved:7;
 public:
   struct sockaddr_in m_sin;
+
+  btBasic() { m_use_current = 0; }
 
   //IP地址相关函数
   int IpEquiv(struct sockaddr_in addr);
@@ -63,8 +71,10 @@ public:
   void DataRecved(size_t nby) { rate_dl.CountAdd(nby); }
   void DataSended(size_t nby) { rate_ul.CountAdd(nby); }
 
-  size_t RateDL() const { return rate_dl.RateMeasure(); }
-  size_t RateUL() const { return rate_ul.RateMeasure();}
+  size_t RateDL() const { return m_use_current ? m_current_dl : rate_dl.RateMeasure(); }
+  size_t RateUL() const { return m_use_current ? m_current_ul : rate_ul.RateMeasure(); }
+  void SetCurrentRates();
+  void ClearCurrentRates() { m_use_current = 0; }
 
   void StartDLTimer() { rate_dl.StartTimer(); }
   void StartULTimer() { rate_ul.StartTimer(); }
@@ -81,18 +91,28 @@ class btPeer:public btBasic
 
   unsigned char m_f_keepalive:1;
   unsigned char m_status:4;
-  unsigned char m_reserved:3;
+  unsigned char m_bad_health:1;
+  unsigned char m_standby:1;
+  unsigned char m_reserved:1;
 
   BTSTATUS m_state;
 
   size_t m_cached_idx;
   size_t m_err_count;
-  int m_standby;
+  size_t m_req_send;  // target number of outstanding requests
+  size_t m_req_out;   // actual number of outstanding requests
+  size_t m_latency;
+  size_t m_prev_dlrate;
+  time_t m_latency_timestamp;
+  time_t m_health_time, m_receive_time;
+  char m_lastmsg;
+  time_t m_choketime;
   
   int PieceDeliver(size_t mlen);
   int ReportComplete(size_t idx);
   int RequestCheck();
   int SendRequest();
+  int CancelPiece();
   int CancelRequest(PSLICE ps);
   int ReponseSlice();
   int RequestPiece();
@@ -103,6 +123,7 @@ class btPeer:public btBasic
   int BandWidthLimitUp();
   int BandWidthLimitDown();
  public:
+  unsigned char id[PEER_ID_LEN];
   BitField bitfield;
   btStream stream;
   RequestQueue request_q;
@@ -112,6 +133,8 @@ class btPeer:public btBasic
 
   int RecvModule();
   int SendModule();
+  int HealthCheck(time_t now);
+  void CheckSendStatus();
 
   time_t SetLastTimestamp() { return time(&m_last_timestamp); }
   time_t GetLastTimestamp() const { return m_last_timestamp; }
@@ -123,6 +146,8 @@ class btPeer:public btBasic
   int Is_Local_Interested() const { return m_state.local_interested ? 1 : 0;}
   int Is_Local_UnChoked() const { return m_state.local_choked ? 0 : 1; }
   int SetLocal(unsigned char s);
+
+  int IsEmpty() const;
 
   int CancelSliceRequest(size_t idx, size_t off, size_t len);
   

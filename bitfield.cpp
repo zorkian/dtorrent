@@ -143,8 +143,6 @@ void BitField::Invert()
     size_t s = nset;
     for( ; i < nbytes - 1; i++ ) b[i] = ~b[i];
 
-//dnh    if( nbits % nbytes ){
-//consider nbits=10 (nbytes=2)....
     if( nbits % 8 ){
       for( i = 8 * (nbytes - 1); i < nbits; i++ ) if( _isset(i) ) UnSet(i); else _set(i);
     }else
@@ -179,7 +177,10 @@ void BitField::Except(const BitField &bf)
 {
    size_t i;
   char c;
-  if( bf.nset != 0 ){
+  if( _isfull_sp(bf) ){
+    SetAll();
+    Invert();
+  }else if( bf.nset != 0 ){
     if( nset >= nbits ){
       b = new unsigned char[nbytes];
 #ifndef WINDOWS
@@ -192,6 +193,26 @@ void BitField::Except(const BitField &bf)
       b[i] ^= bf.b[i];
       b[i] &= c;
     }
+    _recalc();
+  }
+}
+
+void BitField::And(const BitField &bf)
+{
+   size_t i;
+
+  if( bf.nset == 0 ){
+    SetAll();
+    Invert();
+  }else if( !_isfull_sp(bf) ){
+    if( nset >= nbits ){
+      b = new unsigned char[nbytes];
+#ifndef WINDOWS
+      if( !b ) throw 9;
+#endif
+      _setall(b);
+    }
+    for(i = 0; i < nbytes; i++) b[i] &= bf.b[i];
     _recalc();
   }
 }
@@ -312,3 +333,4 @@ int BitField::WriteToFile(const char *fname)
   fclose(fp);
   return -1;
 }
+

@@ -1,1 +1,379 @@
-*EMPTY*
+
+                        Enhanced CTorrent Change Log
+     _________________________________________________________________
+
+   Changes for "dnh2" Release
+
+   Patches
+     * The following patches or their functionality are incorporated:
+       1380164 [dnh1.2]
+       1357832 [invert] (included in dnh1.2)
+       1352866 [dnh1.1]
+       1266767 [passkey2]
+       1239547 [dnh1]
+       1170457 [standalone-sha1] Added as a fallback case in configure if
+       OpenSSL is not found. To force it to be used, define
+       USE_STANDALONE_SHA1 in config.h (after running configure).
+       1164454 [ip]
+       1119610 [vfat] This bug appears to be linux-specific; I've tried
+       to handle it in a more general way that may apply to similar
+       situations on other platforms and filesystems, but I have limited
+       capability to test this.
+       1067196 [lfs] This is the large-file support that many have asked
+       for.
+
+   Optimization
+     * Use fewer call to random() by shifting the previously unused bits.
+     * Time() calls have been greatly reduced; a global timestamp
+       variable "now" is set once per main loop interation and referenced
+       in functions that need a timestamp (except the caching I/O
+       routines which were left alone).
+     * Overall current bandwidth rates are now computed only once per
+       main loop and referenced in any routines that evaluate or control
+       bandwidth.
+     * Avoid flushing peer output buffers except in SendModule. This
+       allows for some consolidation of messages to reduce network
+       overhead.
+
+   Code Fixes
+     * Fixed use of cfg_req_queue_length to be the actual queue size
+       (queue was half of this value).
+     * Fixed: "peer is" verbose output could fubar the terminal.
+     * Formatting: Replaced indentation tabs with spaces for consistency.
+
+   Operational Enhancements
+     * Improved piece selection methods to include rarity as a factor.
+       This is not strictly "rarest-first", as we do not make a
+       comprehensive effort to find the "rarest" piece or rank pieces by
+       rarity. Rather, we use a more efficient compromise and try to find
+       the set of pieces that have "trade value" (another peer needs
+       them) and make a random choice from that set. Here is the current
+       preference order used in each mode:
+       Trade Value is defined as:
+         1. Piece that only this peer has (not considering other
+            seeders), that a peer in which we're interested needs.
+         2. Piece that not every peer in which we're interested has.
+         3. Piece that only this peer has (not considering other
+            seeders).
+         4. Piece that not every peer has.
+       Normal Mode
+         1. Piece we tried to get from another peer but stopped due to
+            choking or lost connection. (We have part of the piece
+            already.)
+         2. Piece most recently acquired by the peer (possibly/probably
+            rare).
+         3. Piece with trade value.
+         4. Any piece not yet requested.
+       Initial-piece Mode
+         1. Piece with trade value which is already in progress.
+         2. Piece with trade value that more than one peer has.
+         3. Piece with trade value.
+         4. Any piece not yet requested.
+       Endgame Mode
+         1. Piece with trade value which is already in progress, of which
+            we have the least amount.
+         2. Piece already in progress of which we have the least amount.
+     * Advanced request queueing system.
+          + Instead of requesting all of the slices for a piece at one
+            time, we now measure latency to the peer and send requests
+            based on how long it takes the data to arrive. This avoids
+            wasting upload banwidth by having too many outstanding
+            requests: If we get choked or lose the connection, the extra
+            requests were wasted; in initial or endgame modes, more
+            requests would have to be cancelled when we completed the
+            piece.
+          + A new piece will be queued for download when there is space
+            in the queue and we've requested the slices that have been
+            queued already. We also don't wait for the current piece to
+            complete before sending requests for a new piece. This helps
+            to maintain a continuous flow of data in the download
+            pipeline.
+          + When duplicating a request in initial or endgame mode, slices
+            that have already been requested are queued last.
+     * Don't send HAVE messages to seeders (to save UL bandwidth).
+          + Since we maintain interested state, and know the peer is a
+            seeder, we'll do the right thing when we become a seeder.
+          + Not sending HAVE to all peers (leechers) that already have
+            the piece is a bad idea IMO. If everyone takes the same
+            attitude, none of us will know when another becomes a seeder
+            and connections will remain open/occupied.
+          + We do send a HAVE to seeders upon completing our first piece
+            so that we don't continue to appear empty.
+     * Endgame strategy is used in get1file mode to complete the file.
+     * Queue management:
+          + Don't accept requests from choked peers.
+          + Discard peer's reponse_q when we choke them.
+          + Don't send cancels when we get choked (according to spec &
+            discussions).
+          + Don't put full piece queues in pending.
+          + Move closing peer's request queue to pending instead of
+            discarding it.
+     * Prefer uploading to or downloading from a peer after we skip them
+       due to bandwidth limiting. This is done via the g_next_up and
+       g_defer_up global variables in peer.cpp (for UL; s/up/dn for the
+       DL versions). The peerlist Sort() function and peer "click"
+       variables have been removed since they are not needed with this
+       feature.
+
+   Options & Features
+     * The -c option now reports file completion status.
+          + As a side effect the metainfo details are printed twice. This
+            allows you to view the torrent contents while pieces are
+            being verified.
+          + Total percentage completion is also added to the output.
+     * "-E" option to seed to a specified UL:DL ratio. Seeding will stop
+       when this ratio or the timeout (-e) is reached. If CTorrent starts
+       as a seeder, the ratio is interpreted as UL:[torrent size].
+     * If "-e 0" is specified (explicitly) and -E is used, there will be
+       no timeout; seeding will continue until the ratio is reached.
+     * The "-m" option previously didn't do anything, and it isn't clear
+       what it was originally going to do. Now the default value is 1,
+       and CTorrent will try to maintain at least this many peers by
+       contacting the tracker early if the peer count falls below this
+       value. This feature was present in release dnh1 but the value was
+       not changeable.
+       Actually it seems likely that this was to be number of peers that
+       the client would try to obtain (by initiating connections), as the
+       "official" client does; this is mentioned as a note in the online
+       specification. I don't really see the value in that though. That
+       said, the option as implemented here should rarely be used. It
+       might be useful only with torrents that have significantly more
+       than max_peers total peers and use a long tracker update interval
+       (such that you tend to drop a lot of peers betwen updates).
+     * "-z" option to set the slice size (the unit of a request, i.e. the
+       discrete amount of data that will be requested from a peer at one
+       time). The slice size now defaults to 16K regardless of the piece
+       length. Request queue size is computed and set based on the slice
+       size, as it now affects only system resources (though not a lot)
+       and not the way that requests are sent.
+     * Add support for "key" and "trackerid" tracker interaction
+       parameters.
+     * Support/display tracker warning message
+     * Now able to handle torrents with more than 255 files.
+     * Support for [1]CTorrent Control Server, an application and
+       protocol for monitoring and managing multiple Enhanced CTorrent
+       clients. The "-S" option is used to connect to CTCS, as in "-S
+       localhost:2780" if CTCS is listening at port 2780 on the local
+       system. Appending a colon ("-S localhost:2780:") will prompt for a
+       password to authenticate with CTCS.
+
+   Peer Handling
+     * Count immediate choke-unchoke (either order) as an error (two
+       errors actually, since it's so wasteful).
+       It may be that some clients do this to stimulate the peer when
+       they think it hasn't responded to their last unchoke (due to high
+       latency). It would be better for them to just repeat the unchoke
+       rather than choke-unchoke, as by choking they will cause the peer
+       to send the requests again.
+     * Detect unresponsive peer connections and try to fix them or
+       disconnect them. Basically, if a peer doesn't respond to our
+       request in a reasonable time then we first assume that our request
+       was lost in transmission; if it happens again then we assume the
+       connection is unreliable.
+     * Handle peers that suppress HAVE messages so we don't always think
+       that they're empty (and thus give them preferential treatment for
+       uploading). If we've sent the peer an amount of data equivalent to
+       two pieces, assume that they now have at least one complete piece.
+     _________________________________________________________________
+
+   Changes for "dnh1.2" Release
+
+   These are just corrections to the previous release that I felt were
+   necessary. Much more improvement is coming in the dnh2 release.
+
+   Bug/code fixes
+     * Bitfield::Invert patch [1357832 on sourceforge] described below.
+     * Fixed "piece length too long" check to reflect the actual queue
+       length used.
+     * Accept 128K slice size for peer requests.
+     * "Return" keyword in Random_init() removed due to potential compile
+       error.
+     * Modified longer-wait test in the optimistic unchoke routine to
+       consider whether the peer is currently choked.
+     _________________________________________________________________
+
+   Bitfield::Invert bug
+
+   There is a bug in the Bitfield::Invert() function that affects the
+   ctorrent-1.3.4 base code as well as releases dnh1 and dnh1.1. This can
+   cause the application to fail (segmentation fault) or may affect
+   downloading of all pieces of the torrent. A patch is available in the
+   Download secion.
+     _________________________________________________________________
+
+   Changes for "dnh1.1" Release
+
+   These are just corrections to the previous release that I felt were
+   necessary. Much more improvement is coming in the next release.
+
+   Bug/code fixes
+     * Peer count would increase on each tracker update if there were no
+       seeders.
+     * RequestQueue::CopyShuffle() changed to use a pointer argument.
+     * Fixed some incorrectness in PendingQueue::Delete() and
+       PendingQueue::DeleteSlice() which could cause a memory leak.
+     * Fixed random-chance inversion bug in PeerList::UnChokeCheck()
+       affecting choice for optimistic unchoking.
+
+   Improvements
+     * Move StopDLTimer() call from RequestPiece() to RequestCheck(),
+       which could occasionally affect peer download rate measurement.
+     * Most clients do not like a slice size of 128K even though it is
+       the max allowed by the BT specification. Changed max slice size to
+       64K. Note that the maximum piece length is 2MB (2097152); if you
+       need to download a torrent with a larger piece size you can change
+       the value of cfg_req_queue_length in btconfig.h from 64 to 128.
+     * Contact tracker immediately upon becoming (or starting as) a
+       seeder.
+     * Changed SendModule() to send only one slice at a time. This will
+       help with fairly distributing upload bandwidth among the unchoked
+       peers.
+     * Changed default peer ID prefix to '-CD0101-', indicating
+       CTorrent-dnh1.1 release.
+     _________________________________________________________________
+
+   Changes for "dnh1" Release
+
+   This is the first release. "dnh" identifies this patchset, and "1"
+   indicates release version 1 of the patchset.
+
+   Patches
+     * Incorporates the following patches. The number is the Request ID
+       from the [2]SourceForge patches page, which you can reference for
+       the details of each patch. The name in brackets is the name of the
+       patch file or a name I chose to refer to the patch. Some of these
+       names are used below (in brackets) to describe a fix or change to
+       a particular patch.
+       1042808 [getcwd] (incorporated in get1file patch)
+       1084776 [passkey] (incorporated in udlimit patch)
+       1109266 [align]
+       1109287 [tracker/tracker2]
+       1114197 [fmt] (incorporated in get1file patch)
+       1114364 [resetdl]
+       1116448 [get1file]
+       1118597 [crash]
+       1119467 [stall]
+       1119492 [rate]
+       1119497 [flush]
+       1119519 [opt]
+       1119689 [status]
+       1124342 [udlimit]
+
+   Download performance
+     * If a peer socket is ready for reading and writing, perform both.
+       Previously the cases were exclusive, with preference given to
+       reading.
+     * Download requests are now made to peers when they are ready for
+       writing (in addition to the existing event-driven cases). This
+       fixes peer stalls when a request couldn't be sent in an
+       event-triggered case due to bandwidth limiting or other
+       circumstances.
+     * Additional tests added so that the above request checking doesn't
+       create hard loops.
+
+   Bandwidth measurement/management
+     * [rate] Bandwidth reporting is now not capped. Also, only the time
+       used for the samples taken is used in the calculation rather than
+       the maximum interval (this affects rate calculation for individual
+       peers).
+     * Additional upload and download bandwidth limit checks added so
+       that bw management is more accurate.
+     * Corrected condition inversion bug in Rate::StopTimer(), which
+       affects peer rate calculations.
+
+   Peer count
+     * Request our max number of peers from the tracker each time rather
+       than just taking the tracker's default, so we can try to fill up.
+     * The tracker will be contacted early if all peers disconnect so
+       that we can actively try to establish some more peer connections.
+       To avoid hammering the tracker, we must have at least one peer for
+       15 seconds in order for this to be invoked.
+     * Some clients use nonzero bytes in the "reserved" part of the
+       handshake. Added code to ignore the reserved bytes if the rest of
+       the handshake is as expected. This includes Azureus 2300 thru 2304
+       (latest) which gives 0x80 as the first reserved byte and BitComet
+       which gives 0x6578 ("ex") as the first two bytes.
+     * Update peer's timestamp on any message, not just keepalives. Any
+       receipt of data from a peer now resets its timeout, preventing
+       early disconnect.
+
+   Parallel requests
+     * Initial-piece and endgame cases have been improved so that pieces
+       will be requested from multiple peers. Cancels are sent as slices
+       (subpieces) are received. This endgame strategy is described in
+       the BitTorrent online spec. The startup strategy is also described
+       in posts and facilitates obtaining a single piece more rapidly in
+       order to obtain some trade value. In initial mode, the piece of
+       which we need the least parts is targeted. In endgame mode, the
+       piece of which we need the most parts is targeted. Slices that are
+       cancelled are also removed from the "pending" queue, as are pieces
+       that are completed.
+     * When duplicating a piece request, the slice request order is also
+       shuffled in order to minimize duplication of effort.
+
+   Tracker info
+     * [status] Seems to be missing tracker.cpp diff. Added code to get
+       tracker's total peers, but not all trackers report these fields in
+       the normal response. Also added code to count successful updates
+       from the tracker.
+     * Added tracker connection state to status line (when
+       connecting/connected).
+
+   Tracker contact
+     * When interrupting (ctrl-C), connect to the tracker immediately
+       rather than waiting 15 seconds.
+     * Contact tracker "soon" after transitioning to seeder state.
+
+   Peer interaction
+     * Manage our interested state for each peer dynamically as content
+       changes.
+     * Unchoking
+          + Use the peer's interested state (confirming via the bitfield
+            that it needs our data) to consider unchoking. Using only the
+            bitfield could cause us to waste an upload slot on a peer
+            that doesn't have all content but isn't interested (like a
+            single-file downloader).
+          + Choke peers that become uninterested or don't need our data.
+          + Try unchoking new peers only as slots open or the optimistic
+            unchoke rotates. Unchoking too many peers can temporarily
+            reduce per-peer upload rates, which would make uploading to
+            us unappealing for good peers.
+          + In a tie for download speed, prefer to unchoke the peer to
+            whom we've uploaded the least data relative to what we've
+            downloaded from him.
+     * Optimistic unchoking
+          + Fixed condition inversion bug causing opt unchoking to occur
+            too often.
+          + A peer who has no pieces is now preferred 75% vs. a peer who
+            already has at least one piece, in order to help the new peer
+            become productive. This is documented in the online spec.
+          + Set peer's last-unchoke-time when choking the peer to get
+            better rotation of the optimistic unchoke. The value is now
+            the last time that a peer was in the unchoked state rather
+            than the time of the last unchoke event.
+
+   Miscellaneous items
+     * [tracker] Fixed normal program end (stop) process, which was
+       crashing.
+     * [get1file] Restore compact tracker response support.
+     * [get1file] Made display of the status line info dependent on
+       whether the option is in use.
+     * [get1file] Apply the filter when checking for what we need from a
+       peer instead of when recording what the peer has; this prevents
+       stalls when we move on to the next file. Update interested state
+       for each peer when we begin a new file. Also move the file-done
+       check into the piece completion code and check whether the next
+       file(s) has also been completed.
+     * Reduced the slice size from 32K to 16K (same as BT & Azureus).
+       This provides more precise DL rate measurement, and helps insure
+       that we receive a productive amount of data (i.e. a complete
+       slice) even if we are unchoked by a peer for only one cycle. See
+       [3]http://groups.yahoo.com/group/BitTorrent/message/1260 for more
+       discussion/analysis on this.
+     * Added -v (verbose) option for additional debugging output.
+
+References
+
+   1. http://www.rahul.net/dholmes/ctorrent/ctcs.html
+   2. http://sourceforge.net/tracker/?atid=598034&group_id=91688&func=browse
+   3. http://groups.yahoo.com/group/BitTorrent/message/1260

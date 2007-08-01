@@ -1,9 +1,9 @@
 #ifndef TRACKER_H
 #define TRACKER_H
 
+#include "./def.h"
 #include <sys/types.h>
 
-#include "./def.h"
 #include "./bufio.h"
 
 #ifdef WINDOWS
@@ -18,6 +18,8 @@
 #include <sys/param.h>
 #endif
 
+#include "btconfig.h"
+
 #define T_FREE 		0
 #define T_CONNECTING	1
 #define T_READY		2
@@ -29,6 +31,8 @@ class btTracker
   char m_host[MAXHOSTNAMELEN];
   char m_path[MAXPATHLEN];
   int m_port;
+  char m_key[9];
+  char m_trackerid[PEER_ID_LEN+1];
 
   struct sockaddr_in m_sin;
 
@@ -38,7 +42,8 @@ class btTracker
   unsigned char m_f_completed:1;
 
   unsigned char m_f_pause:1;
-  unsigned char m_f_reserved:2;
+  unsigned char m_f_softquit:1;
+  unsigned char m_f_restart:1;
 
 
   time_t m_interval;		// 与Tracker通信的时间间隔
@@ -71,6 +76,12 @@ class btTracker
 
   void SetPause() { m_f_pause = 1; }
   void ClearPause() { m_f_pause = 0; }
+  int IsPaused() const { return m_f_pause; }
+  void Resume();
+  void SoftQuit() { m_f_softquit = 1; }
+  void DontQuit() { m_f_softquit = 0; }
+  int IsQuitting() const { return m_f_softquit; }
+  void SetRestart() { m_f_restart = 1; }
 
   void SetStoped() { Reset(15); m_f_stoped = 1; m_last_timestamp -= 15;}
 

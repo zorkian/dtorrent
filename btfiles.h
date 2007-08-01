@@ -1,22 +1,20 @@
 #ifndef BTFILES_H
 #define BTFILES_H
 
+#include "./def.h"
 #include <sys/types.h>
 #include <stdio.h>
 
 #include "bitfield.h"
-extern unsigned char arg_file_to_download;
-
-#include "./def.h"
 
 typedef struct _btfile{
   char *bf_filename;	// full path of file.
-  size_t bf_length;		//single file length limits to 4 GB
+  u_int64_t bf_length;
   FILE *bf_fp;
 
   time_t bf_last_timestamp;	// last io timestamp.
 
-  size_t bf_completed;		// already downloaded length
+  u_int64_t bf_completed;		// already downloaded length
 
   size_t bf_npieces;  //number of pieces
 
@@ -42,8 +40,8 @@ class btFiles
 
   BTFILE* _new_bfnode();
   int _btf_open(BTFILE *sbf_p);
-  int _btf_ftruncate(int fd,size_t length);
-  int _btf_creat_by_path(const char *pathname, size_t file_length);
+  int _btf_ftruncate(int fd,int64_t length);
+  int _btf_creat_by_path(const char *pathname, int64_t file_length);
   int _btf_destroy();
   int _btf_recurses_directory(const char *cur_path, BTFILE *lastnode);
 
@@ -61,11 +59,12 @@ class btFiles
   size_t FillMetaInfo(FILE* fp);
 
   void SetFilter(int nfile, BitField *pFilter,size_t pieceLength);
-  size_t getFilePieces(unsigned char nfile);
+  size_t getFilePieces(size_t nfile);
 
 #ifndef WINDOWS
   void PrintOut();
 #endif
+  BTFILE *GetNextFile(BTFILE *file);
 };
 
 #endif

@@ -1,14 +1,13 @@
 #ifndef PEERLIST_H
 #define PEERLIST_H
 
-#include <sys/types.h>
 #include "./def.h"
+#include <sys/types.h>
 #include "./peer.h"
 #include "./rate.h"
 
 typedef struct _peernode{
   btPeer *peer;
-  size_t click;
   struct _peernode *next;
 }PEERNODE;
 
@@ -27,7 +26,6 @@ class PeerList
   Rate m_pre_dlrate, m_pre_ulrate;
   
   int Accepter();
-  void Sort();
   void UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
   
  public:
@@ -51,12 +49,16 @@ class PeerList
   
   void Tell_World_I_Have(size_t idx);
   btPeer* Who_Can_Abandon(btPeer *proposer);
-  btPeer* Who_Can_Duplicate(btPeer *proposer, size_t idx);
+  size_t What_Can_Duplicate(BitField &bf, btPeer *proposer, size_t idx);
+  void FindValuedPieces(BitField &bf, btPeer *proposer, int initial);
+  btPeer *WhoHas(size_t idx);
   void CancelSlice(size_t idx, size_t off, size_t len);
   void CheckBitField(BitField &bf);
   int AlreadyRequested(size_t idx);
   size_t Pieces_I_Can_Get();
   void CheckInterest();
+  btPeer* GetNextPeer(btPeer *peer);
+  int Endgame();
 };
 
 extern PeerList WORLD;

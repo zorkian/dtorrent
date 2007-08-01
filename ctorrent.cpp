@@ -1,6 +1,5 @@
-#include <sys/types.h>
-
 #include "./def.h"
+#include <sys/types.h>
 
 #ifdef WINDOWS
 #include <windows.h>
@@ -20,6 +19,7 @@
 #include "downloader.h"
 #include "peerlist.h"
 #include "tracker.h"
+#include "ctcs.h"
 
 #include "./config.h"
 
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     if( !arg_announce ){ fprintf(stderr,"please use -u to specify a announce url!\n"); exit(1);}
     if( !arg_save_as ){ fprintf(stderr,"please use -s to specify a metainfo file name!\n"); exit(1);}
     if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_announce,  arg_piece_length) < 0 ||
-	BTCONTENT.CreateMetainfoFile(arg_save_as) < 0){
+        BTCONTENT.CreateMetainfoFile(arg_save_as) < 0){
       fprintf(stderr,"create metainfo failed.\n");
       exit(1);
     }
@@ -81,12 +81,12 @@ int main(int argc, char **argv)
   if( !arg_flg_exam_only && !arg_flg_check_only){
     if(WORLD.Initial_ListenPort() < 0){
       fprintf(stderr,"warn, you couldn't accept connection.\n");
-    }else 
-      printf("Listen on: %d\n",cfg_listen_port);
+    }
 
-	Tracker.Initial();
+    if( arg_ctcs ) CTCS.Initial();
+        Tracker.Initial();
 
-	signal(SIGPIPE,SIG_IGN);
+        signal(SIGPIPE,SIG_IGN);
     signal(SIGINT,sig_catch);
     signal(SIGTERM,sig_catch);
     Downloader();
@@ -103,7 +103,8 @@ int main(int argc, char **argv)
 int param_check(int argc, char **argv)
 {
   int c, l;
-  while ( ( c = getopt(argc,argv,"b:cC:D:e:fl:M:m:n:P:p:s:tu:U:vxhH")) != -1)
+  char *s;
+  while ( ( c = getopt(argc,argv,"b:cC:D:e:E:fi:l:M:m:n:P:p:s:S:tu:U:vxz:hH")) != -1)
     switch( c ){
     case 'b':
       arg_bitfield_file = new char[strlen(optarg) + 1];
@@ -111,6 +112,10 @@ int param_check(int argc, char **argv)
       if( !arg_bitfield_file ) return -1;
 #endif
       strcpy(arg_bitfield_file, optarg);
+      break;
+
+    case 'i':                  // listen on ip XXXX
+      cfg_listen_ip = inet_addr(optarg);
       break;
 
     case 'p':			// listen on Port XXXX
@@ -130,6 +135,10 @@ int param_check(int argc, char **argv)
       cfg_seed_hours = atoi(optarg);
       break;
 
+    case 'E':			// target seed ratio
+      cfg_seed_ratio = atof(optarg);
+      break;
+
     case 'c':			// Check exist only
       arg_flg_check_only = 1;
       break;
@@ -141,17 +150,23 @@ int param_check(int argc, char **argv)
     case 'M':			// Max peers
       cfg_max_peers = atoi(optarg);
       if( cfg_max_peers > 1000 ||
-	  cfg_max_peers < 20){
-	return -1;
+          cfg_max_peers < 20){
+        return -1;
       }
       break;
       
     case 'm':			// Min peers
       cfg_min_peers = atoi(optarg);
       if( cfg_min_peers > 1000 ||
-	  cfg_min_peers < 20){
-	return -1;
+          cfg_min_peers < 1){
+        return -1;
       }
+      break;
+
+    case 'z':			// slice size
+      cfg_req_slice_size = atoi(optarg) * 1024;
+      if( cfg_req_slice_size < 1024 || cfg_req_slice_size > 128*1024 )
+        return -1;
       break;
 
     case 'n':                  // Which file download
@@ -167,15 +182,15 @@ int param_check(int argc, char **argv)
       cfg_max_bandwidth_down = (int)(strtod(optarg, NULL) * 1024);
       break;
 
-       case 'U':
+    case 'U':
       cfg_max_bandwidth_up = (int)(strtod(optarg, NULL) * 1024);
-         break;
+      break;
 
     case 'P':
-		l = strlen(optarg);
-		if (l > MAX_PF_LEN) {printf("-P arg must be 8 or less characters\n"); exit(1);}
-		if (l == 1 && *optarg == '-') *arg_user_agent = (char) 0;
-		else strcpy(arg_user_agent,optarg);
+      l = strlen(optarg);
+      if (l > MAX_PF_LEN) {printf("-P arg must be 8 or less characters\n"); exit(1);}
+      if (l == 1 && *optarg == '-') *arg_user_agent = (char) 0;
+      else strcpy(arg_user_agent,optarg);
       break;
 
      // BELLOW OPTIONS USED FOR CREATE TORRENT.
@@ -192,15 +207,23 @@ int param_check(int argc, char **argv)
     case 'l':			// piece Length (default 262144)
       arg_piece_length = atoi(optarg);
       if( arg_piece_length < 65536 ||
-	  arg_piece_length > 1310720 ){
-	// warn message:
-	// piece length range is 65536 =>> 1310720
-	return -1;
+          arg_piece_length > 1310720 ){
+        // warn message:
+        // piece length range is 65536 =>> 1310720
+        return -1;
       }
       break;
+     // ABOVE OPTIONS USED FOR CREATE TORRENT.
 
     case 'x':
       arg_flg_exam_only = 1;
+      break;
+
+    case 'S':			// CTCS server
+      if( arg_ctcs ) return -1;
+      arg_ctcs = new char[strlen(optarg) + 1];
+      if( !strchr(optarg, ':') ) return -1;
+      strcpy(arg_ctcs, optarg);
       break;
 
     case 'v':
@@ -228,7 +251,7 @@ int param_check(int argc, char **argv)
 
 void usage()
 {
-  fprintf(stderr,"%s		Copyright: YuHong(992126018601033)",PACKAGE_STRING);
+  fprintf(stderr,"%s	Original code Copyright: YuHong(992126018601033)",PACKAGE_STRING);
   fprintf(stderr,"\nWARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");
   fprintf(stderr,"\nGeneric Options:\n");
   fprintf(stderr,"-h/-H\t\tShow this message.\n");
@@ -237,6 +260,8 @@ void usage()
   fprintf(stderr,"-v\t\tVerbose output (for debugging).\n");
   fprintf(stderr,"\nDownload Options:\n");
   fprintf(stderr,"-e int\t\tExit while seed <int> hours later. (default 72 hours)\n");
+  fprintf(stderr,"-E num\t\tExit after seeding to <num> ratio (UL:DL).\n");
+  fprintf(stderr,"-i ip\t\tListen for connection on ip. (default all ip's)\n");
   fprintf(stderr,"-p port\t\tListen port. (default 2706 -> 2106)\n");
   fprintf(stderr,"-s save_as\tSave file/directory/metainfo as... \n");
   fprintf(stderr,"-C cache_size\tCache size,unit MB. (default 16MB)\n");
@@ -244,10 +269,12 @@ void usage()
   fprintf(stderr,"-b bf_filename\tBit field filename. (use it carefully)\n");
   fprintf(stderr,"-M max_peers\tMax peers count.\n");
   fprintf(stderr,"-m min_peers\tMin peers count.\n");
+  fprintf(stderr,"-z slice_size\tDownload slice/block size, unit KB. (default 16, max 128).\n");
   fprintf(stderr,"-n file_number\tWhich file download.\n");
   fprintf(stderr,"-D rate\t\tMax bandwidth down (unit KB/s)\n");
   fprintf(stderr,"-U rate\t\tMax bandwidth up (unit KB/s)\n");
   fprintf(stderr,"-P peer_id\tSet Peer ID ["PEER_PFX"]\n");
+  fprintf(stderr,"-S host:port\tUse CTCS server\n");
   fprintf(stderr,"\nMake metainfo(torrent) file Options:\n");
   fprintf(stderr,"-t\t\tWith make torrent. must specify this option.\n");
   fprintf(stderr,"-u url\t\tTracker's url.\n");
@@ -255,5 +282,7 @@ void usage()
   fprintf(stderr,"\neg.\n");
   fprintf(stderr,"hong> ctorrent -s new_filename -e 12 -C 32 -p 6881 eg.torrent\n\n");
   fprintf(stderr,"home page: http://ctorrent.sourceforge.net/\n");
-  fprintf(stderr,"bug report: %s\n\n",PACKAGE_BUGREPORT);
+  fprintf(stderr,"see also: http://www.rahul.net/dholmes/ctorrent/\n");
+  fprintf(stderr,"bug report: %s\n",PACKAGE_BUGREPORT);
+  fprintf(stderr,"original author: bsdi@sina.com\n\n");
 }

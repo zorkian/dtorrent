@@ -1,14 +1,13 @@
-Please see http://www.rahul.net/dholmes/ctorrent/ for the latest version
-of this information.
 
                              Enhanced CTorrent
 
-      [ [1]Info | [2]Notes | [3]Changes | [4]Download | [5]Resources |
-                               [6]Contact ] 
+       [ [1]Overview | [2]News | [3]Changes | [4]CTCS | [5]Download |
+                        [6]Resources | [7]Contact ] 
+     _________________________________________________________________
 
-Information
+   Overview
 
-   [7]CTorrent is a [8]BitTorrent client implemented in C++ to be
+   [8]CTorrent is a [9]BitTorrent client implemented in C++ to be
    lightweight and quick. It has fallen a little behind in updates and
    bug fixes though.
 
@@ -18,215 +17,223 @@ Information
    contributing. I am not the original author, current maintainer, or any
    other official representative of CTorrent. The files on this page are
    not the original or official CTorrent distribution. I encourage you to
-   visit the [9]CTorrent project page on SourceForge for further
+   visit the [10]CTorrent project page on SourceForge for further
    information.
 
-Notes
+  Features
 
-   Use of the -P option (or changing the peer ID in btconfig.h) is
-   recommended, as some other clients and trackers assume that Ctorrent
+   The purpose of the Enhanced CTorrent effort is to fix problems that
+   remain in the code, modernize existing features and algorithms, and
+   implement new features while maintaining low overhead requirements and
+   a high standard of performance (both part of the original CTorrent
+   design philosophy). Highlights of the enhanced client include:
+     * Support for large files (>2GB) and large torrents (>255 files)
+     * Strategic selection of pieces to request for download
+     * Continuous queueing of download requests, tuned based on latency
+       and throughput for each peer
+     * Improved download performance, including parallel requests in
+       initial and endgame modes
+     * Improved bandwidth regulation
+     * Improved compatibility with other peers
+     * Performance optimization and bug fixes
+     * An interface for monitoring and managing multiple clients
+
+  Status Line
+
+   The status line that is output by the client has changed since the
+   original and deserves some explanation.
+
+       / 0/33/110 [672/672/672] 0MB,1130MB | 0,20K/s | 0,0K E:0,31
+       - - -- ---  --- --- ---  --- ------   - --      - -    - --
+       A B  C  D    E   F   G    H     I     J  K      L M    N  O
+
+   A: Ticker; this character changes to indicate that the client is
+   running.
+   B: Number of seeders (complete peers) to which you are connected.
+   C: Number of leechers (incomplete peers) to which you are connected.
+   D: Total number of peers in the swarm, as last reported by the
+   tracker.
+   E: Number of pieces of the torrent that you have completed.
+   F: Number of pieces currently available from you and your connected
+   peers.
+   G: Total number of pieces in the torrent.
+   H: Total amount of data you have downloaded.
+   I: Total amount of data you have uploaded.
+   J: Your current total download rate.
+   K: Your current total upload rate.
+   L: Amount of data downloaded since the last status line update.
+   M: Amount of data uploaded since the last status line update.
+   N: Number of tracker connection errors.
+   O: Number of successful tracker connections.
+
+  Peer ID
+
+   Beginning with dnh1.1 the default peer ID has been changed for
+   convenience, as some other clients and trackers assume that Ctorrent
    is "buggy" and won't cooperate with it. [Guess what, there are plenty
-   of others with bugs too.] It isn't necessary to impersonate another
-   known client; just changing or adding one letter or number should be
-   sufficient.
+   of others with bugs too.] The -P option is still available if you wish
+   to use a different peer ID, but it is no longer necessary to do so in
+   order to avoid this "ban".
 
-Changes for "dnh1" Release
+   The new default peer ID prefix is "-CDversion-", where version is an
+   indication of the version number (0101 for dnh1.1).
 
-   Patches
-     * Incorporates the following patches. The number is the Request ID
-       from the [10]SourceForge patches page, which you can reference for
-       the details of each patch. The name in brackets is the name of the
-       patch file or a name I chose to refer to the patch. Some of these
-       names are used below (in brackets) to describe a fix or change to
-       a particular patch.
-       1042808 [getcwd] (incorporated in get1file patch)
-       1084776 [passkey] (incorporated in udlimit patch)
-       1109266 [align]
-       1109287 [tracker/tracker2]
-       1114197 [fmt] (incorporated in get1file patch)
-       1114364 [resetdl]
-       1116448 [get1file]
-       1118597 [crash]
-       1119467 [stall]
-       1119492 [rate]
-       1119497 [flush]
-       1119519 [opt]
-       1119689 [status]
-       1124342 [udlimit]
+  CTCS
 
-   Download performance
-     * If a peer socket is ready for reading and writing, perform both.
-       Previously the cases were exclusive, with preference given to
-       reading.
-     * Download requests are now made to peers when they are ready for
-       writing (in addition to the existing event-driven cases). This
-       fixes peer stalls when a request couldn't be sent in an
-       event-triggered case due to bandwidth limiting or other
-       circumstances.
-     * Additional tests added so that the above request checking doesn't
-       create hard loops.
+   [11]CTorrent Control Server (CTCS) is an interface for monitoring and
+   managing Enhanced CTorrent clients. It can manage allocation of
+   bandwidth, provide status information, and allow changes to the
+   running configuration of each client. Support for this interface was
+   added in the dnh2 release.
+     _________________________________________________________________
 
-   Bandwidth measurement/management
-     * [rate] Bandwidth reporting is now not capped. Also, only the time
-       used for the samples taken is used in the calculation rather than
-       the maximum interval (this affects rate calculation for individual
-       peers).
-     * Additional upload and download bandwidth limit checks added so
-       that bw management is more accurate.
-     * Corrected condition inversion bug in Rate::StopTimer(), which
-       affects peer rate calculations.
+   News
 
-   Peer count
-     * Request our max number of peers from the tracker each time rather
-       than just taking the tracker's default, so we can try to fill up.
-     * The tracker will be contacted early if all peers disconnect so
-       that we can actively try to establish some more peer connections.
-       To avoid hammering the tracker, we must have at least one peer for
-       15 seconds in order for this to be invoked.
-     * Some clients use nonzero bytes in the "reserved" part of the
-       handshake. Added code to ignore the reserved bytes if the rest of
-       the handshake is as expected. This includes Azureus 2300 thru 2304
-       (latest) which gives 0x80 as the first reserved byte and BitComet
-       which gives 0x6578 ("ex") as the first two bytes.
-     * Update peer's timestamp on any message, not just keepalives. Any
-       receipt of data from a peer now resets its timeout, preventing
-       early disconnect.
+   2006-01-15
+          Version dnh2 is released! This version includes a number of
+          significant [12]changes, including large file support, piece
+          selection, tuned request queue depth, and support for
+          [13]CTorrent Control Server.
+     _________________________________________________________________
 
-   Parallel requests
-     * Initial-piece and endgame cases have been improved so that pieces
-       will be requested from multiple peers. Cancels are sent as slices
-       (subpieces) are received. This endgame strategy is described in
-       the BitTorrent online spec. The startup strategy is also described
-       in posts and facilitates obtaining a single piece more rapidly in
-       order to obtain some trade value. In initial mode, the piece of
-       which we need the least parts is targeted. In endgame mode, the
-       piece of which we need the most parts is targeted. Slices that are
-       cancelled are also removed from the "pending" queue, as are pieces
-       that are completed.
-     * When duplicating a piece request, the slice request order is also
-       shuffled in order to minimize duplication of effort.
+   Changes
 
-   Tracker info
-     * [status] Seems to be missing tracker.cpp diff. Added code to get
-       tracker's total peers, but not all trackers report these fields in
-       the normal response. Also added code to count successful updates
-       from the tracker.
-     * Added tracker connection state to status line (when
-       connecting/connected).
+   For a list of changes in the current and previous versions, see the
+   [14]ChangeLog file.
+     _________________________________________________________________
 
-   Tracker contact
-     * When interrupting (ctrl-C), connect to the tracker immediately
-       rather than waiting 15 seconds.
-     * Contact tracker "soon" after transitioning to seeder state.
+   Download
 
-   Peer interaction
-     * Manage our interested state for each peer dynamically as content
-       changes.
-     * Unchoking
-          + Use the peer's interested state (confirming via the bitfield
-            that it needs our data) to consider unchoking. Using only the
-            bitfield could cause us to waste an upload slot on a peer
-            that doesn't have all content but isn't interested (like a
-            single-file downloader).
-          + Choke peers that become uninterested or don't need our data.
-          + Try unchoking new peers only as slots open or the optimistic
-            unchoke rotates. Unchoking too many peers can temporarily
-            reduce per-peer upload rates, which would make uploading to
-            us unappealing for good peers.
-          + In a tie for download speed, prefer to unchoke the peer to
-            whom we've uploaded the least data relative to what we've
-            downloaded from him.
-     * Optimistic unchoking
-          + Fixed condition inversion bug causing opt unchoking to occur
-            too often.
-          + A peer who has no pieces is now preferred 75% vs. a peer who
-            already has at least one piece, in order to help the new peer
-            become productive. This is documented in the online spec.
-          + Set peer's last-unchoke-time when choking the peer to get
-            better rotation of the optimistic unchoke. The value is now
-            the last time that a peer was in the unchoked state rather
-            than the time of the last unchoke event.
+   Release dnh2
+   The patch files for this version are significantly larger
+   than in previous releases. It will be faster and easier to just
+   download the patched source distribution below.
 
-   Miscellaneous items
-     * [tracker] Fixed normal program end (stop) process, which was
-       crashing.
-     * [get1file] Restore compact tracker response support.
-     * [get1file] Made display of the status line info dependent on
-       whether the option is in use.
-     * [get1file] Apply the filter when checking for what we need from a
-       peer instead of when recording what the peer has; this prevents
-       stalls when we move on to the next file. Update interested state
-       for each peer when we begin a new file. Also move the file-done
-       check into the piece completion code and check whether the next
-       file(s) has also been completed.
-     * Reduced the slice size from 32K to 16K (same as BT & Azureus).
-       This provides more precise DL rate measurement, and helps insure
-       that we receive a productive amount of data (i.e. a complete
-       slice) even if we are unchoked by a peer for only one cycle. See
-       [11]http://groups.yahoo.com/group/BitTorrent/message/1260 for more
-       discussion/analysis on this.
-     * Added -v (verbose) option for additional debugging output.
+   [15]dnh1.2 to dnh2 patch file
+   A patch file of changes to release dnh1.2 to bring it up to dnh2.
 
-Download
+   [16]Patch file
+   A patch file of changes to the CTorrent 1.3.4 base.
 
-   [12]FreeBSD patch file
+   [17]Patched source
+   A complete source distribution for all platforms.
+                    ___________________________________
+
+   Release dnh1.2
+   Note: If you get a message about needing to install OpenSSL, you might
+   want to try the FreeBSD patch/version even if you are not using
+   FreeBSD.
+
+   [18]dnh1.1 to dnh1.2 patch file
+   A patch file of changes to release dnh1.1 to bring it up to dnh1.2.
+
+   [19]FreeBSD patch file
    A patch file of changes to the CTorrent 1.3.4 base, including the
    patches from the FreeBSD ports tree.
 
-   [13]Patch file
+   [20]Patch file
    A patch file of changes to the CTorrent 1.3.4 base.
 
-   [14]FreeBSD patched source
+   [21]FreeBSD patched source
    This includes the patches from the FreeBSD ports tree.
 
-   [15]Linux/Windows/Other patched source
-   Please [16]let me know if you encounter any portability issues, as I
+   [22]Linux/Windows/Other patched source
+   Please [23]let me know if you encounter any portability issues, as I
    don't have a test environment set up for these platforms.
+                    ___________________________________
 
-Resources
+   Bitfield::Invert patch
 
-   [17]CTorrent Home Page 
+   [24]Bitfield::Invert patch
+   See notes in the change log; this is needed if you are using dnh1.1,
+   dnh1, or ctorrent-1.3.4.
+                    ___________________________________
+
+   Release dnh1.1
+
+   [25]dnh1 to dnh1.1 patch file
+   A patch file of changes to release dnh1 to bring it up to dnh1.1.
+                    ___________________________________
+
+   Release dnh1
+
+   [26]FreeBSD patch file
+   A patch file of changes to the CTorrent 1.3.4 base, including the
+   patches from the FreeBSD ports tree.
+   Note: Thanks to Florent Thoumie, as of 29 Jul 2005 this patchset is
+   included in the FreeBSD port. If you update your ports tree (or at
+   least net/ctorrent) and install from there, you will have these
+   updates without downloading the file and patching manually.
+
+   [27]Patch file
+   A patch file of changes to the CTorrent 1.3.4 base.
+
+   [28]FreeBSD patched source
+   This includes the patches from the FreeBSD ports tree.
+
+   [29]Linux/Windows/Other patched source
+   Please [30]let me know if you encounter any portability issues, as I
+   don't have a test environment set up for these platforms.
+     _________________________________________________________________
+
+   Resources
+
+   [31]CTorrent Home Page 
    Outdated, but you may find some useful info (particularly the FAQ).
 
-   [18]CTorrent SourceForge Project 
+   [32]CTorrent SourceForge Project 
    Hosts the CTorrent codebase, bug reports, patches, and forum.
 
-   [19]Custom CTorrent 
+   [33]Custom CTorrent 
    A page by the author of the "get1file" patch and other fixes. It
    contains a custom version and a GUI for CTorrent.
 
-   [20]BitTorrent 
+   [34]BitTorrent 
    The official BitTorrent home page.
 
-   [21]BitTorrent wiki 
+   [35]BitTorrent wiki 
    Various documentation.
 
-   [22]BitTorrent protocol specification (official version)
+   [36]BitTorrent protocol specification (official version)
 
-   [23]BitTorrent protocol specification (wiki version)
+   [37]BitTorrent protocol specification (wiki version)
 
 References
 
    1. http://www.rahul.net/dholmes/ctorrent/index.html#info
-   2. http://www.rahul.net/dholmes/ctorrent/index.html#notes
-   3. http://www.rahul.net/dholmes/ctorrent/index.html#changes
-   4. http://www.rahul.net/dholmes/ctorrent/index.html#download
-   5. http://www.rahul.net/dholmes/ctorrent/index.html#resources
-   6. mailto:dholmes@ct.boxmail.com
-   7. http://ctorrent.sourceforge.net/
-   8. http://www.bittorrent.com/
-   9. http://sourceforge.net/projects/ctorrent/
-  10. http://sourceforge.net/tracker/?atid=598034&group_id=91688&func=browse
-  11. http://groups.yahoo.com/group/BitTorrent/message/1260
-  12. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1-fbsd.diff
-  13. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1.diff
-  14. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1-fbsd.tar.gz
-  15. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1.tar.gz
-  16. mailto:dholmes@ct.boxmail.com
-  17. http://ctorrent.sourceforge.net/
-  18. http://sourceforge.net/projects/ctorrent/
-  19. http://customctorrent.ifreepages.com/
-  20. http://bittorrent.com/
-  21. http://wiki.theory.org/CategoryBitTorrent
-  22. http://www.bittorrent.com/protocol.html
-  23. http://wiki.theory.org/BitTorrentSpecification
+   2. http://www.rahul.net/dholmes/ctorrent/index.html#news
+   3. http://www.rahul.net/dholmes/ctorrent/changelog.html
+   4. http://www.rahul.net/dholmes/ctorrent/ctcs.html
+   5. http://www.rahul.net/dholmes/ctorrent/index.html#download
+   6. http://www.rahul.net/dholmes/ctorrent/index.html#resources
+   7. mailto:dholmes@ct.boxmail.com
+   8. http://ctorrent.sourceforge.net/
+   9. http://www.bittorrent.com/
+  10. http://sourceforge.net/projects/ctorrent/
+  11. http://www.rahul.net/dholmes/ctorrent/ctcs.html
+  12. http://www.rahul.net/dholmes/ctorrent/changelog.html
+  13. http://www.rahul.net/dholmes/ctorrent/ctcs.html
+  14. http://www.rahul.net/dholmes/ctorrent/changelog.html
+  15. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-dnh1.2-dnh2.diff
+  16. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh2.diff
+  17. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh2.tar.gz
+  18. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-dnh1.1-dnh1.2.diff
+  19. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1.2-fbsd.diff
+  20. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1.2.diff
+  21. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1.2-fbsd.tar.gz
+  22. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1.2.tar.gz
+  23. mailto:dholmes@ct.boxmail.com
+  24. http://www.rahul.net/dholmes/ctorrent/patch-invert.diff
+  25. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-dnh1-dnh1.1.diff
+  26. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1-fbsd.diff
+  27. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1.diff
+  28. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1-fbsd.tar.gz
+  29. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1.tar.gz
+  30. mailto:dholmes@ct.boxmail.com
+  31. http://ctorrent.sourceforge.net/
+  32. http://sourceforge.net/projects/ctorrent/
+  33. http://customctorrent.ifreepages.com/
+  34. http://bittorrent.com/
+  35. http://wiki.theory.org/CategoryBitTorrent
+  36. http://www.bittorrent.com/protocol.html
+  37. http://wiki.theory.org/BitTorrentSpecification

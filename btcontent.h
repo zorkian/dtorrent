@@ -1,9 +1,8 @@
 #ifndef BTCONTENT_H
 #define BTCONTENT_H
 
-#include <sys/types.h>
-
 #include "def.h"
+#include <sys/types.h>
 
 #include <stdio.h>
 #include "bitfield.h"
@@ -96,9 +95,13 @@ class btContent
   int SeedTimeout(const time_t *pnow);
 
 
- void SetFilter();
- size_t getFilePieces(unsigned char nfile);
+  void SetFilter();
+  void SetTmpFilter(int nfile, BitField *pFilter) { m_btfiles.SetFilter(nfile, pFilter, m_piece_length); }
+  size_t getFilePieces(size_t nfile);
 
+  BTFILE *GetNextFile(BTFILE *file) { return m_btfiles.GetNextFile(file); }
+  time_t GetStartTime() { return m_start_timestamp; }
+  time_t GetSeedTime() { return m_seed_timestamp; }
 };
 
 extern btContent BTCONTENT;

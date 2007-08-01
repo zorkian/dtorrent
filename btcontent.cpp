@@ -9,7 +9,11 @@
 #else
 #include <unistd.h>
 #include <sys/param.h>
+#if defined(HAVE_LIBCRYPT) || defined(HAVE_LIBMD) || defined(HAVE_LIBCRYPTO)
+#include <sha.h>
+#elif defined(HAVE_LIBSSL)
 #include <openssl/sha.h>
+#endif
 #endif
 
 #include <time.h>
@@ -25,9 +29,13 @@
 #include "httpencode.h"
 #include "tracker.h"
 
-#define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),QUERY_STR)
-#define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),QUERY_INT)
-#define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,QUERY_POS)
+#if defined(USE_STANDALONE_SHA1)
+#include "sha1.h"
+#endif
+
+#define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),(int64_t*) 0,QUERY_STR)
+#define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),(int64_t*) 0,QUERY_INT)
+#define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,QUERY_POS)
 
 #define CACHE_FIT(ca,roff,rlen)	\
 (max_u_int64_t((ca)->bc_off,(roff)) <= \
@@ -39,6 +47,12 @@ btContent BTCONTENT;
 
 static void Sha1(char *ptr,size_t len,unsigned char *dm)
 {
+#if defined(USE_STANDALONE_SHA1)
+  SHA1_CTX context;
+  SHA1Init(&context);
+  SHA1Update(&context,(unsigned char*)ptr,len);
+  SHA1Final(dm,&context);
+#else
 #ifdef WINDOWS
   ;
 #else
@@ -46,6 +60,7 @@ static void Sha1(char *ptr,size_t len,unsigned char *dm)
   SHA1_Init(&context);
   SHA1_Update(&context,(unsigned char*)ptr,len);
   SHA1_Final(dm,&context);
+#endif
 #endif
 }
 
@@ -123,7 +138,8 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url, size_t piece_l
     m_piece_length *= 65536;
   }
 
-  if( !m_piece_length || m_piece_length > cfg_req_queue_length * cfg_req_slice_size )
+  // This is really just a sanity check on the piece length to create.
+  if( !m_piece_length || m_piece_length > 4096*1024 )
     m_piece_length = 262144;
   
   m_announce = ann_url;
@@ -211,27 +227,24 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if(!meta_int("info|piece length",&m_piece_length)) ERR_RETURN();
   m_npieces = m_hashtable_length / 20;
 
-  if( m_piece_length > cfg_max_slice_size * (cfg_req_queue_length/2) ){
-    fprintf(stderr,"error, piece length too long[%u]. please recompile CTorrent with a larger cfg_req_queue_length or cfg_max_slice_size in <btconfig.h>.\n", m_piece_length);
-    ERR_RETURN();
-  }
+  cfg_req_queue_length = (m_piece_length / cfg_req_slice_size) * 2 - 1;
 
   if( m_piece_length < cfg_req_slice_size )
     cfg_req_slice_size = m_piece_length;
-  else{
-    for( ;(m_piece_length / cfg_req_slice_size) >= cfg_req_queue_length; ){
-      cfg_req_slice_size *= 2;
-      if( cfg_req_slice_size > cfg_max_slice_size ) ERR_RETURN();
-    }
-  }
   
   if( m_btfiles.BuildFromMI(b, flen, saveas) < 0) ERR_RETURN();
 
   delete []b;
   b = (char *)0;
-  PrintOut();
   
-  if( arg_flg_exam_only ) return 0;
+  if( arg_flg_exam_only ){
+    PrintOut();
+    return 0;
+  }else{
+    arg_flg_exam_only = 1;
+    PrintOut();
+    arg_flg_exam_only = 0;
+  }
 
   if( ( r = m_btfiles.CreateFiles() ) < 0) ERR_RETURN();
 
@@ -266,13 +279,13 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
 
     if( !arg_flg_check_only ){
       if( pBF->SetReferFile(arg_bitfield_file) >= 0){
-	size_t idx;
-	r = 0;
-	for( idx = 0; idx < m_npieces; idx++ )
-	  if( pBF->IsSet(idx) ) m_left_bytes -= GetPieceLength(idx);
+        size_t idx;
+        r = 0;
+        for( idx = 0; idx < m_npieces; idx++ )
+          if( pBF->IsSet(idx) ) m_left_bytes -= GetPieceLength(idx);
       }
       else{
-	fprintf(stderr,"warn, couldn't set bit field refer file %s.\n",arg_bitfield_file);
+        fprintf(stderr,"warn, couldn't set bit field refer file %s.\n",arg_bitfield_file);
       }
     }
     
@@ -285,7 +298,9 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     CheckExist();
   }
   
-  printf("Already/Total: %u/%u\n",pBF->Count(),m_npieces);
+  PrintOut();
+  printf("Already/Total: %u/%u (%d%%)\n",pBF->Count(),m_npieces,
+    100 * pBF->Count() / m_npieces);
   
   if( arg_flg_check_only ){
     if( arg_bitfield_file ) pBF->WriteToFile(arg_bitfield_file);
@@ -299,11 +314,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   memset(ptr,0,8);		// reserved set zero.
 
   {				// peer id
-	char *sptr = arg_user_agent;
-	char *dptr = (char *)m_shake_buffer + 48;
-	char *eptr = dptr + PEER_ID_LEN;
-	while (*sptr) *dptr++ = *sptr++;
-	while (dptr < eptr) *dptr++ = (unsigned char)random();
+        char *sptr = arg_user_agent;
+        char *dptr = (char *)m_shake_buffer + 48;
+        char *eptr = dptr + PEER_ID_LEN;
+        while (*sptr) *dptr++ = *sptr++;
+        while (dptr < eptr) *dptr++ = (unsigned char)random();
   }
   return 0;
 }
@@ -337,16 +352,16 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
     for( ; len && p && CACHE_FIT(p, offset, len);){
       flg_rescan = 0;
       if( offset < p->bc_off ){
-	len2 = p->bc_off - offset;
-	if( CacheIO(buf, offset, len2, 0) < 0) return -1;
-	flg_rescan = 1;
+        len2 = p->bc_off - offset;
+        if( CacheIO(buf, offset, len2, 0) < 0) return -1;
+        flg_rescan = 1;
       }else if( offset > p->bc_off ){
-	len2 = p->bc_off + p->bc_len - offset;
-	if( len2 > len ) len2 = len;
-	memcpy(buf, p->bc_buf + offset - p->bc_off, len2);
+        len2 = p->bc_off + p->bc_len - offset;
+        if( len2 > len ) len2 = len;
+        memcpy(buf, p->bc_buf + offset - p->bc_off, len2);
       }else{
-	len2 = (len > p->bc_len) ? p->bc_len : len;
-	memcpy(buf, p->bc_buf, len2);
+        len2 = (len > p->bc_len) ? p->bc_len : len;
+        memcpy(buf, p->bc_buf, len2);
       }
 
       buf += len2;
@@ -354,14 +369,14 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
       len -= len2;
 
       if( len ){
-	if( flg_rescan ){
-	  for( p = m_cache;
-	       p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len);
-	       p = p->bc_next) ;
-	}else{
-	  time(&p->bc_last_timestamp);
-	  p = p->bc_next;
-	}
+        if( flg_rescan ){
+          for( p = m_cache;
+               p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len);
+               p = p->bc_next) ;
+        }else{
+          time(&p->bc_last_timestamp);
+          p = p->bc_next;
+        }
       }
     }// end for;
   
@@ -414,7 +429,7 @@ void btContent::FlushCache()
     if( p->bc_f_flush ){
       p->bc_f_flush = 0;
       if(m_btfiles.IO(p->bc_buf, p->bc_off, p->bc_len, 1) < 0)
-	fprintf(stderr,"warn, write file failed while flush cache.\n");
+        fprintf(stderr,"warn, write file failed while flush cache.\n");
     }
 }
 
@@ -437,18 +452,18 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
     for( ; len && p && CACHE_FIT(p, offset, len);){
       flg_rescan = 0;
       if( offset < p->bc_off ){
-	len2 = p->bc_off - offset;
-	if( CacheIO(buf, offset, len2, 1) < 0) return -1;
-	flg_rescan = 1;
+        len2 = p->bc_off - offset;
+        if( CacheIO(buf, offset, len2, 1) < 0) return -1;
+        flg_rescan = 1;
       }else if( offset > p->bc_off ){
-	len2 = p->bc_off + p->bc_len - offset;
-	if( len2 > len ) len2 = len;
-	memcpy(p->bc_buf + offset - p->bc_off, buf, len2);
-	p->bc_f_flush = 1;
+        len2 = p->bc_off + p->bc_len - offset;
+        if( len2 > len ) len2 = len;
+        memcpy(p->bc_buf + offset - p->bc_off, buf, len2);
+        p->bc_f_flush = 1;
       }else{
-	len2 = (len > p->bc_len) ? p->bc_len : len;
-	memcpy(p->bc_buf, buf, len2);
-	p->bc_f_flush = 1;
+        len2 = (len > p->bc_len) ? p->bc_len : len;
+        memcpy(p->bc_buf, buf, len2);
+        p->bc_f_flush = 1;
       }
 
       buf += len2;
@@ -456,12 +471,12 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
       len -= len2;
 
       if( len ){
-	if( flg_rescan ){
-	  for( p = m_cache; p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len); p = p->bc_next) ;
-	}else{
-	  time(&p->bc_last_timestamp);
-	  p = p->bc_next;
-	}
+        if( flg_rescan ){
+          for( p = m_cache; p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len); p = p->bc_next) ;
+        }else{
+          time(&p->bc_last_timestamp);
+          p = p->bc_next;
+        }
       }
     }// end for;
   
@@ -533,12 +548,12 @@ int btContent::CheckExist()
   if( !percent ) percent = 1;
 
   for( ; idx < m_npieces; idx++){
-      if( GetHashValue(idx, md) == 0 && memcmp(md, m_hash_table + idx * 20, 20) == 0){
+     if( GetHashValue(idx, md) == 0 && memcmp(md, m_hash_table + idx * 20, 20) == 0){
        m_left_bytes -= GetPieceLength(idx);
        pBF->Set(idx);
     }
-    if(idx % percent == 0){
-      printf("\rCheck exist: %d/%d",idx,pBF->NBits());
+    if(idx % percent == 0 || idx == m_npieces-1){
+      printf("\rCheck exist: %d/%d",idx+1,pBF->NBits());
       fflush(stdout);
     }
   }
@@ -608,6 +623,7 @@ int btContent::GetHashValue(size_t idx,unsigned char *md)
 
 int btContent::SeedTimeout(const time_t *pnow)
 {
+  u_int64_t dl;
   if( pBF->IsFull() ){
     if( !m_seed_timestamp ){
       Tracker.Reset(1);
@@ -618,15 +634,22 @@ int btContent::SeedTimeout(const time_t *pnow)
       FlushCache();
       printf("\nDownload complete.\n");
       printf("Total time used: %lu minutes.\n",(*pnow - m_start_timestamp) / 60);
-      printf("Seed for other %lu hours.\n\n", cfg_seed_hours);
+      printf("Seed for other %lu hours", cfg_seed_hours);
+      if(cfg_seed_ratio) printf(" or to ratio of %f", cfg_seed_ratio);
+      printf(".\n\n");
     }
-    if( (*pnow - m_seed_timestamp) >= (cfg_seed_hours * 60 * 60) ) return 1;
+    dl = (Self.TotalDL() > 0) ? Self.TotalDL() : GetTotalFilesLength();
+    if( (cfg_seed_ratio == 0 && cfg_seed_hours == 0) ||
+        (cfg_seed_hours > 0 &&
+          (*pnow - m_seed_timestamp) >= (cfg_seed_hours * 60 * 60)) ||
+        (cfg_seed_ratio > 0 &&
+          cfg_seed_ratio <= Self.TotalUL() / dl) ) return 1;
   }
   return 0;
 }
 
 
-size_t btContent::getFilePieces(unsigned char nfile){
+size_t btContent::getFilePieces(size_t nfile){
    return m_btfiles.getFilePieces(nfile);
 }
 
@@ -634,3 +657,4 @@ size_t btContent::getFilePieces(unsigned char nfile){
 void btContent::SetFilter(){
   m_btfiles.SetFilter(arg_file_to_download,pBFilter,m_piece_length);
 }
+

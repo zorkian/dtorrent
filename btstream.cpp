@@ -15,7 +15,7 @@ ssize_t btStream::Send_State(unsigned char state)
 
   set_nl(msg, H_BASE_LEN);
   msg[4] = (char)state;
-  return out_buffer.PutFlush(sock,msg,H_BASE_LEN + 4);
+  return out_buffer.Put(sock,msg,H_BASE_LEN + 4);
 }
 
 ssize_t btStream::Send_Have(size_t idx)
@@ -26,7 +26,7 @@ ssize_t btStream::Send_Have(size_t idx)
   msg[4] = (char)M_HAVE;
   set_nl(msg + 5, idx);
 
-  return out_buffer.PutFlush(sock,msg,H_HAVE_LEN + 4);
+  return out_buffer.Put(sock,msg,H_HAVE_LEN + 4);
 }
 
 ssize_t btStream::Send_Bitfield(char *bit_buf,size_t len)
@@ -37,7 +37,7 @@ ssize_t btStream::Send_Bitfield(char *bit_buf,size_t len)
   if(r < 0) return r;
   r = out_buffer.Put(sock,(char*)&t,1);
   if(r < 0) return r;
-  return out_buffer.PutFlush(sock,bit_buf,len);
+  return out_buffer.Put(sock,bit_buf,len);
 }
 
 ssize_t btStream::Send_Cancel(size_t idx,size_t off,size_t len)
@@ -82,7 +82,7 @@ ssize_t btStream::Send_Request(size_t idx, size_t off,size_t len)
 ssize_t btStream::Send_Keepalive()
 {
   size_t i = 0;
-  return out_buffer.PutFlush(sock,(char*)&i,4);
+  return out_buffer.Put(sock,(char*)&i,4);
 }
 
 int btStream::HaveMessage()
@@ -109,5 +109,5 @@ ssize_t btStream::PickMessage()
 
 ssize_t btStream::Send_Buffer(char *buf, size_t len)
 {
-  return out_buffer.PutFlush(sock,buf,len);
+  return out_buffer.Put(sock,buf,len);
 }

@@ -61,7 +61,7 @@ ssize_t BufIo::_SEND(SOCKET sk,  char *buf, size_t len)
 #ifndef WINDOWS
       if(errno == EINTR) continue;
 #endif
-      return (EWOULDBLOCK == errno) ? (ssize_t)t : -1;
+      return (EWOULDBLOCK == errno || EAGAIN == errno) ? (ssize_t)t : -1;
     }else if( 0 == r ){
       return t;			// no possible???
     }else{
@@ -83,7 +83,7 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf,size_t len)
 #ifndef WINDOWS
       if(errno == EINTR) continue;
 #endif
-      return (EWOULDBLOCK == errno) ? (ssize_t)t : -1;
+      return (EWOULDBLOCK == errno || EAGAIN == errno) ? (ssize_t)t : -1;
     }else if( 0 == r ){
       f_socket_remote_closed = 1;
       return t;		//connection closed by remote.

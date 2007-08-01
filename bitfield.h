@@ -41,6 +41,7 @@ class BitField
   void Comb(const BitField &bf); 
   void Except(const BitField &bf);
   void Invert();
+  void And(const BitField &bf);
 
   int WriteToFile(const char *fname);
   int SetReferFile(const char *fname);

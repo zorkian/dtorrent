@@ -1,8 +1,8 @@
 #ifndef BUFIO_H
 #define BUFIO_H
 
-#include <sys/types.h>
 #include "def.h"
+#include <sys/types.h>
 
 #ifdef WINDOWS
 #include <Winsock2.h>
