@@ -44,6 +44,58 @@ void RequestQueue::operator=(RequestQueue &rq)
   rq.rq_head = (PSLICE) 0;
 }
 
+int RequestQueue::CopyShuffle(RequestQueue &rq)
+{
+  PSLICE ps;
+
+  if( rq_head ) _empty_slice_list(&rq_head);
+  
+  if( rq.IsEmpty() ) return 0;
+  for (ps = rq.GetHead(); ps; ps = ps->next) {
+    if (random()&01) {
+      if (Add(ps->index, ps->offset, ps->length) < 0) return -1;
+    }
+    else if (Insert(ps->index, ps->offset, ps->length) < 0) return -1;
+  }
+  return 0;
+}
+
+size_t RequestQueue::Qsize()
+{
+  size_t cnt = 0;
+  PSLICE n = rq_head;
+  PSLICE u = (PSLICE) 0;
+
+  for( ; n ; u = n,n = u->next) cnt++; // move to end
+  return cnt;
+}
+
+int RequestQueue::Insert(size_t idx,size_t off,size_t len)
+{
+  size_t cnt = 0;
+  PSLICE n = rq_head;
+  PSLICE u = (PSLICE) 0;
+
+  for( ; n ; u = n,n = u->next) cnt++; // move to end (count)
+
+  if( cnt >= cfg_req_queue_length ) return -1;	// already full
+
+  n = new SLICE;
+
+#ifndef WINDOWS
+  if( !n ) return -1;
+#endif
+
+  n->next = rq_head;
+  n->index = idx;
+  n->offset = off;
+  n->length = len;
+
+  rq_head = n;
+
+  return 0;
+}
+
 int RequestQueue::Add(size_t idx,size_t off,size_t len)
 {
   size_t cnt = 0;
@@ -231,3 +283,33 @@ int PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
   }
   return 0;
 }
+
+int PendingQueue::Delete(size_t idx)
+{
+   int i = 0;
+  for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++){
+    if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index){
+      delete pending_array[i];
+      pending_array[i] = (PSLICE) 0;
+    }
+  }
+  return 0;
+}
+
+int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
+{
+   int i = 0;
+   RequestQueue rq;
+  for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++){
+    if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index){
+      //check if off & len match any slice
+      //remove the slice if so
+      rq.SetHead(pending_array[i]);
+      if( rq.Remove(idx, off, len) == 0 )
+        pending_array[i] = rq.GetHead();
+      rq.Release();
+    }
+  }
+  return 0;
+}
+

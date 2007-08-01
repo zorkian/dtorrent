@@ -88,7 +88,7 @@ int Http_url_analyse(char *url,char *host,int *port,char *path)
 
   /* path */
   if( *p != '/' ) return -1;
-  for( ; *p && *p != '?'; p++,path++) *path = *p;
+  for( ; *p; p++,path++) *path = *p;
   *path = '\0';
   return 0;
 }

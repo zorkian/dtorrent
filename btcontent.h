@@ -60,6 +60,7 @@ class btContent
   
  public:
   BitField *pBF;
+  BitField *pBFilter;
   char *global_piece_buffer;
   
   btContent();
@@ -93,6 +94,11 @@ class btContent
 
   int PrintOut();
   int SeedTimeout(const time_t *pnow);
+
+
+ void SetFilter();
+ size_t getFilePieces(unsigned char nfile);
+
 };
 
 extern btContent BTCONTENT;

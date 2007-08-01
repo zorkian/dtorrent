@@ -23,6 +23,7 @@
 #include "bencode.h"
 #include "peer.h"
 #include "httpencode.h"
+#include "tracker.h"
 
 #define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),QUERY_STR)
 #define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),QUERY_INT)
@@ -53,6 +54,7 @@ btContent::btContent()
   m_announce = global_piece_buffer = (char*) 0;
   m_hash_table = (unsigned char *) 0;
   pBF = (BitField*) 0;
+  pBFilter = (BitField*) 0;
   m_create_date = m_seed_timestamp = (time_t) 0;
   time(&m_start_timestamp);
   m_cache = (BTCACHE*) 0;
@@ -226,6 +228,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if( m_btfiles.BuildFromMI(b, flen, saveas) < 0) ERR_RETURN();
 
   delete []b;
+  b = (char *)0;
   PrintOut();
   
   if( arg_flg_exam_only ) return 0;
@@ -241,6 +244,17 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
 #ifndef WINDOWS
   if( !pBF ) ERR_RETURN();
 #endif
+
+    //create the file filter
+    pBFilter = new BitField(m_npieces);
+#ifndef WINDOWS
+     if( !pBFilter ) ERR_RETURN();
+#endif
+  if(arg_file_to_download>0){
+    m_btfiles.SetFilter(arg_file_to_download,pBFilter,m_piece_length);
+  }
+
+
 
   m_left_bytes = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_left_bytes++;
@@ -309,7 +323,8 @@ void btContent::_Set_InfoHash(unsigned char buf[20])
 
 ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
 {
-  u_int64_t offset = idx * m_piece_length + off;
+  //changed
+  u_int64_t offset = (u_int64_t)idx * (u_int64_t)m_piece_length + (u_int64_t)off;
 
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 0);
   else{
@@ -405,7 +420,11 @@ void btContent::FlushCache()
 
 ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
 {
-  u_int64_t offset = (u_int64_t)(idx * m_piece_length + off);
+  //u_int64_t offset = (u_int64_t)(idx * m_piece_length + off);
+  //changed
+  u_int64_t offset = (u_int64_t)idx * (u_int64_t)m_piece_length + (u_int64_t)off;
+
+  //  printf("\nOffset-write: %lu - Piece:%lu\n",offset,(unsigned long)idx);
 
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 1);
   else{
@@ -514,9 +533,9 @@ int btContent::CheckExist()
   if( !percent ) percent = 1;
 
   for( ; idx < m_npieces; idx++){
-    if( GetHashValue(idx, md) == 0 && memcmp(md, m_hash_table + idx * 20, 20) == 0){
-      m_left_bytes -= GetPieceLength(idx);
-      pBF->Set(idx);
+      if( GetHashValue(idx, md) == 0 && memcmp(md, m_hash_table + idx * 20, 20) == 0){
+       m_left_bytes -= GetPieceLength(idx);
+       pBF->Set(idx);
     }
     if(idx % percent == 0){
       printf("\rCheck exist: %d/%d",idx,pBF->NBits());
@@ -575,7 +594,6 @@ int btContent::APieceComplete(size_t idx)
     fprintf(stderr,"warn,piece %d hash check failed.\n",idx);
     return 0;
   }
-
   pBF->Set(idx);
   m_left_bytes -= GetPieceLength(idx);
   return 1;
@@ -592,6 +610,7 @@ int btContent::SeedTimeout(const time_t *pnow)
 {
   if( pBF->IsFull() ){
     if( !m_seed_timestamp ){
+      Tracker.Reset(15);
       Self.ResetDLTimer();
       Self.ResetULTimer();
       ReleaseHashTable();
@@ -604,4 +623,14 @@ int btContent::SeedTimeout(const time_t *pnow)
     if( (*pnow - m_seed_timestamp) >= (cfg_seed_hours * 60 * 60) ) return 1;
   }
   return 0;
+}
+
+
+size_t btContent::getFilePieces(unsigned char nfile){
+   return m_btfiles.getFilePieces(nfile);
+}
+
+
+void btContent::SetFilter(){
+  m_btfiles.SetFilter(arg_file_to_download,pBFilter,m_piece_length);
 }

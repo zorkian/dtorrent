@@ -31,9 +31,12 @@ class RequestQueue
   int IsValidRequest(size_t idx,size_t off,size_t len);
 
   void operator=(RequestQueue &rq);
+  int CopyShuffle(RequestQueue &rq);
+  size_t Qsize();
 
   int IsEmpty() const { return rq_head ? 0 : 1; }
 
+  int Insert(size_t idx,size_t off,size_t len);
   int Add(size_t idx,size_t off,size_t len);
   int Remove(size_t idx,size_t off,size_t len);
 
@@ -60,6 +63,8 @@ class PendingQueue
   int Pending(RequestQueue *prq);
   int ReAssign(RequestQueue *prq, BitField &bf);
   int Exist(size_t idx);
+  int Delete(size_t idx);
+  int DeleteSlice(size_t idx, size_t off, size_t len);
 };
 
 extern PendingQueue PENDINGQUEUE;

@@ -34,6 +34,9 @@ typedef struct _btstatus{
   unsigned char reserved:4;		/* unused */
 }BTSTATUS;
 
+size_t get_nl(char *from);
+void set_nl(char *to, size_t from);
+
 class btBasic
 {
 private:
@@ -84,6 +87,7 @@ class btPeer:public btBasic
 
   size_t m_cached_idx;
   size_t m_err_count;
+  int m_standby;
   
   int PieceDeliver(size_t mlen);
   int ReportComplete(size_t idx);
@@ -96,6 +100,8 @@ class btPeer:public btBasic
   int CouldReponseSlice();
 
   int BandWidthLimit();
+  int BandWidthLimitUp();
+  int BandWidthLimitDown();
  public:
   BitField bitfield;
   btStream stream;
@@ -118,10 +124,12 @@ class btPeer:public btBasic
   int Is_Local_UnChoked() const { return m_state.local_choked ? 0 : 1; }
   int SetLocal(unsigned char s);
 
+  int CancelSliceRequest(size_t idx, size_t off, size_t len);
   
   void SetStatus(unsigned char s){ m_status = s; }
   unsigned char GetStatus() const { return m_status; }
   int NeedWrite();
+  int NeedRead();
 
   
   void CloseConnection();

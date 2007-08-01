@@ -8,8 +8,8 @@ void IpList::_Emtpy()
   IPLIST *node = ipl_head;
   for(; ipl_head;){
     node = ipl_head;
-    delete ipl_head;
     ipl_head = node->next;
+    delete node;
   }
   count = 0;
 }

@@ -29,10 +29,14 @@ void Downloader()
   time_t now;
   fd_set rfd;
   fd_set wfd;
+  int stopped = 0;
 
-  for(;;){
+  do{
     time(&now);
-    if( BTCONTENT.SeedTimeout(&now) ) break;
+    if( !stopped && BTCONTENT.SeedTimeout(&now) ) {
+	Tracker.SetStoped();
+	stopped = 1;
+    }
     
     FD_ZERO(&rfd); FD_ZERO(&wfd);
     maxfd = Tracker.IntervalCheck(&now,&rfd, &wfd);
@@ -48,5 +52,5 @@ void Downloader()
       if(T_FREE != Tracker.GetStatus()) Tracker.SocketReady(&rfd,&wfd,&nfds);
 	  if( nfds ) WORLD.AnyPeerReady(&rfd,&wfd,&nfds);
 	}
-  }/* end for(;;) */
+  } while(Tracker.GetStatus() != T_FINISHED);
 }

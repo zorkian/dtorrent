@@ -3,6 +3,10 @@
 
 #include <sys/types.h>
 #include <stdio.h>
+
+#include "bitfield.h"
+extern unsigned char arg_file_to_download;
+
 #include "./def.h"
 
 typedef struct _btfile{
@@ -13,6 +17,8 @@ typedef struct _btfile{
   time_t bf_last_timestamp;	// last io timestamp.
 
   size_t bf_completed;		// already downloaded length
+
+  size_t bf_npieces;  //number of pieces
 
   unsigned char bf_flag_opened:1;
   unsigned char bf_flag_need:1;
@@ -53,6 +59,10 @@ class btFiles
   u_int64_t GetTotalLength() const { return m_total_files_length; }
   ssize_t IO(char *buf, u_int64_t off, size_t len, const int iotype);
   size_t FillMetaInfo(FILE* fp);
+
+  void SetFilter(int nfile, BitField *pFilter,size_t pieceLength);
+  size_t getFilePieces(unsigned char nfile);
+
 #ifndef WINDOWS
   void PrintOut();
 #endif

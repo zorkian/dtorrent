@@ -105,6 +105,7 @@ ssize_t btFiles::IO(char *buf, u_int64_t off, size_t len, const int iotype)
   pos = (size_t) (off - (n - pbf->bf_length));
 
   for(; len ;){
+
     if( !pbf->bf_flag_opened ){
       if( _btf_open(pbf) < 0 ) return -1;
     }
@@ -119,6 +120,7 @@ ssize_t btFiles::IO(char *buf, u_int64_t off, size_t len, const int iotype)
       if( 1 != fread(buf,nio,1,pbf->bf_fp) ) return -1;
     }else{
       if( 1 != fwrite(buf,nio,1,pbf->bf_fp) ) return -1;
+      fflush(pbf->bf_fp);
     }
 
     len -= nio;
@@ -169,7 +171,7 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* lastnode)
   DIR *dp;
   BTFILE *pbf;
 
-  if( !getwd(full_cur) ) return -1;
+  if( !getcwd(full_cur,MAXPATHLEN) ) return -1;
 
   if( cur_path ){
     strcpy(fn, full_cur);
@@ -293,7 +295,7 @@ int btFiles::BuildFromFS(const char *pathname)
     m_btfhead = pbf;
   }else if( S_IFDIR & sb.st_mode ){
     char wd[MAXPATHLEN];
-    if( !getwd(wd) ) return -1;
+    if( !getcwd(wd,MAXPATHLEN) ) return -1;
     m_directory = new char[strlen(pathname) + 1];
 #ifndef WINDOWS
     if( !m_directory ) return -1;
@@ -488,3 +490,54 @@ size_t btFiles::FillMetaInfo(FILE* fp)
   }
   return 1;
 }
+
+
+void btFiles::SetFilter(int nfile, BitField *pFilter,  size_t pieceLength)
+{
+  //set the filter
+
+  BTFILE *p = m_btfhead;
+  size_t id = 1;
+  u_int64_t sizeBuffer=0;
+  size_t index;
+
+
+   pFilter->SetAll();
+     for( ; p ; p = p->bf_next ){
+      if(id++ == nfile){
+        size_t start,stop;
+        start = sizeBuffer/pieceLength;
+        stop  = (sizeBuffer+p->bf_length)/pieceLength;
+        printf ("\rDownloading file: <%d> %s        \nPieces: %d - %d (%d)\n",nfile,p->bf_filename,start,stop,stop-start+1);
+        p->bf_npieces = stop-start+1;
+        for(index=sizeBuffer/pieceLength;index<=(sizeBuffer+p->bf_length)/pieceLength;index++){
+	  pFilter->UnSet(index);
+        }
+     }
+     sizeBuffer+=(u_int64_t) p->bf_length;
+   }
+    if(nfile>=id){
+      printf("\nEnd of files list. Resuming normal behaviour\n");
+      pFilter->Invert();
+      arg_file_to_download = 0;
+    }
+}
+
+size_t btFiles::getFilePieces(unsigned char nfile)
+{
+  //returns the pieces of the file already gotten
+
+  BTFILE *p = m_btfhead;
+  size_t id = 1;
+
+     for( ; p ; p = p->bf_next ){
+      if(id++ == nfile){
+        return p->bf_npieces;
+        }
+     }
+return 0;
+}
+
+
+
+

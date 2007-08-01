@@ -31,11 +31,12 @@ btTracker::btTracker()
   m_sock = INVALID_SOCKET;
   m_port = 80;
   m_status = T_FREE;
-  m_f_started = m_f_stoped = m_f_pause = 0;
+  m_f_started = m_f_stoped = m_f_pause = m_f_completed = 0;
   m_interval = 15;
 
   m_connect_refuse_click = 0;
   m_last_timestamp = (time_t) 0;
+  m_prevpeers = 0;
 }
 
 btTracker::~btTracker()
@@ -54,7 +55,8 @@ void btTracker::Reset(time_t new_interval)
   
   m_reponse_buffer.Reset();
   time(&m_last_timestamp);
-  m_status = T_FREE;
+  if (m_f_stoped) m_status = T_FINISHED;
+  else m_status = T_FREE;
 }
 
 int btTracker:: _IPsin(char *h, int p, struct sockaddr_in *psin)
@@ -111,6 +113,13 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
 
   if(m_interval != (time_t)i) m_interval = (time_t)i;
 
+  if(decode_query(buf,bufsiz,"complete",(const char**) 0,&i,QUERY_INT)) {
+    m_peers_count = i;
+  }
+  if(decode_query(buf,bufsiz,"incomplete",(const char**) 0,&i,QUERY_INT)) {
+    m_peers_count += i;
+  }
+
   pos = decode_query(buf,bufsiz,"peers",(const char**) 0,(size_t *) 0,QUERY_POS);
 
   if( !pos ){
@@ -161,7 +170,10 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
     }
   }
   
-  if( !cnt ) fprintf(stderr,"warn, peers list received from tracker is empty.\n");
+  if(arg_verbose)
+    fprintf(stderr, "\nnew peers=%u; next check in %u sec\n", cnt, m_interval);
+// moved to CheckResponse--this function isn't called if no peer data.
+//  if( !cnt ) fprintf(stderr,"warn, peers list received from tracker is empty.\n");
   return 0;
 }
 
@@ -230,10 +242,14 @@ int btTracker::CheckReponse()
       return 0;
   }
 
-  if ( !pdata ) return 0;
+  if ( !pdata ){
+    fprintf(stderr,"warn, peers list received from tracker is empty.\n");
+    return 0;
+  }
 
   if( !m_f_started ) m_f_started = 1;
   m_connect_refuse_click = 0;
+  m_ok_click++;
 
   return _UpdatePeerList(pdata,dlen);
 }
@@ -329,30 +345,34 @@ int btTracker::SendRequest()
 //  fprintf(stdout,"Old Set Self:");
 //  fprintf(stdout,"%s\n", inet_ntoa(Self.m_sin.sin_addr));
 
-  if( m_f_stoped )	/* stopped */
-    event = str_event[1];
-  else if( BTCONTENT.pBF->IsFull())	/* download complete */
-    event = str_event[2];
-  else if( m_f_started ) 	/* interval */
-    event = (char*) 0;
-  else
+  if( m_f_stoped )
+    event = str_event[1];	/* stopped */
+  else if( m_f_started == 0 ) {
+    if( BTCONTENT.pBF->IsFull() ) m_f_completed = 1;
     event = str_event[0];	/* started */
+  } else if( BTCONTENT.pBF->IsFull() && !m_f_completed){
+    event = str_event[2];	/* download complete */
+    m_f_completed = 1;		/* only send download complete once */
+  } else
+    event = (char*) 0;  /* interval */
 
   if(event){
     if(MAXPATHLEN < snprintf(REQ_BUFFER,MAXPATHLEN,REQ_URL_P2_FMT,
 			     m_path,
-			     (size_t)Self.TotalUL(),
-			     (size_t)Self.TotalDL(),
-			     (size_t)BTCONTENT.GetLeftBytes(),
-			     event)){
+			     Self.TotalUL(),
+			     Self.TotalDL(),
+			     BTCONTENT.GetLeftBytes(),
+			     event,
+			     cfg_max_peers)){
       return -1;
     }
   }else{
     if(MAXPATHLEN < snprintf(REQ_BUFFER,MAXPATHLEN,REQ_URL_P3_FMT,
 			     m_path,
-			     (size_t)Self.TotalUL(),
-			     (size_t)Self.TotalDL(),
-			     (size_t)BTCONTENT.GetLeftBytes()
+			     Self.TotalUL(),
+			     Self.TotalDL(),
+			     BTCONTENT.GetLeftBytes(),
+			     cfg_max_peers
 			     )){
       return -1;
     }
@@ -380,8 +400,12 @@ int btTracker::IntervalCheck(const time_t *pnow, fd_set *rfdp, fd_set *wfdp)
 {
   /* tracker communication */
   if( T_FREE == m_status ){
-    if((*pnow - m_last_timestamp >= m_interval) &&
-       (cfg_min_peers > WORLD.TotalPeers())){
+//  if(*pnow - m_last_timestamp >= m_interval){
+    if(*pnow - m_last_timestamp >= m_interval ||
+        // Connect to tracker early if we run out of peers.
+        (!WORLD.TotalPeers() && m_prevpeers &&
+          *pnow - m_last_timestamp >= 15) ){
+      m_prevpeers = WORLD.TotalPeers();
    
       if(Connect() < 0){ Reset(15); return -1; }
     
@@ -396,7 +420,7 @@ int btTracker::IntervalCheck(const time_t *pnow, fd_set *rfdp, fd_set *wfdp)
     if( m_status == T_CONNECTING ){
       FD_SET(m_sock, rfdp);
       FD_SET(m_sock, wfdp);
-    }else{
+    }else if (INVALID_SOCKET != m_sock){
       FD_SET(m_sock, rfdp);
     }
   }
@@ -425,7 +449,7 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
       if( SendRequest() == 0 ) m_status = T_READY; 
       else { Reset(15); return -1; }
     }
-  }else if(FD_ISSET(m_sock, rfdp) ){
+  }else if(INVALID_SOCKET != m_sock && FD_ISSET(m_sock, rfdp) ){
     (*nfds)--;
     FD_CLR(m_sock,rfdp);
     CheckReponse();

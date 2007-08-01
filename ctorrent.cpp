@@ -87,9 +87,13 @@ int main(int argc, char **argv)
 	Tracker.Initial();
 
 	signal(SIGPIPE,SIG_IGN);
-    signal(SIGINT,sigint_catch);
+    signal(SIGINT,sig_catch);
+    signal(SIGTERM,sig_catch);
     Downloader();
   }
+  if( cfg_cache_size ) BTCONTENT.FlushCache();
+  if( arg_bitfield_file ) BTCONTENT.pBF->WriteToFile(arg_bitfield_file);
+  WORLD.CloseAll();
 
   exit(0);
 }
@@ -99,7 +103,7 @@ int main(int argc, char **argv)
 int param_check(int argc, char **argv)
 {
   int c, l;
-  while ( ( c = getopt(argc,argv,"b:B:cC:e:fl:M:m:P:p:s:tu:xhH")) != -1)
+  while ( ( c = getopt(argc,argv,"b:cC:D:e:fl:M:m:n:P:p:s:tu:U:vxhH")) != -1)
     switch( c ){
     case 'b':
       arg_bitfield_file = new char[strlen(optarg) + 1];
@@ -150,13 +154,22 @@ int param_check(int argc, char **argv)
       }
       break;
 
+    case 'n':                  // Which file download
+      arg_file_to_download = atoi(optarg);
+    break;
+
+
     case 'f':			// force seed mode, skip sha1 check when startup.
       arg_flg_force_seed_mode = 1;
       break;
       
-    case 'B':
-      cfg_max_bandwidth = atoi(optarg);
+    case 'D':
+      cfg_max_bandwidth_down = (int)(strtod(optarg, NULL) * 1024);
       break;
+
+       case 'U':
+      cfg_max_bandwidth_up = (int)(strtod(optarg, NULL) * 1024);
+         break;
 
     case 'P':
 		l = strlen(optarg);
@@ -190,6 +203,10 @@ int param_check(int argc, char **argv)
       arg_flg_exam_only = 1;
       break;
 
+    case 'v':
+      arg_verbose = 1;
+      break;
+
     case 'h':
     case 'H':
     default:
@@ -217,6 +234,7 @@ void usage()
   fprintf(stderr,"-h/-H\t\tShow this message.\n");
   fprintf(stderr,"-x\t\tDecode metainfo(torrent) file only, don't download.\n");
   fprintf(stderr,"-c\t\tCheck exist only. don't download.\n");
+  fprintf(stderr,"-v\t\tVerbose output (for debugging).\n");
   fprintf(stderr,"\nDownload Options:\n");
   fprintf(stderr,"-e int\t\tExit while seed <int> hours later. (default 72 hours)\n");
   fprintf(stderr,"-p port\t\tListen port. (default 2706 -> 2106)\n");
@@ -226,7 +244,9 @@ void usage()
   fprintf(stderr,"-b bf_filename\tBit field filename. (use it carefully)\n");
   fprintf(stderr,"-M max_peers\tMax peers count.\n");
   fprintf(stderr,"-m min_peers\tMin peers count.\n");
-  fprintf(stderr,"-B rate\t\tMax bandwidth (unit KB/s)\n");
+  fprintf(stderr,"-n file_number\tWhich file download.\n");
+  fprintf(stderr,"-D rate\t\tMax bandwidth down (unit KB/s)\n");
+  fprintf(stderr,"-U rate\t\tMax bandwidth up (unit KB/s)\n");
   fprintf(stderr,"-P peer_id\tSet Peer ID ["PEER_PFX"]\n");
   fprintf(stderr,"\nMake metainfo(torrent) file Options:\n");
   fprintf(stderr,"-t\t\tWith make torrent. must specify this option.\n");

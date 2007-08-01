@@ -22,6 +22,8 @@ extern int cfg_min_listen_port;
 extern time_t cfg_seed_hours;
 
 extern int cfg_max_bandwidth;
+extern int cfg_max_bandwidth_down;
+extern int cfg_max_bandwidth_up;
 
 // arguments global value
 extern char *arg_metainfo_file;
@@ -33,6 +35,8 @@ extern unsigned char arg_flg_force_seed_mode;
 extern unsigned char arg_flg_check_only;
 extern unsigned char arg_flg_exam_only;
 extern unsigned char arg_flg_make_torrent;
+extern unsigned char arg_file_to_download;
+extern unsigned char arg_verbose;
 
 extern size_t arg_piece_length;
 extern char *arg_announce;

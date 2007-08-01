@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include "btstream.h"
+#include "peer.h"
 #include "msgencode.h"
 #include "btconfig.h"
 
@@ -11,7 +12,8 @@ ssize_t btStream::Flush()
 ssize_t btStream::Send_State(unsigned char state)
 {
   char msg[H_BASE_LEN + 4];
-  *(size_t*)msg = htonl(H_BASE_LEN);
+
+  set_nl(msg, H_BASE_LEN);
   msg[4] = (char)state;
   return out_buffer.PutFlush(sock,msg,H_BASE_LEN + 4);
 }
@@ -19,12 +21,10 @@ ssize_t btStream::Send_State(unsigned char state)
 ssize_t btStream::Send_Have(size_t idx)
 {
   char msg[H_HAVE_LEN + 4];
-  size_t *p = (size_t*)msg;
 
-  *p = htonl(H_HAVE_LEN);
+  set_nl(msg, H_HAVE_LEN);
   msg[4] = (char)M_HAVE;
-  p = (size_t*)(msg + 5);
-  *p = htonl(idx);
+  set_nl(msg + 5, idx);
 
   return out_buffer.PutFlush(sock,msg,H_HAVE_LEN + 4);
 }
@@ -43,14 +43,12 @@ ssize_t btStream::Send_Bitfield(char *bit_buf,size_t len)
 ssize_t btStream::Send_Cancel(size_t idx,size_t off,size_t len)
 {
   char msg[H_CANCEL_LEN + 4];
-  size_t *p = (size_t*)msg;
 
-  *p = htonl(H_CANCEL_LEN);
+  set_nl(msg, H_CANCEL_LEN);
   msg[4] = M_CANCEL;
-  p = (size_t*)(msg + 5);
-  *p = htonl(idx); p++;
-  *p = htonl(off); p++;
-  *p = htonl(len);
+  set_nl(msg + 5, idx);
+  set_nl(msg + 9, off);
+  set_nl(msg + 13, len);
   return out_buffer.Put(sock,msg,H_CANCEL_LEN + 4);
 }
 
@@ -72,14 +70,12 @@ ssize_t btStream::Send_Piece(size_t idx,size_t off,char *piece_buf,size_t len)
 ssize_t btStream::Send_Request(size_t idx, size_t off,size_t len)
 {
   char msg[H_REQUEST_LEN + 4];
-  size_t *p = (size_t*) msg;
 
-  *p = htonl(H_REQUEST_LEN);
+  set_nl(msg, H_REQUEST_LEN);
   msg[4] = (char)M_REQUEST;
-  p = (size_t*)(msg + 5);
-  *p = htonl(idx); p++;
-  *p = htonl(off); p++;
-  *p = htonl(len);
+  set_nl(msg + 5, idx);
+  set_nl(msg + 9, off);
+  set_nl(msg + 13, len);
   return out_buffer.Put(sock,msg,H_REQUEST_LEN + 4);
 }
 
@@ -94,7 +90,7 @@ int btStream::HaveMessage()
   // if message arrived.
   size_t r;
   if( 4 <= in_buffer.Count() ){
-    r = ntohl(*(size_t*)in_buffer.BasePointer());
+    r = get_nl(in_buffer.BasePointer());
     if( (cfg_max_slice_size + H_PIECE_LEN + 4) < r) return -1; //message too long
     if( (r + 4) <= in_buffer.Count() ) return 1;
   }

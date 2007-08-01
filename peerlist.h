@@ -18,7 +18,8 @@ class PeerList
   SOCKET m_listen_sock;
   PEERNODE *m_head;
   size_t m_peers_count;
-  time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp, m_last_progress_timestamp;
+  size_t m_seeds_count;
+  time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp, m_last_progress_timestamp, m_opt_timestamp;
 
   unsigned char m_live_idx:2;
   unsigned char m_reserved:6;
@@ -50,9 +51,12 @@ class PeerList
   
   void Tell_World_I_Have(size_t idx);
   btPeer* Who_Can_Abandon(btPeer *proposer);
+  btPeer* Who_Can_Duplicate(btPeer *proposer, size_t idx);
+  void CancelSlice(size_t idx, size_t off, size_t len);
   void CheckBitField(BitField &bf);
   int AlreadyRequested(size_t idx);
   size_t Pieces_I_Can_Get();
+  void CheckInterest();
 };
 
 extern PeerList WORLD;
