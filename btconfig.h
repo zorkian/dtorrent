@@ -4,11 +4,11 @@
 extern size_t cfg_req_slice_size;
 
 #define MAX_METAINFO_FILESIZ	4194304
-#define cfg_max_slice_size 131072
+#define cfg_max_slice_size 65536
 #define cfg_req_queue_length 64
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CT1304-"
+#define PEER_PFX "-CD0101-"
 
 extern size_t cfg_cache_size;
 

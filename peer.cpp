@@ -156,7 +156,7 @@ int btPeer::RequestPiece()
     if(peer){
       if(arg_verbose) fprintf( stderr, "Duping: %p to %p (#%u)\n",
         peer, this, peer->request_q.GetRequestIdx() );
-      return (request_q.CopyShuffle(peer->request_q) < 0) ? -1 : SendRequest();
+      return (request_q.CopyShuffle(&peer->request_q) < 0) ? -1 : SendRequest();
     }
   }	// Doesn't have a piece that's already in progress--choose another.
     BitField tmpBitField;
@@ -186,7 +186,7 @@ int btPeer::RequestPiece()
 	  btPeer *peer = WORLD.Who_Can_Duplicate(this, idx);
 	  if(arg_verbose) fprintf( stderr, "Duping: %p to %p (#%u)\n",
 	    peer, this, peer->request_q.GetRequestIdx() );
-	  return (request_q.CopyShuffle(peer->request_q) < 0) ?
+	  return (request_q.CopyShuffle(&peer->request_q) < 0) ?
 	     -1 : SendRequest();
         }else{	// not endgame mode
 	  btPeer *peer = WORLD.Who_Can_Abandon(this); // slowest choice
@@ -194,7 +194,6 @@ int btPeer::RequestPiece()
 	    // Cancel a request to the slowest peer & request it from this one.
 	    if(arg_verbose) fprintf( stderr, "Reassigning %p to %p (#%u)\n",
 	      peer, this, peer->request_q.GetRequestIdx() );
-	    peer->StopDLTimer();
 	    // RequestQueue class "moves" rather than "copies" in assignment!
 	    request_q = peer->request_q;
 
@@ -500,6 +499,7 @@ int btPeer::RequestCheck()
     if(m_state.local_interested && SetLocal(M_NOT_INTERESTED) < 0) return -1;
   
   if(!request_q.IsEmpty()) StartDLTimer();
+  else StopDLTimer();
   return 0;
 }
 
@@ -690,7 +690,7 @@ int btPeer::SendModule()
     Self.StartULTimer();
   }
 
-  for(; !reponse_q.IsEmpty() && CouldReponseSlice() && !BandWidthLimitUp(); )
+  if( !reponse_q.IsEmpty() && CouldReponseSlice() && !BandWidthLimitUp() )
     if( ReponseSlice() < 0) return -1;
 
   return (!m_state.remote_choked && request_q.IsEmpty()) ? RequestCheck() : 0;

@@ -1,5 +1,3 @@
-Please see http://www.rahul.net/dholmes/ctorrent/ for the latest version
-of this information.
 
                              Enhanced CTorrent
 
@@ -23,14 +21,47 @@ Information
 
 Notes
 
-   Use of the -P option (or changing the peer ID in btconfig.h) is
-   recommended, as some other clients and trackers assume that Ctorrent
+   Beginning with dnh1.1 the default peer ID has been changed for
+   convenience, as some other clients and trackers assume that Ctorrent
    is "buggy" and won't cooperate with it. [Guess what, there are plenty
-   of others with bugs too.] It isn't necessary to impersonate another
-   known client; just changing or adding one letter or number should be
-   sufficient.
+   of others with bugs too.] The -P option is still available if you wish
+   to use a different peer ID, but it is no longer necessary to do so in
+   order to avoid this "ban".
+
+Changes for "dnh1.1" Release
+
+   These are just corrections to the previous release that I felt were
+   necessary. Much more improvement is coming in the next release.
+
+   Bug/code fixes
+     * Peer count would increase on each tracker update if there were no
+       seeders.
+     * RequestQueue::CopyShuffle() changed to use a pointer argument.
+     * Fixed some incorrectness in PendingQueue::Delete() and
+       PendingQueue::DeleteSlice() which could cause a memory leak.
+     * Fixed random-chance inversion bug in PeerList::UnChokeCheck()
+       affecting choice for optimistic unchoking.
+
+   Improvements
+     * Move StopDLTimer() call from RequestPiece() to RequestCheck(),
+       which could occasionally affect peer download rate measurement.
+     * Most clients do not like a slice size of 128K even though it is
+       the max allowed by the BT specification. Changed max slice size to
+       64K. Note that the maximum piece length is 2MB (2097152); if you
+       need to download a torrent with a larger piece size you can change
+       the value of cfg_req_queue_length in btconfig.h from 64 to 128.
+     * Contact tracker immediately upon becoming (or starting as) a
+       seeder.
+     * Changed SendModule() to send only one slice at a time. This will
+       help with fairly distributing upload bandwidth among the unchoked
+       peers.
+     * Changed default peer ID prefix to '-CD0101-', indicating
+       CTorrent-dnh1.1 release.
 
 Changes for "dnh1" Release
+
+   This is the first release. "dnh" identifies this patchset, and "1"
+   indicates release version 1 of the patchset.
 
    Patches
      * Incorporates the following patches. The number is the Request ID
@@ -169,41 +200,53 @@ Changes for "dnh1" Release
 
 Download
 
-   [12]FreeBSD patch file
+   Release dnh1.1
+
+   [12]dnh1 to dnh1.1 patch file
+   A patch file of changes to release dnh1 to bring it up to dnh1.1.
+                    ___________________________________
+
+   Release dnh1
+
+   [13]FreeBSD patch file
    A patch file of changes to the CTorrent 1.3.4 base, including the
    patches from the FreeBSD ports tree.
+   Note: Thanks to Florent Thoumie, as of 29 Jul 2005 this patchset is
+   included in the FreeBSD port. If you update your ports tree (or at
+   least net/ctorrent) and install from there, you will have these
+   updates without downloading the file and patching manually.
 
-   [13]Patch file
+   [14]Patch file
    A patch file of changes to the CTorrent 1.3.4 base.
 
-   [14]FreeBSD patched source
+   [15]FreeBSD patched source
    This includes the patches from the FreeBSD ports tree.
 
-   [15]Linux/Windows/Other patched source
-   Please [16]let me know if you encounter any portability issues, as I
+   [16]Linux/Windows/Other patched source
+   Please [17]let me know if you encounter any portability issues, as I
    don't have a test environment set up for these platforms.
 
 Resources
 
-   [17]CTorrent Home Page 
+   [18]CTorrent Home Page 
    Outdated, but you may find some useful info (particularly the FAQ).
 
-   [18]CTorrent SourceForge Project 
+   [19]CTorrent SourceForge Project 
    Hosts the CTorrent codebase, bug reports, patches, and forum.
 
-   [19]Custom CTorrent 
+   [20]Custom CTorrent 
    A page by the author of the "get1file" patch and other fixes. It
    contains a custom version and a GUI for CTorrent.
 
-   [20]BitTorrent 
+   [21]BitTorrent 
    The official BitTorrent home page.
 
-   [21]BitTorrent wiki 
+   [22]BitTorrent wiki 
    Various documentation.
 
-   [22]BitTorrent protocol specification (official version)
+   [23]BitTorrent protocol specification (official version)
 
-   [23]BitTorrent protocol specification (wiki version)
+   [24]BitTorrent protocol specification (wiki version)
 
 References
 
@@ -218,15 +261,16 @@ References
    9. http://sourceforge.net/projects/ctorrent/
   10. http://sourceforge.net/tracker/?atid=598034&group_id=91688&func=browse
   11. http://groups.yahoo.com/group/BitTorrent/message/1260
-  12. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1-fbsd.diff
-  13. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1.diff
-  14. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1-fbsd.tar.gz
-  15. http://www.rahul.net/dholmes/ctorrent/ctorrent-dnh1.tar.gz
-  16. mailto:dholmes@ct.boxmail.com
-  17. http://ctorrent.sourceforge.net/
-  18. http://sourceforge.net/projects/ctorrent/
-  19. http://customctorrent.ifreepages.com/
-  20. http://bittorrent.com/
-  21. http://wiki.theory.org/CategoryBitTorrent
-  22. http://www.bittorrent.com/protocol.html
-  23. http://wiki.theory.org/BitTorrentSpecification
+  12. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-dnh1-dnh1.1.diff
+  13. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1-fbsd.diff
+  14. http://www.rahul.net/dholmes/ctorrent/patchset-ctorrent-1.3.4-dnh1.diff
+  15. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1-fbsd.tar.gz
+  16. http://www.rahul.net/dholmes/ctorrent/ctorrent-1.3.4-dnh1.tar.gz
+  17. mailto:dholmes@ct.boxmail.com
+  18. http://ctorrent.sourceforge.net/
+  19. http://sourceforge.net/projects/ctorrent/
+  20. http://customctorrent.ifreepages.com/
+  21. http://bittorrent.com/
+  22. http://wiki.theory.org/CategoryBitTorrent
+  23. http://www.bittorrent.com/protocol.html
+  24. http://wiki.theory.org/BitTorrentSpecification

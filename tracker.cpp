@@ -109,12 +109,14 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
     return -1;
   }
 
+  m_peers_count = 0;
+
   if(!decode_query(buf,bufsiz,"interval",(const char**) 0,&i,QUERY_INT)){return -1;}
 
   if(m_interval != (time_t)i) m_interval = (time_t)i;
 
   if(decode_query(buf,bufsiz,"complete",(const char**) 0,&i,QUERY_INT)) {
-    m_peers_count = i;
+    m_peers_count += i;
   }
   if(decode_query(buf,bufsiz,"incomplete",(const char**) 0,&i,QUERY_INT)) {
     m_peers_count += i;

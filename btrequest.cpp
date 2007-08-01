@@ -44,14 +44,14 @@ void RequestQueue::operator=(RequestQueue &rq)
   rq.rq_head = (PSLICE) 0;
 }
 
-int RequestQueue::CopyShuffle(RequestQueue &rq)
+int RequestQueue::CopyShuffle(RequestQueue *prq)
 {
   PSLICE ps;
 
   if( rq_head ) _empty_slice_list(&rq_head);
   
-  if( rq.IsEmpty() ) return 0;
-  for (ps = rq.GetHead(); ps; ps = ps->next) {
+  if( prq->IsEmpty() ) return 0;
+  for (ps = prq->GetHead(); ps; ps = ps->next) {
     if (random()&01) {
       if (Add(ps->index, ps->offset, ps->length) < 0) return -1;
     }
@@ -289,8 +289,8 @@ int PendingQueue::Delete(size_t idx)
    int i = 0;
   for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++){
     if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index){
-      delete pending_array[i];
-      pending_array[i] = (PSLICE) 0;
+      _empty_slice_list(&(pending_array[i]));
+      pq_count--;
     }
   }
   return 0;
@@ -308,6 +308,7 @@ int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
       if( rq.Remove(idx, off, len) == 0 )
         pending_array[i] = rq.GetHead();
       rq.Release();
+      if( (PSLICE) 0 == pending_array[i] ) pq_count--;
     }
   }
   return 0;

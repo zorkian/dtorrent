@@ -721,7 +721,7 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
 //    if(loster->GetLastUnchokeTime() < peer_array[MAX_UNCHOKE]->GetLastUnchokeTime()) {
       // if loser is empty and current is not, loser gets 75% chance.
       if( loster->bitfield.IsEmpty() && !peer_array[MAX_UNCHOKE]->bitfield.IsEmpty()
-            && random()&03 ) {
+            && random()&3 ) {
         btPeer* tmp = peer_array[MAX_UNCHOKE];
         peer_array[MAX_UNCHOKE] = loster;
         loster = tmp;
@@ -732,7 +732,7 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
         // transformed to: if loser is empty or current isn't, or 25% chance,
         //    then loser wins.
         if( !peer_array[MAX_UNCHOKE]->bitfield.IsEmpty() || loster->bitfield.IsEmpty()
-            || !random()&03 ) {
+            || !(random()&3) ) {
           btPeer* tmp = peer_array[MAX_UNCHOKE];
           peer_array[MAX_UNCHOKE] = loster;
           loster = tmp;

@@ -610,7 +610,7 @@ int btContent::SeedTimeout(const time_t *pnow)
 {
   if( pBF->IsFull() ){
     if( !m_seed_timestamp ){
-      Tracker.Reset(15);
+      Tracker.Reset(1);
       Self.ResetDLTimer();
       Self.ResetULTimer();
       ReleaseHashTable();

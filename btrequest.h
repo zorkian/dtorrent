@@ -31,7 +31,7 @@ class RequestQueue
   int IsValidRequest(size_t idx,size_t off,size_t len);
 
   void operator=(RequestQueue &rq);
-  int CopyShuffle(RequestQueue &rq);
+  int CopyShuffle(RequestQueue *prq);
   size_t Qsize();
 
   int IsEmpty() const { return rq_head ? 0 : 1; }
