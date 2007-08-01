@@ -143,13 +143,25 @@ void BitField::Invert()
     size_t s = nset;
     for( ; i < nbytes - 1; i++ ) b[i] = ~b[i];
 
-    if( nbits % nbytes ){
-      for( i = 8 * (nbytes - 1); i < nbits; i++ ) if( _isset(i) ) UnSet(i); else Set(i);
+//dnh    if( nbits % nbytes ){
+//consider nbits=10 (nbytes=2)....
+    if( nbits % 8 ){
+      for( i = 8 * (nbytes - 1); i < nbits; i++ ) if( _isset(i) ) UnSet(i); else _set(i);
     }else
       b[nbytes - 1] = ~b[nbytes - 1];
 
     nset = nbits - s;
   }
+}
+
+// _set() sets the bit but doesn't increment nset or set the isfull case.
+// Use instead of Set() when you know nset is incorrect and will be corrected
+// afterward (as in Invert or by _recalc),
+// and either bitfield won't get full or you'll _recalc() afterward to fix it.
+void BitField::_set(size_t idx)
+{
+  if( idx < nbits && !_isfull() && !_isset(idx) )
+    b[idx / 8] |= BIT_HEX[idx % 8];
 }
 
 void BitField::Comb(const BitField &bf)

@@ -14,6 +14,7 @@ class BitField
 
   inline void _recalc();
   inline void _setall(unsigned char* buf);
+  inline void _set(size_t idx);
 
  public:
   BitField();
