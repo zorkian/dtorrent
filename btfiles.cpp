@@ -170,11 +170,13 @@ int btFiles::_btf_ftruncate(int fd,int64_t length)
   return write(fd, &c, 1);
 #else
   // ftruncate() not allowed on [v]fat under linux
-  if( ftruncate(fd,length) < 0 ) {
+  int retval = ftruncate(fd,length);
+  if( retval < 0 ) {
     char c = (char)0;
     if(lseek(fd,length - 1, SEEK_SET) < 0 ) return -1;
     return write(fd, &c, 1);
   }
+  else return retval;
 #endif
 }
 
