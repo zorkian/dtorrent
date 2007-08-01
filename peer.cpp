@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "ctorrent.h"
 #include "btstream.h"
 #include "./btcontent.h"
 #include "./msgencode.h"
@@ -135,6 +136,7 @@ btPeer::btPeer()
   m_health_time = m_receive_time = m_choketime = m_last_timestamp;
   m_bad_health = 0;
   m_want_again = m_connect = 0;
+  m_connect_seed = 0;
 }
 
 int btPeer::SetLocal(unsigned char s)
@@ -160,6 +162,7 @@ int btPeer::SetLocal(unsigned char s)
     m_state.local_choked = 0;
     break;
   case M_INTERESTED: 
+    if( WORLD.SeedOnly() ) return 0;
     m_standby = 0;
     if( m_state.local_interested ) return 0;
     if(arg_verbose) fprintf(stderr, "Interested in %p\n", this);
@@ -366,6 +369,10 @@ int btPeer::MsgDeliver()
 
       /* remove peer's reponse queue */
       if( !reponse_q.IsEmpty()) reponse_q.Empty();
+
+      /* if I've been seed for a while, nobody should be uninterested */
+      if( BTCONTENT.pBF->IsFull() && BTCONTENT.GetSeedTime() - now >= 300 )
+         return -2;
       break;
 
     case M_HAVE:
@@ -660,6 +667,7 @@ int btPeer::PieceDeliver(size_t mlen)
 
   t = request_q.GetReqTime(idx,off,len);
 
+  // Verify whether this was actually requested (for queue management only).
   PSLICE ps = request_q.GetHead();
   if( request_q.NextSend() )
     for( ; ps; ps = ps->next){
@@ -670,15 +678,18 @@ int btPeer::PieceDeliver(size_t mlen)
       if( idx==ps->index && off==ps->offset && len==ps->length ) break;
     }
 
-  if( request_q.Remove(idx,off,len) < 0 ){
-    m_err_count++;
-    if(arg_verbose) fprintf(stderr, "err: %p (%d) Bad remove\n",
-      this, m_err_count);
+  // If I can't keep it, leave it in the queue--I'll need to request it again.
+  if(BTCONTENT.WriteSlice((char*)(msgbuf + 13),idx,off,len) < 0){
+    warning(2, "warn, WriteSlice failed; is filesystem full?");
     return 0;
   }
 
-  if(BTCONTENT.WriteSlice((char*)(msgbuf + 13),idx,off,len) < 0){
-    fprintf(stderr, "warn, WriteSlice failed; is filesystem full?\n");
+  // request_q should only be empty here if cache flush failed (so no error).
+  // in that case, slice will be removed from pending queue later.
+  if( !request_q.IsEmpty() && request_q.Remove(idx,off,len) < 0 ){
+    m_err_count++;
+    if(arg_verbose) fprintf(stderr, "err: %p (%d) Bad remove\n",
+      this, m_err_count);
     return 0;
   }
 
@@ -730,8 +741,15 @@ int btPeer::PieceDeliver(size_t mlen)
   if( requested ) m_req_out--;
 
   /* if piece download complete. */
-  return ( request_q.IsEmpty() || !request_q.HasIdx(idx) ) ?
-    ReportComplete(idx) : RequestCheck();
+  if( request_q.IsEmpty() || !request_q.HasIdx(idx) ){
+    // If flushing cache failed, we may not really have a complete piece.
+    // This is an interim method until we have a "master map" of recv'd slices.
+    if( WORLD.SeedOnly() && PENDINGQUEUE.Exist(idx) ){
+      PENDINGQUEUE.DeleteSlice(idx, off, len);
+      if( PENDINGQUEUE.Exist(idx) ) return RequestCheck();
+      else return ReportComplete(idx);
+    }else return ReportComplete(idx);
+  }else return RequestCheck();
 }
 
 int btPeer::RequestCheck()
@@ -741,7 +759,7 @@ int btPeer::RequestCheck()
     return SetLocal(M_NOT_INTERESTED);
   }
 
-  if( Need_Remote_Data() ){
+  if( Need_Remote_Data() && !WORLD.SeedOnly() ){
     if(!m_state.local_interested && SetLocal(M_INTERESTED) < 0) return -1;
     if( !m_state.remote_choked ){
       if( m_req_out > cfg_req_queue_length ){
@@ -869,8 +887,10 @@ int btPeer::HandShake()
     m_status = P_SUCCESS;
     m_want_again = 1;
     // When seeding, new peer starts at the end of the line.
-    if( BTCONTENT.pBF->IsFull() )	// i am seed
+    if( BTCONTENT.pBF->IsFull() ){	// i am seed
       m_unchoke_timestamp = now;
+      m_connect_seed = 1;
+    }
   }
   return r;
 }
@@ -889,6 +909,7 @@ int btPeer::BandWidthLimitUp()
 
 int btPeer::BandWidthLimitDown()
 {
+  if( WORLD.SeedOnly() ) return 1;
   if( cfg_max_bandwidth_down <= 0 ) return 0;
   return ((Self.RateDL()) >= cfg_max_bandwidth_down) ?
     1:0;
@@ -969,15 +990,17 @@ int btPeer::RecvModule()
 
       if( r < 0 && r != -2 )
         return -1;
-      else if ( r == -2 ){ // seed<->seed
+      else if ( r == -2 )  // remote closed
         f_peer_closed = 1;
-        m_want_again = 0;
-      }
   
       r = stream.HaveMessage();
       for( ; r;){
         if( r < 0 ) return -1;
-        if(MsgDeliver() < 0 || stream.PickMessage() < 0) return -1;
+        if( (r = MsgDeliver()) == -2 ){
+          if(arg_verbose) fprintf(stderr, "%p seed<->seed detected\n", this);
+          m_want_again = 0;
+        }
+        if( r < 0 || stream.PickMessage() < 0 ) return -1;
         r = stream.HaveMessage();
       }
     }else{
@@ -1044,8 +1067,7 @@ int btPeer::HealthCheck(time_t now)
       m_bad_health = 1;
       if(arg_verbose)
         fprintf(stderr, "%p unresponsive; resetting request queue\n", this);
-      PSLICE ps = request_q.GetHead();
-      int retval = CancelRequest(ps);
+      int retval = CancelRequest(request_q.GetHead());
       PENDINGQUEUE.Pending(&request_q);
       return (retval < 0) ? -1 : RequestCheck();
     } else m_bad_health = 0;
@@ -1060,6 +1082,17 @@ int btPeer::IsEmpty() const
 {
   return ( bitfield.IsEmpty() && TotalUL() < BTCONTENT.GetPieceLength()*2 ) ?
     1:0;
+}
+
+int btPeer::PutPending()
+{
+  int retval = 0;
+
+  if( !request_q.IsEmpty() ){
+    retval = CancelRequest(request_q.GetHead());
+    PENDINGQUEUE.Pending(&request_q);
+  }
+  return retval;
 }
 
 void btPeer::dump()

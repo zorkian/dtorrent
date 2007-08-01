@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT([CTorrent], [dnh2], [dholmes@ct.boxmail.com])
-AM_INIT_AUTOMAKE(ctorrent,dnh2)
+AC_INIT([CTorrent], [dnh2.2], [dholmes@ct.boxmail.com])
+AM_INIT_AUTOMAKE(ctorrent,dnh2.2)
 AC_CONFIG_HEADER([config.h])
 
 AC_CONFIG_SRCDIR([ctorrent.cpp])

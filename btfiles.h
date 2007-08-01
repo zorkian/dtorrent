@@ -43,7 +43,7 @@ class btFiles
   int _btf_ftruncate(int fd,int64_t length);
   int _btf_creat_by_path(const char *pathname, int64_t file_length);
   int _btf_destroy();
-  int _btf_recurses_directory(const char *cur_path, BTFILE *lastnode);
+  int _btf_recurses_directory(const char *cur_path, BTFILE **plastnode);
 
  public:
   int CreateFiles();

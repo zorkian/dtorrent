@@ -37,6 +37,8 @@ class btContent
   u_int64_t m_left_bytes;
   btFiles m_btfiles;
 
+  time_t m_flush_failed;
+
   BTCACHE *m_cache;
   size_t m_cache_size, m_cache_used;
   

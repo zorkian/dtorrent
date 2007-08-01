@@ -11,6 +11,7 @@
 #include <string.h>
 #include <errno.h>
 
+#include "ctorrent.h"
 #include "peerlist.h"
 #include "httpencode.h"
 #include "bencode.h"
@@ -112,12 +113,9 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
       failreason[1000] = '\0';
       strcat(failreason,"...");
     }
-    fprintf(stderr,"TRACKER FAILURE REASON: %s\n",failreason);
-    if(arg_ctcs){
-      char ctcsinfo[1048];
-      snprintf(ctcsinfo,1048,"TRACKER FAILURE REASON: %s",failreason);
-      CTCS.Send_Info(ctcsinfo);
-    }
+    char wmsg[1048];
+    snprintf(wmsg,1048,"TRACKER FAILURE REASON: %s",failreason);
+    warning(1, wmsg);
     return -1;
   }
   if( decode_query(buf,bufsiz,"warning message",&ps,&i,(int64_t*) 0,QUERY_STR) ){
@@ -130,12 +128,9 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
       warnmsg[1000] = '\0';
       strcat(warnmsg,"...");
     }
-    fprintf(stderr,"TRACKER WARNING: %s\n",warnmsg);
-    if(arg_ctcs){
-      char ctcsinfo[1048];
-      snprintf(ctcsinfo,1048,"TRACKER WARNING: %s",warnmsg);
-      CTCS.Send_Info(ctcsinfo);
-    }
+    char wmsg[1048];
+    snprintf(wmsg,1048,"TRACKER WARNING: %s",warnmsg);
+    warning(2, wmsg);
   }
 
   m_peers_count = 0;
@@ -238,13 +233,10 @@ int btTracker::CheckReponse()
     socklen_t n = sizeof(error);
     if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
        error != 0 ){
-      fprintf(stderr,"warn, received nothing from tracker! %s\n",strerror(error));
-      if(arg_ctcs){
-        char ctcsinfo[256];
-        snprintf(ctcsinfo,256,
-          "warn, received nothing from tracker! %s",strerror(error));
-        CTCS.Send_Info(ctcsinfo);
-      }
+      char wmsg[256];
+      snprintf(wmsg,256,
+        "warn, received nothing from tracker! %s",strerror(error));
+      warning(2, wmsg);
     }
     return -1;
   }
@@ -252,9 +244,7 @@ int btTracker::CheckReponse()
   hlen = Http_split(m_reponse_buffer.BasePointer(), q, &pdata,&dlen);
 
   if( !hlen ){
-    fprintf(stderr,"warn, tracker reponse invalid. No html header found.\n");
-    if(arg_ctcs)
-      CTCS.Send_Info("warn, tracker reponse invalid. No html header found.");
+    warning(2, "warn, tracker reponse invalid. No html header found.");
     return -1;
   }
 
@@ -266,13 +256,10 @@ int btTracker::CheckReponse()
         return -1;
 
       if( Http_url_analyse(redirect,m_host,&m_port,m_path) < 0){
-        fprintf(stderr,"warn, tracker redirect to an invalid url %s!\n", redirect);
-        if(arg_ctcs){
-          char ctcsinfo[256];
-          snprintf(ctcsinfo,256,
-            "warn, tracker redirect to an invalid url %s!", redirect);
-          CTCS.Send_Info(ctcsinfo);
-        }
+        char wmsg[256];
+        snprintf(wmsg,256,
+          "warn, tracker redirected to an invalid url %s", redirect);
+        warning(1, wmsg);
         return -1;
       }
 
@@ -382,8 +369,7 @@ int btTracker::Connect()
   time(&m_last_timestamp);
 
   if(_s2sin(m_host,m_port,&m_sin) < 0) {
-    fprintf(stderr,"warn, get tracker's ip address failed.");
-    if(arg_ctcs) CTCS.Send_Info("warn, get tracker's ip address failed.");
+    warning(2, "warn, get tracker's ip address failed.");
     return -1;
   }
 
@@ -487,13 +473,10 @@ int btTracker::SendRequest()
   //fprintf(stderr,"SendRequest: %s\n", REQ_BUFFER);
 
   if( 0 != m_reponse_buffer.PutFlush(m_sock,REQ_BUFFER,strlen((char*)REQ_BUFFER))){
-    fprintf(stderr,"warn, send request to tracker failed. %s\n",strerror(errno));
-    if(arg_ctcs){
-      char ctcsinfo[256];
-      snprintf(ctcsinfo,256,
-        "warn, send request to tracker failed. %s",strerror(errno));
-      CTCS.Send_Info(ctcsinfo);
-    }
+    char wmsg[256];
+    snprintf(wmsg,256,
+      "warn, send request to tracker failed. %s",strerror(errno));
+    warning(2, wmsg);
     return -1;
   }
 
@@ -545,13 +528,10 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
     if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
        error != 0 ){
       if( ECONNREFUSED != error ){
-        fprintf(stderr,"warn, connect to tracker failed. %s\n",strerror(error));
-        if(arg_ctcs){
-          char ctcsinfo[256];
-          snprintf(ctcsinfo,256,
-            "warn, connect to tracker failed. %s\n",strerror(error));
-          CTCS.Send_Info(ctcsinfo);
-        }
+        char wmsg[256];
+        snprintf(wmsg,256,
+          "warn, connect to tracker failed. %s\n",strerror(error));
+        warning(2, wmsg);
       }else
         m_connect_refuse_click++;
       Reset(15);
@@ -566,13 +546,10 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
     (*nfds)--;
     FD_CLR(m_sock, rfdp); 
     getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n);
-    fprintf(stderr,"warn, connect to tracker failed. %s\n",strerror(error));
-    if(arg_ctcs){
-      char ctcsinfo[256];
-      snprintf(ctcsinfo,256,
-        "warn, connect to tracker failed. %s\n",strerror(error));
-      CTCS.Send_Info(ctcsinfo);
-    }
+    char wmsg[256];
+    snprintf(wmsg,256,
+      "warn, connect to tracker failed. %s\n",strerror(error));
+    warning(2, wmsg);
     Reset(15);
     return -1;
   }else if(INVALID_SOCKET != m_sock && FD_ISSET(m_sock, rfdp) ){

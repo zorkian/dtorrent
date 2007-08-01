@@ -49,6 +49,7 @@ PeerList::PeerList()
   m_listen_sock = INVALID_SOCKET;
   m_peers_count = m_seeds_count = 0;
   m_live_idx = 0;
+  m_seed_only = 0;
 }
 
 PeerList::~PeerList()
@@ -225,6 +226,11 @@ int PeerList::FillFDSET(const time_t *pnow,fd_set *rfdp,fd_set *wfdp)
            Self.RateDL(), Self.RateUL(),
            Self.TotalDL(), Self.TotalUL(),
            cfg_max_bandwidth_down, cfg_max_bandwidth_up);
+
+    /* after seeding for a while, disconnect uninterested peers */
+    if( BTCONTENT.GetSeedTime() - now <= 301 &&
+        BTCONTENT.GetSeedTime() - now >= 300 )
+      CloseAllConnectionToSeed();
   }
     
   if(KEEPALIVE_INTERVAL <= (*pnow - m_keepalive_check_timestamp)){
@@ -248,6 +254,7 @@ int PeerList::FillFDSET(const time_t *pnow,fd_set *rfdp,fd_set *wfdp)
   for(p = m_head; p;){
     if( PEER_IS_FAILED(p->peer)){
       if( p->peer->WantAgain() ){ // connect to this peer again
+        if(arg_verbose) fprintf(stderr, "Adding %p for reconnect\n", p->peer);
         struct sockaddr_in addr;
         p->peer->GetAddress(&addr);
         IPQUEUE.Add(&addr);
@@ -512,8 +519,8 @@ void PeerList::Tell_World_I_Have(size_t idx)
         p->peer->stream.Send_Have(idx) < 0) 
       p->peer->CloseConnection();
     
-    if( f_seed ){
-      if( !p->peer->request_q.IsEmpty() ) p->peer->request_q.Empty();
+    else if( f_seed ){
+      // request queue is emptied by setting not-interested state
       if(p->peer->SetLocal(M_NOT_INTERESTED) < 0) {
         if(arg_verbose)
           fprintf(stderr, "close: Can't set self not interested (T_W_I_H)\n");
@@ -738,7 +745,12 @@ void PeerList::CloseAllConnectionToSeed()
 {
   PEERNODE *p = m_head;
   for( ; p; p = p->next)
-    if(p->peer->bitfield.IsFull()) {
+    if( p->peer->bitfield.IsFull() ||
+        /* Drop peers who remain uninterested, but keep recent connections.
+           Peers who connected recently will resolve by bitfield exchange. */
+        (PEER_IS_SUCCESS(p->peer) && !p->peer->Is_Remote_Interested() &&
+          BTCONTENT.GetSeedTime() - now >= 300 &&
+          !p->peer->ConnectedWhileSeed()) ){
       p->peer->DontWantAgain();
       if(arg_verbose) fprintf(stderr, "close: seed<->seed\n");
       p->peer->CloseConnection();
@@ -750,7 +762,7 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
   int i = 0;
   int cancel_idx = 0;
   btPeer *loster = (btPeer*) 0;
-  int f_seed = BTCONTENT.pBF->IsFull();
+  int f_seed = BTCONTENT.pBF->IsFull() || m_seed_only;
   int no_opt = 0;
   unsigned long rndbits;
   int r=0;
@@ -926,11 +938,29 @@ int PeerList::Endgame()
       BitField afdBitField =  *BTCONTENT.pBF;
       afdBitField.Except(*BTCONTENT.pBFilter);
       endgame = ( BTCONTENT.getFilePieces(arg_file_to_download)
-                  - afdBitField.Count() ) < WORLD.TotalPeers();
+                  - afdBitField.Count() ) < TotalPeers();
     }else
-      endgame = ( WORLD.Pieces_I_Can_Get() - BTCONTENT.pBF->Count() )
-                  < WORLD.TotalPeers();
+      endgame = ( Pieces_I_Can_Get() - BTCONTENT.pBF->Count() ) < TotalPeers();
   }
   return endgame;
+}
+
+// Note, if other seed-only reasons are added, m_seed_only will need to
+// become a multiple-bit value and this function will need to change.
+// Currently only btContent::FlushCache() sets the state.
+void PeerList::SeedOnly(int state)
+{
+  PEERNODE *p = m_head;
+
+  m_seed_only = state;
+
+  if( m_seed_only ){
+    for( ; p; p = p->next) {
+      if( p->peer->Is_Local_Interested() ) {
+        if(p->peer->PutPending() < 0 || p->peer->SetLocal(M_NOT_INTERESTED) < 0)
+          p->peer->CloseConnection();
+      }
+    }
+  }else CheckInterest();
 }
 

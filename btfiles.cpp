@@ -180,7 +180,7 @@ int btFiles::_btf_ftruncate(int fd,int64_t length)
 #endif
 }
 
-int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* lastnode)
+int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
 {
   char full_cur[MAXPATHLEN];
   char fn[MAXPATHLEN];
@@ -236,12 +236,12 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* lastnode)
       pbf->bf_length = sb.st_size;
       m_total_files_length += sb.st_size;
 
-      if( lastnode ) lastnode->bf_next = pbf; else m_btfhead = pbf;
-      
-      lastnode = pbf;
+      if( *plastnode ) (*plastnode)->bf_next = pbf; else m_btfhead = pbf;
+
+      *plastnode = pbf;
 
     }else if( S_IFDIR & sb.st_mode ){
-      if(_btf_recurses_directory(fn, lastnode) < 0){closedir(dp); return -1;}
+      if(_btf_recurses_directory(fn, plastnode) < 0){closedir(dp); return -1;}
     }else{
       fprintf(stderr,"error, %s is not a directory or regular file.\n",fn);
       closedir(dp);
@@ -293,6 +293,7 @@ int btFiles::BuildFromFS(const char *pathname)
 {
   struct stat sb;
   BTFILE *pbf = (BTFILE*) 0;
+  BTFILE *lastnode = (BTFILE*) 0;
 
   if( stat(pathname, &sb) < 0 ){
     fprintf(stderr,"error, stat file %s failed, %s\n",pathname,strerror(errno));
@@ -325,7 +326,7 @@ int btFiles::BuildFromFS(const char *pathname)
       return -1;
     }
 
-    if(_btf_recurses_directory((const char*)0, (BTFILE*) 0) < 0) return -1;
+    if(_btf_recurses_directory((const char*)0, &lastnode) < 0) return -1;
     if( chdir(wd) < 0) return -1;
   }else{
     fprintf(stderr,"error, %s is not a directory or regular file.\n",pathname);

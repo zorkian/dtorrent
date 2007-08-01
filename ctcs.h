@@ -65,7 +65,7 @@ class Ctcs
   int Set_Config(char *msgbuf);
   int Send_Detail();
   int Send_Peers();
-  int Send_Info(const char *info);
+  int Send_Info(int sev, const char *info);
   int IntervalCheck(const time_t *pnow, fd_set *rfdp, fd_set *wfdp);
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds);
   void RestartTracker();

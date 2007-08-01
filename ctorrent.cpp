@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "ctorrent.h"
 #include "btconfig.h"
 #include "btcontent.h"
 #include "downloader.h"
@@ -253,36 +254,67 @@ void usage()
 {
   fprintf(stderr,"%s	Original code Copyright: YuHong(992126018601033)",PACKAGE_STRING);
   fprintf(stderr,"\nWARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");
-  fprintf(stderr,"\nGeneric Options:\n");
-  fprintf(stderr,"-h/-H\t\tShow this message.\n");
-  fprintf(stderr,"-x\t\tDecode metainfo(torrent) file only, don't download.\n");
-  fprintf(stderr,"-c\t\tCheck exist only. don't download.\n");
-  fprintf(stderr,"-v\t\tVerbose output (for debugging).\n");
+  fprintf(stderr,"\nGeneral Options:\n");
+  fprintf(stderr, "%-15s %s\n", "-h/-H", "Show this message.");
+  fprintf(stderr, "%-15s %s\n", "-x",
+    "Decode metainfo (torrent) file only, don't download.");
+  fprintf(stderr, "%-15s %s\n", "-c", "Check pieces only, don't download.");
+  fprintf(stderr, "%-15s %s\n", "-v", "Verbose output (for debugging).");
+
   fprintf(stderr,"\nDownload Options:\n");
-  fprintf(stderr,"-e int\t\tExit while seed <int> hours later. (default 72 hours)\n");
-  fprintf(stderr,"-E num\t\tExit after seeding to <num> ratio (UL:DL).\n");
-  fprintf(stderr,"-i ip\t\tListen for connection on ip. (default all ip's)\n");
-  fprintf(stderr,"-p port\t\tListen port. (default 2706 -> 2106)\n");
-  fprintf(stderr,"-s save_as\tSave file/directory/metainfo as... \n");
-  fprintf(stderr,"-C cache_size\tCache size,unit MB. (default 16MB)\n");
-  fprintf(stderr,"-f\t\tForce seed mode. skip hash check at startup.\n");
-  fprintf(stderr,"-b bf_filename\tBit field filename. (use it carefully)\n");
-  fprintf(stderr,"-M max_peers\tMax peers count.\n");
-  fprintf(stderr,"-m min_peers\tMin peers count.\n");
-  fprintf(stderr,"-z slice_size\tDownload slice/block size, unit KB. (default 16, max 128).\n");
-  fprintf(stderr,"-n file_number\tWhich file download.\n");
-  fprintf(stderr,"-D rate\t\tMax bandwidth down (unit KB/s)\n");
-  fprintf(stderr,"-U rate\t\tMax bandwidth up (unit KB/s)\n");
-  fprintf(stderr,"-P peer_id\tSet Peer ID ["PEER_PFX"]\n");
-  fprintf(stderr,"-S host:port\tUse CTCS server\n");
-  fprintf(stderr,"\nMake metainfo(torrent) file Options:\n");
-  fprintf(stderr,"-t\t\tWith make torrent. must specify this option.\n");
-  fprintf(stderr,"-u url\t\tTracker's url.\n");
-  fprintf(stderr,"-l piece_len\tPiece length.(default 262144)\n");
-  fprintf(stderr,"\neg.\n");
-  fprintf(stderr,"hong> ctorrent -s new_filename -e 12 -C 32 -p 6881 eg.torrent\n\n");
-  fprintf(stderr,"home page: http://ctorrent.sourceforge.net/\n");
+  fprintf(stderr, "%-15s %s\n", "-e int",
+    "Exit while seed <int> hours later. (default 72 hours)");
+  fprintf(stderr, "%-15s %s\n", "-E num",
+    "Exit after seeding to <num> ratio (UL:DL).");
+  fprintf(stderr, "%-15s %s\n", "-i ip",
+    "Listen for connections on ip. (default all IP's)");
+  fprintf(stderr, "%-15s %s\n", "-p port",
+    "Listen port. (default 2706 -> 2106)");
+  fprintf(stderr, "%-15s %s\n", "-s filename",
+    "Download (\"save as\") to a different file or directory.");
+  fprintf(stderr, "%-15s %s\n", "-C cache_size",
+    "Cache size, unit MB. (default 16MB)");
+  fprintf(stderr, "%-15s %s\n", "-f",
+    "Force seed mode (skip hash check at startup).");
+  fprintf(stderr, "%-15s %s\n", "-b filename",
+    "Bitfield filename. (use it carefully)");
+  fprintf(stderr, "%-15s %s\n", "-M max_peers",
+    "Max peers count. (default 100)");
+  fprintf(stderr, "%-15s %s\n", "-m min_peers", "Min peers count. (default 1)");
+  fprintf(stderr, "%-15s %s\n", "-z slice_size",
+    "Download slice/block size, unit KB. (default 16, max 128).");
+  fprintf(stderr, "%-15s %s\n", "-n file_number", "Specify file to download.");
+  fprintf(stderr, "%-15s %s\n", "-D rate", "Max bandwidth down (unit KB/s)");
+  fprintf(stderr, "%-15s %s\n", "-U rate", "Max bandwidth up (unit KB/s)");
+  fprintf(stderr, "%-15s %s%s\")\n", "-P peer_id",
+    "Set Peer ID prefix. (default \"", PEER_PFX);
+  fprintf(stderr, "%-15s %s\n", "-S host:port",
+    "Use CTCS server at host:port.");
+
+  fprintf(stderr,"\nMake metainfo (torrent) file options:\n");
+  fprintf(stderr, "%-15s %s\n", "-t", "Create a new torrent file.");
+  fprintf(stderr, "%-15s %s\n", "-u url", "Tracker's url.");
+  fprintf(stderr, "%-15s %s\n", "-l piece_len",
+    "Piece length. (default 262144)");
+  fprintf(stderr, "%-15s %s\n", "-s filename", "Specify metainfo file name.");
+
+  fprintf(stderr,"\nExample:\n");
+  fprintf(stderr,"ctorrent -s new_filename -e 12 -C 32 -p 6881 example.torrent\n");
+  fprintf(stderr,"\nhome page: http://ctorrent.sourceforge.net/\n");
   fprintf(stderr,"see also: http://www.rahul.net/dholmes/ctorrent/\n");
   fprintf(stderr,"bug report: %s\n",PACKAGE_BUGREPORT);
   fprintf(stderr,"original author: bsdi@sina.com\n\n");
 }
+
+/* "sev" indicates the severity of the message.
+   0: will be printed but not sent to CTCS
+   1: extremely urgent/important
+   2: less important
+   3: no problem
+*/
+void warning (int sev, const char *message)
+{
+  fprintf(stderr, "%s\n", message);
+  if(sev && arg_ctcs) CTCS.Send_Info(sev, message);
+}
+

@@ -23,11 +23,14 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "ctorrent.h"
 #include "btconfig.h"
 #include "bencode.h"
 #include "peer.h"
 #include "httpencode.h"
 #include "tracker.h"
+#include "peerlist.h"
+#include "ctcs.h"
 
 #if defined(USE_STANDALONE_SHA1)
 #include "sha1.h"
@@ -74,6 +77,7 @@ btContent::btContent()
   time(&m_start_timestamp);
   m_cache = (BTCACHE*) 0;
   m_cache_size = m_cache_used = 0;
+  m_flush_failed = (time_t) 0;
 }
 
 int btContent::CreateMetainfoFile(const char *mifn)
@@ -258,16 +262,14 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if( !pBF ) ERR_RETURN();
 #endif
 
-    //create the file filter
-    pBFilter = new BitField(m_npieces);
+  //create the file filter
+  pBFilter = new BitField(m_npieces);
 #ifndef WINDOWS
-     if( !pBFilter ) ERR_RETURN();
+   if( !pBFilter ) ERR_RETURN();
 #endif
   if(arg_file_to_download>0){
     m_btfiles.SetFilter(arg_file_to_download,pBFilter,m_piece_length);
   }
-
-
 
   m_left_bytes = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_left_bytes++;
@@ -283,12 +285,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
         r = 0;
         for( idx = 0; idx < m_npieces; idx++ )
           if( pBF->IsSet(idx) ) m_left_bytes -= GetPieceLength(idx);
-      }
-      else{
-        fprintf(stderr,"warn, couldn't set bit field refer file %s.\n",arg_bitfield_file);
+      }else{
+        fprintf(stderr,"warn, couldn't set bit field refer file %s.\n",
+          arg_bitfield_file);
       }
     }
-    
     if( r ) CheckExist();
     
   }else if( arg_flg_force_seed_mode ){
@@ -298,7 +299,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     CheckExist();
   }
   
-  PrintOut();
+  if( r && !arg_flg_force_seed_mode )
+    m_btfiles.PrintOut();  // show file completion
   printf("Already/Total: %u/%u (%d%%)\n",pBF->Count(),m_npieces,
     100 * pBF->Count() / m_npieces);
   
@@ -340,7 +342,6 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
 {
   //changed
   u_int64_t offset = (u_int64_t)idx * (u_int64_t)m_piece_length + (u_int64_t)off;
-
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 0);
   else{
     size_t len2;
@@ -388,6 +389,9 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
 void btContent::CacheClean()
 {
   BTCACHE *p, *pp, *prm, *prmp;
+  int f_flushed = 0;
+
+  if( m_flush_failed ) FlushCache();  // try again
 
  again:
   pp = prm = prmp = (BTCACHE*) 0;
@@ -399,7 +403,7 @@ void btContent::CacheClean()
   }
   
   if( !prm ){
-    if( m_cache_used ) { FlushCache(); goto again; }
+    if( m_cache_used && !f_flushed ){ FlushCache(); f_flushed = 1; goto again; }
     else return;
   }
 
@@ -425,12 +429,39 @@ void btContent::CacheConfigure()
 void btContent::FlushCache()
 {
   BTCACHE *p = m_cache;
-  for( ; p; p = p->bc_next)
+  for( ; p; p = p->bc_next ){
     if( p->bc_f_flush ){
-      p->bc_f_flush = 0;
-      if(m_btfiles.IO(p->bc_buf, p->bc_off, p->bc_len, 1) < 0)
-        fprintf(stderr,"warn, write file failed while flush cache.\n");
+      if(m_btfiles.IO(p->bc_buf, p->bc_off, p->bc_len, 1) < 0){
+        if( time((time_t *)0) >= m_flush_failed + 300 ){
+          char wmsg[256]; int t;
+          warning(1, "warn, write file failed while flushing cache.");
+          snprintf(wmsg,256,
+            "You need to have at least %llu bytes free on this filesystem!",
+            m_left_bytes + m_cache_used);
+          warning(1, wmsg);
+          warning(1, "This can also be caused by a disk error.");
+          snprintf(wmsg,256, "Temporarily"); t=11;
+          if( !m_flush_failed && m_cache_size - m_cache_used < m_piece_length ){
+            snprintf(wmsg+t,256-t, " increasing cache size and"); t+=26;
+            m_cache_size += m_piece_length;
+          }
+          snprintf(wmsg+t,256-t, " suspending download...");
+          warning(1, wmsg);
+          time(&m_flush_failed);
+          WORLD.SeedOnly(1);
+        }
+        return;
+      }else{
+        p->bc_f_flush = 0;
+        if(m_flush_failed){
+          warning(3, "Flushing cache succeeded, resuming download");
+          m_flush_failed = 0;
+          CacheConfigure();
+          WORLD.SeedOnly(0);
+        }
+      }
     }
+  }
 }
 
 ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
@@ -606,7 +637,9 @@ int btContent::APieceComplete(size_t idx)
   if( GetHashValue(idx, md) < 0 ) return -1;
 
   if( memcmp(md,(m_hash_table + idx * 20), 20) != 0){
-    fprintf(stderr,"warn,piece %d hash check failed.\n",idx);
+    char wmsg[256];
+    sprintf(wmsg,"warn,piece %d hash check failed.",idx);
+    warning(0, wmsg);
     return 0;
   }
   pBF->Set(idx);
@@ -643,7 +676,7 @@ int btContent::SeedTimeout(const time_t *pnow)
         (cfg_seed_hours > 0 &&
           (*pnow - m_seed_timestamp) >= (cfg_seed_hours * 60 * 60)) ||
         (cfg_seed_ratio > 0 &&
-          cfg_seed_ratio <= Self.TotalUL() / dl) ) return 1;
+          cfg_seed_ratio <= (double) Self.TotalUL() / dl) ) return 1;
   }
   return 0;
 }

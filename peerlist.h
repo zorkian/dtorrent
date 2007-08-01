@@ -21,7 +21,8 @@ class PeerList
   time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp, m_last_progress_timestamp, m_opt_timestamp;
 
   unsigned char m_live_idx:2;
-  unsigned char m_reserved:6;
+  unsigned char m_seed_only:1;
+  unsigned char m_reserved:5;
   
   Rate m_pre_dlrate, m_pre_ulrate;
   
@@ -59,6 +60,8 @@ class PeerList
   void CheckInterest();
   btPeer* GetNextPeer(btPeer *peer);
   int Endgame();
+  int SeedOnly() const { return m_seed_only ? 1 : 0; }
+  void SeedOnly(int state);
 };
 
 extern PeerList WORLD;

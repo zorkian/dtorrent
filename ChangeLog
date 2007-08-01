@@ -2,6 +2,28 @@
                         Enhanced CTorrent Change Log
      _________________________________________________________________
 
+   Changes for "dnh2.2" Release
+
+   Code Fixes
+     * Fixed checking of seed ratio (-E option) to allow fractional
+       values.
+     * Fixed CTCS interaction when a limit was not specified on the
+       command line.
+     * Fixed peer reconnect determination.
+     * Fixed a request-queue handling error that could cause a crash upon
+       becoming a seeder.
+     * Fixed creation of metainfo (torrent) file with multiple
+       subdirectories.
+     * Torrent metainfo is now only printed twice if hash-checking is
+       performed.
+
+   Operational Enhancements
+     * Errors flushing the cache are now handled more gracefully. (This
+       happens when the disk is full.)
+     * Added additional seeder detection criteria.
+     * Cleaned up parts of the help screen.
+     _________________________________________________________________
+
    Changes for "dnh2.1" Release
 
    Code Fixes

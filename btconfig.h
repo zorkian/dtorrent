@@ -12,7 +12,7 @@ extern size_t cfg_req_slice_size;
 extern size_t cfg_req_queue_length;
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CD0201-"
+#define PEER_PFX "-CD0202-"
 
 extern size_t cfg_cache_size;
 

@@ -96,7 +96,8 @@ class btPeer:public btBasic
   unsigned char m_want_again:1;  // attempt reconnect if lost
 
   unsigned char m_connect:1;     // we initiated the connection
-  unsigned char m_reserved:7;
+  unsigned char m_connect_seed:1; // connected while I am seed
+  unsigned char m_reserved:6;
 
   BTSTATUS m_state;
 
@@ -165,6 +166,7 @@ class btPeer:public btBasic
   void DontWantAgain() { m_want_again = 0; }
   void SetConnect() { m_connect = 1; }
 
+  int ConnectedWhileSeed() { return m_connect_seed; }
   
   int AreYouOK();
   int Send_ShakeInfo();
@@ -172,6 +174,8 @@ class btPeer:public btBasic
 
   int Need_Remote_Data();
   int Need_Local_Data();
+
+  int PutPending();
 
   void dump();
 };

@@ -405,9 +405,11 @@ int PendingQueue::Exist(size_t idx)
   return 0;
 }
 
+// Sending an empty queue to this function WILL cause a crash.  This exposure
+// is left open in order to help track down bugs that cause this condition.
 int PendingQueue::Pending(RequestQueue *prq)
 {
-   int i = 0, j = 0;
+   int i = 0, j = -1;
   PSLICE n, u = (PSLICE) 0;
   size_t idx, off, len;
   RequestQueue tmprq;
@@ -426,9 +428,10 @@ int PendingQueue::Pending(RequestQueue *prq)
 
   for( ; i < PENDING_QUEUE_SIZE; i++){
     if(pending_array[i] == (PSLICE) 0){
-      // Don't add a piece to Pending more than once.
-      if(!j) j = i;
+      // Find an empty slot in case we need it.
+      if(j<0) j = i;
     }else if(prq->GetRequestIdx() == pending_array[i]->index){
+      // Don't add a piece to Pending more than once.
       while( !prq->IsEmpty() &&
           prq->GetRequestIdx() == pending_array[i]->index )
         prq->Pop(&idx,&off,&len);
@@ -436,13 +439,12 @@ int PendingQueue::Pending(RequestQueue *prq)
       i = 0;
     }
   }
-  i = j;
-  pending_array[i] = prq->GetHead();
+  pending_array[j] = prq->GetHead();
   prq->Release();
   pq_count++;
 
   // If multiple pieces are queued, break up the queue separately.
-  n = pending_array[i];
+  n = pending_array[j];
   idx = n->index;
   for( ; n ; u = n, n = u->next)
     if( n->index != idx ) break;

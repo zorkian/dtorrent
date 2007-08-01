@@ -381,11 +381,11 @@ int Ctcs::Send_Peers()
 }
 
 
-int Ctcs::Send_Info(const char *info)
+int Ctcs::Send_Info(int sev, const char *info)
 {
   char message[CTCS_BUFSIZE];
 
-  snprintf(message, CTCS_BUFSIZE, "CTINFO %s", info);
+  snprintf(message, CTCS_BUFSIZE, "CTINFO %d %s", sev, info);
   return SendMessage(message);
 }
 
