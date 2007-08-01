@@ -4,11 +4,15 @@
 extern size_t cfg_req_slice_size;
 
 #define MAX_METAINFO_FILESIZ	4194304
+// According to specs the max slice size is 128K.  But most clients do not
+// accept a value that large, so we limit to 64K.  Note that there is a
+// comparison in RequestQueue::IsValidRequest() (see btrequest.cpp) that
+// doubles the value so that we will accept a request for 128K.
 #define cfg_max_slice_size 65536
 #define cfg_req_queue_length 64
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CD0101-"
+#define PEER_PFX "-CD0102-"
 
 extern size_t cfg_cache_size;
 

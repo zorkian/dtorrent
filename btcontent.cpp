@@ -211,8 +211,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if(!meta_int("info|piece length",&m_piece_length)) ERR_RETURN();
   m_npieces = m_hashtable_length / 20;
 
-  if( m_piece_length > cfg_max_slice_size * cfg_req_queue_length ){
-    fprintf(stderr,"error, piece length too long[%u]. please recompile CTorrent with a larger cfg_max_slice_size in <btconfig.h>.\n", m_piece_length);
+  if( m_piece_length > cfg_max_slice_size * (cfg_req_queue_length/2) ){
+    fprintf(stderr,"error, piece length too long[%u]. please recompile CTorrent with a larger cfg_req_queue_length or cfg_max_slice_size in <btconfig.h>.\n", m_piece_length);
     ERR_RETURN();
   }
 

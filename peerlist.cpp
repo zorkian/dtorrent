@@ -725,8 +725,18 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
         btPeer* tmp = peer_array[MAX_UNCHOKE];
         peer_array[MAX_UNCHOKE] = loster;
         loster = tmp;
-      } else // if loser waited longer:
-      if(loster->GetLastUnchokeTime() < peer_array[MAX_UNCHOKE]->GetLastUnchokeTime()) {
+      } else
+        // This mess chooses the loser:
+        // if loser is choked and current is not
+        // OR if both are choked and loser has waited longer
+        // OR if both are unchoked and loser has had less time unchoked.
+      if( (!loster->Is_Local_UnChoked() &&
+            ( peer_array[MAX_UNCHOKE]->Is_Local_UnChoked() ||
+              loster->GetLastUnchokeTime() <
+                peer_array[MAX_UNCHOKE]->GetLastUnchokeTime() )) ||
+          (peer_array[MAX_UNCHOKE]->Is_Local_UnChoked() &&
+            peer_array[MAX_UNCHOKE]->GetLastUnchokeTime() <
+              loster->GetLastUnchokeTime()) ){
         // if current is empty and loser is not, loser gets 25% chance;
         //    else loser wins.
         // transformed to: if loser is empty or current isn't, or 25% chance,

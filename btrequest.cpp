@@ -208,7 +208,8 @@ int RequestQueue::IsValidRequest(size_t idx,size_t off,size_t len)
   return ( idx < BTCONTENT.GetNPieces() &&
 	   len &&
 	   (off + len) <= BTCONTENT.GetPieceLength(idx) &&
-	   len <= cfg_max_slice_size) ?
+      // See note for cfg_max_slice_size in btconfig.h
+	   len <= 2 * cfg_max_slice_size) ?
     1 : 0;
 }
 

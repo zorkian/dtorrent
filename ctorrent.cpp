@@ -46,7 +46,7 @@ void Random_init()
   struct timeval tv; 
   gettimeofday(&tv,(struct timezone*) 0);
   unsigned int seed = tv.tv_usec + tv.tv_sec + getpid();
-  return srandom(seed);
+  srandom(seed);
 }
 
 int main(int argc, char **argv)
