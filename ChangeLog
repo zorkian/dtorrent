@@ -2,6 +2,27 @@
                         Enhanced CTorrent Change Log
      _________________________________________________________________
 
+   Changes for "dnh2.1" Release
+
+   Code Fixes
+     * Fixed interaction with CTCS under Linux, resulting in "Operation
+       now in progress" errors.
+     * Fixed a flaw in optimistic unchoke logic implementation.
+     * Fixed problem with return value in _btf_ftruncate() related to my
+       update for the vfat issue [btfiles patch].
+     * Fixed handling of 301/302 redirect response from the tracker.
+
+   Operational Enhancements
+     * Attempt to reconnect to successful peers that disconnect
+       unexpectedly, if possible.
+     * Changed the unchoke choice algorithm when seeding. The new method
+       is based on page 4 of the paper "Rarest First and Choke Algorithms
+       Are Enough" by Arnaud Legout et al. An exception is that CTorrent
+       chooses new unchokes using its original method (based on wait
+       time) rather than randomly.
+       See [1]the paper for details.
+     _________________________________________________________________
+
    Changes for "dnh2" Release
 
    Patches
@@ -23,9 +44,10 @@
        for.
 
    Optimization
-     * Use fewer call to random() by shifting the previously unused bits.
+     * Use fewer calls to random() by shifting the previously unused
+       bits.
      * Time() calls have been greatly reduced; a global timestamp
-       variable "now" is set once per main loop interation and referenced
+       variable "now" is set once per main loop iteration and referenced
        in functions that need a timestamp (except the caching I/O
        routines which were left alone).
      * Overall current bandwidth rates are now computed only once per
@@ -150,7 +172,7 @@
        parameters.
      * Support/display tracker warning message
      * Now able to handle torrents with more than 255 files.
-     * Support for [1]CTorrent Control Server, an application and
+     * Support for [2]CTorrent Control Server, an application and
        protocol for monitoring and managing multiple Enhanced CTorrent
        clients. The "-S" option is used to connect to CTCS, as in "-S
        localhost:2780" if CTCS is listening at port 2780 on the local
@@ -239,7 +261,7 @@
 
    Patches
      * Incorporates the following patches. The number is the Request ID
-       from the [2]SourceForge patches page, which you can reference for
+       from the [3]SourceForge patches page, which you can reference for
        the details of each patch. The name in brackets is the name of the
        patch file or a name I chose to refer to the patch. Some of these
        names are used below (in brackets) to describe a fix or change to
@@ -368,12 +390,13 @@
        This provides more precise DL rate measurement, and helps insure
        that we receive a productive amount of data (i.e. a complete
        slice) even if we are unchoked by a peer for only one cycle. See
-       [3]http://groups.yahoo.com/group/BitTorrent/message/1260 for more
+       [4]http://groups.yahoo.com/group/BitTorrent/message/1260 for more
        discussion/analysis on this.
      * Added -v (verbose) option for additional debugging output.
 
 References
 
-   1. http://www.rahul.net/dholmes/ctorrent/ctcs.html
-   2. http://sourceforge.net/tracker/?atid=598034&group_id=91688&func=browse
-   3. http://groups.yahoo.com/group/BitTorrent/message/1260
+   1. http://www.eurecom.fr/~michiard/pubs/bt_experiments_techRepINRIA-00001111_VERSION1_13FEBRUARY2006.pdf
+   2. http://www.rahul.net/dholmes/ctorrent/ctcs.html
+   3. http://sourceforge.net/tracker/?atid=598034&group_id=91688&func=browse
+   4. http://groups.yahoo.com/group/BitTorrent/message/1260

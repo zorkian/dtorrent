@@ -161,7 +161,7 @@ int Ctcs::SendMessage(char *message)
       buf[CTCS_BUFSIZE-2] = '\n';
       buf[CTCS_BUFSIZE-1] = '\0';
     }
-    r = out_buffer.Put(m_sock, buf, len+1);
+    r = out_buffer.PutFlush(m_sock, buf, len+1);
     if( r<0 ) Reset(1);
   }
   return r;
@@ -428,15 +428,16 @@ int Ctcs::Connect()
   else if( r == -2 ) m_status = T_CONNECTING;
   else{
     m_status = T_READY;
-    if( Send_Protocol() != 0 ){
+    if( Send_Protocol() != 0 && errno != EINPROGRESS ){
       fprintf(stderr,"warn, send protocol to CTCS failed. %s\n",strerror(errno));
       return -1;
     }
-    if( Send_Auth() != 0) {
+    if( Send_Auth() != 0 && errno != EINPROGRESS ) {
       fprintf(stderr,"warn, send password to CTCS failed. %s\n",strerror(errno));
       return -1;
     }
-    if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) != 0 ){
+    if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) != 0 &&
+        errno != EINPROGRESS ){
       fprintf(stderr,"warn, send torrent to CTCS failed. %s\n",strerror(errno));
       return -1;
     }
@@ -488,15 +489,16 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
       return -1;
     }else{
       m_status = T_READY; 
-      if( Send_Protocol() != 0 ){
+      if( Send_Protocol() != 0 && errno != EINPROGRESS ){
         fprintf(stderr,"warn, send protocol to CTCS failed. %s\n",strerror(errno));
         return -1;
       }
-      if( Send_Auth() != 0) {
+      if( Send_Auth() != 0 && errno != EINPROGRESS ) {
         fprintf(stderr,"warn, send password to CTCS failed. %s\n",strerror(errno));
         return -1;
       }
-      if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) == 0 ){
+      if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) == 0
+          && errno != EINPROGRESS ){
         fprintf(stderr,"warn, send torrent to CTCS failed. %s\n",strerror(errno));
         return -1;
       }

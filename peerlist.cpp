@@ -115,6 +115,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     if( !peer ) goto err;
 #endif
 
+    peer->SetConnect();
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus( (-2 == r) ? P_CONNECTING : P_HANDSHAKE );
@@ -246,6 +247,11 @@ int PeerList::FillFDSET(const time_t *pnow,fd_set *rfdp,fd_set *wfdp)
   m_seeds_count = 0;
   for(p = m_head; p;){
     if( PEER_IS_FAILED(p->peer)){
+      if( p->peer->WantAgain() ){ // connect to this peer again
+        struct sockaddr_in addr;
+        p->peer->GetAddress(&addr);
+        IPQUEUE.Add(&addr);
+      }
       if( pp ) pp->next = p->next; else m_head = p->next;
       delete p->peer;
       delete p;
@@ -733,6 +739,7 @@ void PeerList::CloseAllConnectionToSeed()
   PEERNODE *p = m_head;
   for( ; p; p = p->next)
     if(p->peer->bitfield.IsFull()) {
+      p->peer->DontWantAgain();
       if(arg_verbose) fprintf(stderr, "close: seed<->seed\n");
       p->peer->CloseConnection();
     }
@@ -748,7 +755,8 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
   unsigned long rndbits;
   int r=0;
 
-  if (m_opt_timestamp) no_opt = 1;
+  if(m_opt_timestamp) no_opt = 1;
+  if(f_seed) no_opt = 1 - no_opt;
 
 // Find my 3 or 4 fastest peers.
 // The MAX_UNCHOKE+1 (4th) slot is for the optimistic unchoke when it happens.
@@ -763,8 +771,15 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
       if(cancel_idx == i) continue;
 
       if(f_seed){
-        // compare upload rate.
-        if(peer_array[cancel_idx]->RateUL() > peer_array[i]->RateUL())
+        // compare time unchoked
+        if( (!peer_array[i]->Is_Local_UnChoked() &&
+            (peer_array[cancel_idx]->Is_Local_UnChoked() ||
+              peer_array[cancel_idx]->GetLastUnchokeTime() <
+                peer_array[i]->GetLastUnchokeTime())) ||
+            (peer_array[i]->Is_Local_UnChoked() &&
+             peer_array[cancel_idx]->Is_Local_UnChoked() &&
+             peer_array[i]->GetLastUnchokeTime() <
+               peer_array[cancel_idx]->GetLastUnchokeTime()) )
           cancel_idx = i;
       }else{
         // compare download rate.
@@ -782,7 +797,14 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
   if( (btPeer*) 0 != peer_array[cancel_idx] &&
       PEER_IS_SUCCESS(peer_array[cancel_idx]) ){
     if(f_seed){
-      if(peer->RateUL() > peer_array[cancel_idx]->RateUL()){
+      if( (!peer_array[cancel_idx]->Is_Local_UnChoked() &&
+           (peer->Is_Local_UnChoked() ||
+             peer->GetLastUnchokeTime() <
+               peer_array[cancel_idx]->GetLastUnchokeTime())) ||
+           (peer_array[cancel_idx]->Is_Local_UnChoked() &&
+            peer->Is_Local_UnChoked() &&
+            peer_array[cancel_idx]->GetLastUnchokeTime() <
+              peer->GetLastUnchokeTime()) ){
         loster = peer_array[cancel_idx];
         peer_array[cancel_idx] = peer;
       }else
@@ -829,7 +851,8 @@ void PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
             ( peer_array[MAX_UNCHOKE]->Is_Local_UnChoked() ||
               loster->GetLastUnchokeTime() <
                 peer_array[MAX_UNCHOKE]->GetLastUnchokeTime() )) ||
-          (peer_array[MAX_UNCHOKE]->Is_Local_UnChoked() &&
+          (loster->Is_Local_UnChoked() &&
+            peer_array[MAX_UNCHOKE]->Is_Local_UnChoked() &&
             peer_array[MAX_UNCHOKE]->GetLastUnchokeTime() <
               loster->GetLastUnchokeTime()) ){
         // if current is empty and loser is not, loser gets 25% chance;

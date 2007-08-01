@@ -276,19 +276,21 @@ int btTracker::CheckReponse()
         return -1;
       }
 
-      strcpy(tmppath,m_path);
+      if(!strstr(m_path, "info_hash=")) {
+        strcpy(tmppath,m_path);
 
-      if(strchr(m_path, '?'))
-        format=REQ_URL_P1A_FMT;
-      else format=REQ_URL_P1_FMT;
+        if(strchr(m_path, '?'))
+          format=REQ_URL_P1A_FMT;
+        else format=REQ_URL_P1_FMT;
       
-      if(MAXPATHLEN < snprintf(m_path,MAXPATHLEN,format,
-                               tmppath,
-                               Http_url_encode(ih_buf, (char*)BTCONTENT.GetInfoHash(), 20),
-                               Http_url_encode(pi_buf, (char*)BTCONTENT.GetPeerId(), 20),
-                               cfg_listen_port,
-                               m_key)){
-        return -1;
+        if(MAXPATHLEN < snprintf(m_path,MAXPATHLEN,format,
+                                 tmppath,
+                                 Http_url_encode(ih_buf, (char*)BTCONTENT.GetInfoHash(), 20),
+                                 Http_url_encode(pi_buf, (char*)BTCONTENT.GetPeerId(), 20),
+                                 cfg_listen_port,
+                                 m_key)){
+          return -1;
+        }
       }
 
       return Connect();

@@ -93,7 +93,10 @@ class btPeer:public btBasic
   unsigned char m_status:4;
   unsigned char m_bad_health:1;
   unsigned char m_standby:1;
-  unsigned char m_reserved:1;
+  unsigned char m_want_again:1;  // attempt reconnect if lost
+
+  unsigned char m_connect:1;     // we initiated the connection
+  unsigned char m_reserved:7;
 
   BTSTATUS m_state;
 
@@ -158,6 +161,9 @@ class btPeer:public btBasic
 
   
   void CloseConnection();
+  int WantAgain() const { return (m_connect && m_want_again) ? 1 : 0; }
+  void DontWantAgain() { m_want_again = 0; }
+  void SetConnect() { m_connect = 1; }
 
   
   int AreYouOK();

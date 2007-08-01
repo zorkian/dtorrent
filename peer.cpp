@@ -134,6 +134,7 @@ btPeer::btPeer()
   m_prev_dlrate = 0;
   m_health_time = m_receive_time = m_choketime = m_last_timestamp;
   m_bad_health = 0;
+  m_want_again = m_connect = 0;
 }
 
 int btPeer::SetLocal(unsigned char s)
@@ -866,6 +867,10 @@ int btPeer::HandShake()
   if( r >= 0){
     if( stream.in_buffer.PickUp(68) < 0 ) return -1;
     m_status = P_SUCCESS;
+    m_want_again = 1;
+    // When seeding, new peer starts at the end of the line.
+    if( BTCONTENT.pBF->IsFull() )	// i am seed
+      m_unchoke_timestamp = now;
   }
   return r;
 }
@@ -964,8 +969,10 @@ int btPeer::RecvModule()
 
       if( r < 0 && r != -2 )
         return -1;
-      else if ( r == -2 )
+      else if ( r == -2 ){ // seed<->seed
         f_peer_closed = 1;
+        m_want_again = 0;
+      }
   
       r = stream.HaveMessage();
       for( ; r;){
