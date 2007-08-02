@@ -221,7 +221,7 @@ int btFiles::_btf_destroy()
   BTFILE *pbf,*pbf_next;
   for(pbf = m_btfhead; pbf;){
     pbf_next = pbf->bf_next;
-    if( pbf->bf_fp ) fclose( pbf->bf_fp );
+    if( pbf->bf_fp && pbf->bf_flag_opened ) fclose( pbf->bf_fp );
     if( pbf->bf_filename ) delete []pbf->bf_filename;
     delete pbf;
     pbf = pbf_next;
