@@ -329,7 +329,8 @@ int btPeer::MsgDeliver()
     m_f_keepalive = 0;
     return 0;
   }else{
-    switch(msgbuf[H_LEN]){
+    char msg = msgbuf[H_LEN];
+    switch(msg){
     case M_CHOKE:
       if(H_BASE_LEN != r) return -1;
       if(arg_verbose) CONSOLE.Debug("%p choked me", this);
@@ -493,11 +494,11 @@ int btPeer::MsgDeliver()
       break;
 
     default:
-      if(arg_verbose) CONSOLE.Debug("Unknown message type %d from peer %p",
-        (int)(msgbuf[H_LEN]), this);
+      if(arg_verbose)
+        CONSOLE.Debug("Unknown message type %d from peer %p", (int)msg, this);
     } // switch
 
-    if( retval >= 0 ) m_lastmsg = msgbuf[H_LEN];
+    if( retval >= 0 ) m_lastmsg = msg;
   }
   return retval;
 }
