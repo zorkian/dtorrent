@@ -13,6 +13,10 @@
 #include "bttime.h"
 #include "console.h"
 
+#ifndef HAVE_CLOCK_GETTIME
+#include "compat.h"
+#endif
+
 // Convert a peer ID to a printable string.
 int TextPeerID(unsigned char *peerid, char *txtid)
 {

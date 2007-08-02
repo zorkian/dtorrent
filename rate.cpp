@@ -5,6 +5,10 @@
 #include "bttime.h"
 #include "console.h"
 
+#ifndef HAVE_CLOCK_GETTIME
+#include "compat.h"
+#endif
+
 #define RATE_INTERVAL 20
 #define SHORT_INTERVAL 5
 

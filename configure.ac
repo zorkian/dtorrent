@@ -15,8 +15,7 @@ AC_PROG_CC
 AC_LANG([C++])
 
 # Checks for libaries.
-AC_SEARCH_LIBS([clock_gettime],[c rt posix4],,
-	[AC_MSG_ERROR([cannot find library for clock_gettime()])])
+AC_SEARCH_LIBS([clock_gettime],[c rt posix4])
 
 # Checks for header files.
 AC_HEADER_DIRENT
@@ -39,13 +38,16 @@ AC_TYPE_UINT8_T
 AC_TYPE_UINT16_T
 AC_TYPE_UINT32_T
 AC_TYPE_UINT64_T
+AC_CHECK_TYPE([clockid_t],
+	[AC_DEFINE([HAVE_CLOCKID_T],,
+		[Define to 1 if you have the clockid_t type.])])
 
 # Checks for library functions.
 AC_FUNC_MEMCMP
 AC_TYPE_SIGNAL
 AC_FUNC_STAT
 AC_FUNC_STRTOD
-AC_CHECK_FUNCS([ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select socket strchr strerror strncasecmp strstr strtol strtoll strnstr])
+AC_CHECK_FUNCS([clock_gettime ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select socket strchr strerror strncasecmp strstr strtol strtoll strnstr])
 
 # Enable/check large file support
 AC_SYS_LARGEFILE

@@ -23,6 +23,10 @@
 #include "bttime.h"
 #include "console.h"
 
+#ifndef HAVE_CLOCK_GETTIME
+#include "compat.h"
+#endif
+
 #define MIN_UNCHOKES 3
 #define MIN_OPT_CYCLE 3
 #define MIN_UNCHOKE_INTERVAL 10

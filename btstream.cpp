@@ -7,6 +7,10 @@
 #include "msgencode.h"
 #include "btconfig.h"
 
+#ifndef HAVE_CLOCK_GETTIME
+#include "compat.h"
+#endif
+
 size_t get_nl(char *from)
 {
   // assumes H_INT_LEN==H_LEN==4

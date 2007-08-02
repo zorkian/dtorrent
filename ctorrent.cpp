@@ -44,9 +44,14 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
 void Random_init()
 {
+  unsigned long seed;
+#ifdef HAVE_GETTIMEOFDAY
   struct timeval tv; 
   gettimeofday(&tv,(struct timezone*) 0);
-  unsigned long seed = tv.tv_usec + tv.tv_sec + getpid();
+  seed = tv.tv_usec + tv.tv_sec + getpid();
+#else
+  seed = (unsigned long)time((time_t *)0);
+#endif
   srandom(seed);
 }
 
