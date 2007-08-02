@@ -43,6 +43,7 @@
 #define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),(int64_t*) 0,QUERY_INT)
 #define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,QUERY_POS)
 
+// Does "ca" overlap the data that lies from roff to rlen?
 #define CACHE_FIT(ca,roff,rlen)	\
 (max_uint64_t((ca)->bc_off,(roff)) <= \
  min_uint64_t(((ca)->bc_off + (ca)->bc_len - 1),(roff + rlen - 1)))
@@ -194,7 +195,11 @@ int btContent::PrintOut()
   CONSOLE.Print("Announce: %s", m_announce);
   if( m_create_date ){
     char s[42];
+#ifdef HAVE_CTIME_R_3
+    ctime_r(&m_create_date, s, sizeof(s));
+#else
     ctime_r(&m_create_date, s);
+#endif
     if( s[strlen(s)-1] == '\n' ) s[strlen(s)-1] = '\0';
     CONSOLE.Print("Created On: %s", s);
   }
@@ -251,11 +256,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if( !meta_int("info|piece length",&m_piece_length) ) ERR_RETURN();
   m_npieces = m_hashtable_length / 20;
 
-  cfg_req_queue_length = (m_piece_length / cfg_req_slice_size) * 2 - 1;
-
   if( m_piece_length < cfg_req_slice_size )
     cfg_req_slice_size = m_piece_length;
-  
+
+  cfg_req_queue_length = (m_piece_length / cfg_req_slice_size) * 2 - 1;
+
   if( m_btfiles.BuildFromMI(b, flen, saveas) < 0 ) ERR_RETURN();
 
   delete []b;
@@ -391,7 +396,6 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
   if( !m_cache_size ) return buf ? m_btfiles.IO(buf, offset, len, 0) : 0;
   else{
     size_t len2;
-    int flg_rescan;
     BTCACHE *p;
 
     p = m_cache[idx];
@@ -399,7 +403,6 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
         p = p->bc_next );
 
     for( ; len && p && CACHE_FIT(p, offset, len); ){
-      flg_rescan = 0;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
         if( CacheIO(buf, offset, len2, 0) < 0 ) return -1;
@@ -408,7 +411,6 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
                                 ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         else m_cache_pre += len2 / DEFAULT_SLICE_SIZE +
                             ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
-        flg_rescan = 1;
       }else{
         char *src;
         if( offset > p->bc_off ){
@@ -425,32 +427,23 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
                          ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         }else{  // prefetch only, update the age
           if( m_cache_newest != p ){
-            if( p->age_prev ) p->age_prev->age_next = p->age_next;
-            else if( p->age_next ) m_cache_oldest = p->age_next;
-            if( p->age_next ) p->age_next->age_prev = p->age_prev;
+            if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+            else p->age_prev->age_next = p->age_next;
+            p->age_next->age_prev = p->age_prev;
             m_cache_newest->age_next = p;
             p->age_next = (BTCACHE *)0;
             p->age_prev = m_cache_newest;
             m_cache_newest = p;
           }
         }
+        p = p->bc_next;
       }
 
       if( buf ) buf += len2;
       offset += len2;
       len -= len2;
-
-      if( len ){
-        if( flg_rescan ){
-          for( p = m_cache[idx];
-               p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len);
-               p = p->bc_next );
-        }else{
-          p = p->bc_next;
-        }
-      }
     }// end for;
-  
+
     if( len ){
       if(buf) m_cache_miss += len / DEFAULT_SLICE_SIZE +
                               ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
@@ -473,20 +466,25 @@ void btContent::CacheClean(size_t need)
   again:
   for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
     pnext = p->age_next;
-    if( f_flush ) FlushEntry(p);
+    if( f_flush ){
+      if(arg_verbose)
+        CONSOLE.Debug("Flushing %d/%d/%d", (int)(p->bc_off / m_piece_length),
+          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+      FlushEntry(p);
+    }
     if( !p->bc_f_flush ){
-      if( p->age_prev ) p->age_prev->age_next = p->age_next;
-      else m_cache_oldest = p->age_next;
-      if( p->age_next ) p->age_next->age_prev = p->age_prev;
-      else m_cache_newest = p->age_prev;
+      if(arg_verbose)
+        CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
+          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+
+      if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+      else p->age_prev->age_next = p->age_next;
+      if( m_cache_newest == p ) m_cache_newest = p->age_prev;
+      else p->age_next->age_prev = p->age_prev;
 
       if( p->bc_prev ) p->bc_prev->bc_next = p->bc_next;
+      else m_cache[p->bc_off / m_piece_length] = p->bc_next;
       if( p->bc_next ) p->bc_next->bc_prev = p->bc_prev;
-
-      size_t idx = p->bc_off / m_piece_length;
-      if( p->bc_next && p->bc_next->bc_off / m_piece_length == idx )
-        m_cache[idx] = p->bc_next;
-      else m_cache[idx] = (BTCACHE *)0;
 
       m_cache_used -= p->bc_len;
       delete []p->bc_buf;
@@ -534,12 +532,6 @@ void btContent::CacheEval()
       if( p->bc_f_flush ) unflushed += p->bc_len;
     // Make sure we can read back and check a completed piece.
     dlnext = ratedn * interval + m_piece_length;
-    // Set a shorter interval if DL cache need is very high.
-    if( ratedn ){
-      size_t max =
-        (cfg_cache_size*1024*1024 - unflushed - m_piece_length) / ratedn;
-      if( interval > max ) interval = max;
-    }
   }
 
   // Upload: need enough to hold read/dl'd data until it can be sent
@@ -624,38 +616,41 @@ int btContent::NeedFlush() const
 {
   if( m_flush_failed ){
     if( now > m_flush_tried ) return 1;
-  }else return m_flushq ? 1 : 0;
+  }else
+    return (m_flushq ||
+            (m_cache_oldest && m_cache_oldest->bc_f_flush &&
+             m_cache_used >= cfg_cache_size*1024*1024-cfg_req_slice_size+1)) ?
+           1 : 0;
 }
 
-void btContent::FlushCache(size_t idx)
+void btContent::FlushCache()
 {
-  BTCACHE *p, *pnext;
+  if(arg_verbose) CONSOLE.Debug("Flushing all cache");
+  for( int i=0; i < m_npieces; i++ ){
+    if( m_cache[i] ) FlushPiece(i);
+    if( m_flush_failed ) break;
+  }
+}
 
-  if( idx >= m_npieces ){
-    if(arg_verbose) CONSOLE.Debug("Flushing all cache");
-    if( m_flushq) do{
-      FlushQueue();
-    }while( m_flushq && !m_flush_failed );
-    p = m_cache_oldest;
-  } else p = m_cache[idx];
+void btContent::FlushPiece(size_t idx)
+{
+  BTCACHE *p;
 
-  for( ; p; p = pnext ){
-    pnext = (idx < m_npieces) ? p->bc_next : p->age_next;
-    if( idx == p->bc_off / m_piece_length ||
-        (p->bc_f_flush && idx == m_npieces) ||
-        idx == (p->bc_off+p->bc_len-1) / m_piece_length ){
-      // update the age--flushing the entry or its piece
-      if( m_cache_newest != p ){
-        if( p->age_prev ) p->age_prev->age_next = p->age_next;
-        else if( p->age_next ) m_cache_oldest = p->age_next;
-        if( p->age_next ) p->age_next->age_prev = p->age_prev;
-        m_cache_newest->age_next = p;
-        p->age_next = (BTCACHE *)0;
-        p->age_prev = m_cache_newest;
-        m_cache_newest = p;
-      }
-      if( p->bc_f_flush ) FlushEntry(p);
+  p = m_cache[idx];
+
+  for( ; p; p = p->bc_next ){
+    // Update the age--flushing the entry or its piece.  Usually this means
+    // we've just completed the piece and made it available.
+    if( m_cache_newest != p ){
+      if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+      else p->age_prev->age_next = p->age_next;
+      p->age_next->age_prev = p->age_prev;
+      m_cache_newest->age_next = p;
+      p->age_next = (BTCACHE *)0;
+      p->age_prev = m_cache_newest;
+      m_cache_newest = p;
     }
+    if( p->bc_f_flush ) FlushEntry(p);
   }
 }
 
@@ -707,35 +702,80 @@ void btContent::Uncache(size_t idx)
   p = m_cache[idx];
   for( ; p; p = pnext ){
     pnext = p->bc_next;
-    if( idx == p->bc_off / m_piece_length ){
-      if( p->age_prev ) p->age_prev->age_next = p->age_next;
-      else m_cache_oldest = p->age_next;
-      if( p->age_next ) p->age_next->age_prev = p->age_prev;
-      else m_cache_newest = p->age_prev;
+     if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+     else p->age_prev->age_next = p->age_next;
+     if( m_cache_newest == p ) m_cache_newest = p->age_prev;
+     else p->age_next->age_prev = p->age_prev;
 
-      if( p->bc_prev ) p->bc_prev->bc_next = p->bc_next;
-      if( p->bc_next ) p->bc_next->bc_prev = p->bc_prev;
-
-      m_cache_used -= p->bc_len;
-      delete []p->bc_buf;
-      delete p;
-    }else break;
+     m_cache_used -= p->bc_len;
+     delete []p->bc_buf;
+     delete p;
   }
   m_cache[idx] = (BTCACHE *)0;
 }
 
 void btContent::FlushQueue()
 {
-  if( !m_flushq ) return;
-
-  if(arg_verbose)
-    CONSOLE.Debug("Writing piece #%d to disk", (int)(m_flushq->idx));
-  FlushCache(m_flushq->idx);
-  if( !m_flush_failed ){
-    BTFLUSH *goner = m_flushq;
-    m_flushq = m_flushq->next;
-    delete goner;
+  if( m_flushq ){
+    if(arg_verbose)
+      CONSOLE.Debug("Writing piece #%d to disk", (int)(m_flushq->idx));
+    FlushPiece(m_flushq->idx);
+    if( !m_flush_failed ){
+      BTFLUSH *goner = m_flushq;
+      m_flushq = m_flushq->next;
+      delete goner;
+    }
+  }else{
+    if(arg_verbose) CONSOLE.Debug("Flushing %d/%d/%d",
+      (int)(m_cache_oldest->bc_off / m_piece_length),
+      (int)(m_cache_oldest->bc_off % m_piece_length),
+      (int)(m_cache_oldest->bc_len));
+    FlushEntry(m_cache_oldest);
   }
+}
+
+/* Prepare for prefetching a whole piece.
+   return -1:  do not prefetch (problem or not needed)
+   return  0:  already ready (no time used)
+   return  1:  data was flushed (time used)
+*/
+int btContent::CachePrep(size_t idx)
+{
+  int retval = 0;
+  BTCACHE *p, *pnext;
+  size_t need = GetPieceLength(idx);
+
+  if( m_cache_size < m_cache_used + need ){
+    for( p=m_cache[idx]; p; p=p->bc_next ) need -= p->bc_len;
+    if( 0==need ) retval = -1;  // don't need to prefetch
+    for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
+      pnext = p->age_next;
+      if( p->bc_off / m_piece_length == idx ) continue;
+      if( p->bc_f_flush ){
+        if(arg_verbose)
+          CONSOLE.Debug("Flushing %d/%d/%d", (int)(p->bc_off / m_piece_length),
+            (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+        FlushEntry(p);
+        retval = 1;
+      }
+      if(arg_verbose)
+        CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
+          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+      if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+      else p->age_prev->age_next = p->age_next;
+      if( m_cache_newest == p ) m_cache_newest = p->age_prev;
+      else p->age_next->age_prev = p->age_prev;
+
+      if( p->bc_prev ) p->bc_prev->bc_next = p->bc_next;
+      else m_cache[p->bc_off / m_piece_length] = p->bc_next;
+      if( p->bc_next ) p->bc_next->bc_prev = p->bc_prev;
+
+      m_cache_used -= p->bc_len;
+      delete []p->bc_buf;
+      delete p;
+    }
+  }
+  return retval;
 }
 
 ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
@@ -748,7 +788,6 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 1);
   else{
     size_t len2;
-    int flg_rescan;
     BTCACHE *p;
 
     p = m_cache[idx];
@@ -756,47 +795,35 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
         p = p->bc_next );
 
     for( ; len && p && CACHE_FIT(p, offset, len); ){
-      flg_rescan = 0;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
         if( CacheIO(buf, offset, len2, 1) < 0 ) return -1;
-        flg_rescan = 1;
       }else{
         if( offset > p->bc_off ){
           len2 = p->bc_off + p->bc_len - offset;
           if( len2 > len ) len2 = len;
-          memcpy(p->bc_buf + offset - p->bc_off, buf, len2);
-          p->bc_f_flush = 1;
+          memcpy(p->bc_buf + (offset - p->bc_off), buf, len2);
         }else{
           len2 = (len > p->bc_len) ? p->bc_len : len;
           memcpy(p->bc_buf, buf, len2);
-          p->bc_f_flush = 1;
         }
+        p->bc_f_flush = 1;
         // re-received this data, make it new again
         if( m_cache_newest != p ){
-          if( p->age_prev ) p->age_prev->age_next = p->age_next;
-          else if( p->age_next ) m_cache_oldest = p->age_next;
-          if( p->age_next ) p->age_next->age_prev = p->age_prev;
+          if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
+          else p->age_prev->age_next = p->age_next;
+          p->age_next->age_prev = p->age_prev;
           m_cache_newest->age_next = p;
           p->age_next = (BTCACHE *)0;
           p->age_prev = m_cache_newest;
           m_cache_newest = p;
         }
+        p = p->bc_next;
       }
 
       buf += len2;
       offset += len2;
       len -= len2;
-
-      if( len ){
-        if( flg_rescan ){
-          for( p = m_cache[idx];
-               p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len);
-               p = p->bc_next );
-        }else{
-          p = p->bc_next;
-        }
-      }
     }// end for;
   
     if( len ) return CacheIO(buf, offset, len, 1);
@@ -809,6 +836,11 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
   BTCACHE *p;
   BTCACHE *pp = (BTCACHE*) 0;
   BTCACHE *pnew = (BTCACHE*) 0;
+
+  if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
+    if( buf ) return m_btfiles.IO(buf, off, len, method);
+    else return 0;
+  }
 
   if(arg_verbose && 0==method)
     CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
@@ -835,8 +867,11 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
 #endif
 
   if( buf ) memcpy(pnew->bc_buf, buf, len);
-  else if( 0==method && m_btfiles.IO(pnew->bc_buf, off, len, method) < 0 )
+  else if( 0==method && m_btfiles.IO(pnew->bc_buf, off, len, method) < 0 ){
+    delete []pnew->bc_buf;
+    delete pnew;
     return -1;
+  }
   pnew->bc_off = off;
   pnew->bc_len = len;
   pnew->bc_f_flush = method;
@@ -874,9 +909,12 @@ ssize_t btContent::ReadPiece(char *buf,size_t idx)
 
 size_t btContent::GetPieceLength(size_t idx)
 {
-  return (idx == m_btfiles.GetTotalLength() / m_piece_length) ?
-    (size_t)(m_btfiles.GetTotalLength() % m_piece_length) 
-    :m_piece_length;
+  // Slight optimization to avoid division in every call.  The second test is
+  // still needed in case the torrent size is exactly n pieces.
+  return (idx == m_npieces - 1 &&
+          idx == m_btfiles.GetTotalLength() / m_piece_length) ?
+    (size_t)(m_btfiles.GetTotalLength() % m_piece_length) :
+    m_piece_length;
 }
 
 int btContent::CheckExist()
@@ -994,12 +1032,14 @@ int btContent::APieceComplete(size_t idx)
   unsigned char md[20];
   if(pBF->IsSet(idx)) return 1;
   if( GetHashValue(idx, md) < 0 ){
+    // error reading data
     Uncache(idx);
     return -1;
   }
 
   if( memcmp(md,(m_hash_table + idx * 20), 20) != 0 ){
     CONSOLE.Warning(3, "warn, piece %d hash check failed.", idx);
+    Uncache(idx);
     return 0;
   }
 
@@ -1016,7 +1056,7 @@ int btContent::APieceComplete(size_t idx)
     if( !IsFull() || m_flush_failed ){
       BTFLUSH *last = m_flushq;
       BTFLUSH *node = new BTFLUSH;
-      if( !node ) FlushCache(idx);
+      if( !node ) FlushPiece(idx);
       else{
         node->idx = idx;
         node->next = (BTFLUSH *)0;
@@ -1045,7 +1085,7 @@ int btContent::SeedTimeout()
   if( Seeding() && (!m_flush_failed || IsFull()) ){
     if( !m_seed_timestamp ){
       if( IsFull() ){
-        Tracker.Reset(1);
+        Tracker.Reset(15);
         ReleaseHashTable();
       }
       Self.ResetDLTimer();  // set/report dl rate = 0
@@ -1375,11 +1415,33 @@ void btContent::SaveBitfield()
 void btContent::DumpCache()
 {
   BTCACHE *p = m_cache_oldest;
+  int count;
 
   CONSOLE.Debug("CACHE CONTENTS:");
+  count = 0;
   for( ; p; p = p->age_next ){
-    CONSOLE.Debug("  0x%llx: %d bytes %sflushed",
-      p->bc_off, (int)(p->bc_len), p->bc_f_flush ? "un" : "");
+    CONSOLE.Debug("  %p prev=%p %d/%d/%d %sflushed",
+      p, p->age_prev,
+      (int)(p->bc_off / m_piece_length), (int)(p->bc_off % m_piece_length),
+      (int)(p->bc_len),
+      p->bc_f_flush ? "un" : "");
+    count++;
   }
+  CONSOLE.Debug("  count=%d", count);
+  CONSOLE.Debug("  newest=%p", m_cache_newest);
+
+  CONSOLE.Debug("BY PIECE:");
+  count = 0;
+  for( size_t idx=0; idx < m_npieces; idx++ ){
+    for( p=m_cache[idx]; p; p=p->bc_next ){
+      CONSOLE.Debug("  %p prev=%p %d/%d/%d %sflushed",
+        p, p->bc_prev,
+        (int)(p->bc_off / m_piece_length), (int)(p->bc_off % m_piece_length),
+        (int)(p->bc_len),
+        p->bc_f_flush ? "un" : "");
+      count++;
+    }
+  }
+  CONSOLE.Debug("  count=%d", count);
 }
 

@@ -18,7 +18,6 @@
 #include <ctype.h>  // isprint
 
 #include "bencode.h"
-#include "btconfig.h"
 #include "btcontent.h"
 #include "bitfield.h"
 #include "console.h"
@@ -44,6 +43,7 @@ btFiles::btFiles()
 btFiles::~btFiles()
 {
   _btf_destroy();
+  if( m_directory ) delete []m_directory;
 }
 
 BTFILE* btFiles::_new_bfnode()
@@ -93,6 +93,7 @@ int btFiles::_btf_close(BTFILE *pbf)
     CONSOLE.Warning(2, "warn, error closing file \"%s\":  %s",
       pbf->bf_filename, strerror(errno));
   pbf->bf_flag_opened = 0;
+  pbf->bf_fp = (FILE *)0;
   m_total_opened--;
   return 0;
 }
@@ -117,7 +118,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
   }else{
     strcpy(fn, pbf->bf_filename);
   }
-  
+
   if( !(pbf->bf_fp = fopen(fn, iotype ? "r+b" : "rb")) ){
     if( EMFILE == errno || ENFILE == errno ){
       if( _btf_close_oldest() < 0 ||
@@ -125,6 +126,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
         return -1;  // caller prints error
     }else return -1;  // caller prints error
   }
+  setvbuf(pbf->bf_fp, m_buffer, _IOFBF, DEFAULT_SLICE_SIZE);
 
   pbf->bf_flag_opened = 1;
   pbf->bf_flag_readonly = iotype ? 0 : 1;
@@ -182,7 +184,7 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 
     if(0 == iotype){
       errno = 0;
-      if( 1 != fread(buf,nio,1,pbf->bf_fp) ){
+      if( 1 != fread(buf,nio,1,pbf->bf_fp) && ferror(pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
@@ -435,6 +437,8 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
   const char *s, *p;
   size_t r,q,n;
   int64_t t;
+  int f_warned = 0;
+
   if( !decode_query(metabuf, metabuf_len, "info|name", &s, &q, (int64_t*)0,
       QUERY_STR) || MAXPATHLEN <= q )
     return -1;
@@ -459,27 +463,36 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
       if(!m_directory) return -1;
 #endif
       strcpy(m_directory,saveas);
-    }else if( arg_flg_convert_filenames ){
+    }else{
+      int f_conv;
       char *tmpfn = new char[strlen(path)*2+5];
 #ifndef WINDOWS
       if( !tmpfn ) return -1;
 #endif
-      ConvertFilename(tmpfn, path, strlen(path)*2+5);
-      m_directory = new char[strlen(tmpfn) + 1];
+      if( f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5) ){
+        if( arg_flg_convert_filenames ){
+          m_directory = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
-      if( !m_directory ){
-        delete []tmpfn;
-        return -1;
+          if( !m_directory ){
+            delete []tmpfn;
+            return -1;
+          }
+#endif
+          strcpy(m_directory,tmpfn);
+        }else{
+          CONSOLE.Warning(3,
+            "Dir name contains non-printable characters; use -T to convert.");
+          f_warned = 1;
+        }
       }
-#endif
-      strcpy(m_directory,tmpfn);
       delete []tmpfn;
-    }else{
-      m_directory = new char[strlen(path) + 1];
+      if( !f_conv || !arg_flg_convert_filenames ){
+        m_directory = new char[strlen(path) + 1];
 #ifndef WINDOWS
-      if( !m_directory ) return -1;
+        if( !m_directory ) return -1;
 #endif
-      strcpy(m_directory,path);
+        strcpy(m_directory,path);
+      }
     }
 
     /* now r saved the pos of files list. q saved list length */
@@ -499,22 +512,30 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
                        QUERY_POS);
       if( !r ) return -1;
       if(!decode_list2path(p + r, n, path)) return -1;
-      if( arg_flg_convert_filenames ){
-        char *tmpfn = new char[strlen(path)*2+5];
+
+      int f_conv;
+      char *tmpfn = new char[strlen(path)*2+5];
 #ifndef WINDOWS
-        if( !tmpfn ) return -1;
+      if( !tmpfn ) return -1;
 #endif
-        ConvertFilename(tmpfn, path, strlen(path)*2+5);
-        pbf->bf_filename = new char[strlen(tmpfn) + 1];
+      if( f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5) ){
+        if( arg_flg_convert_filenames ){
+          pbf->bf_filename = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
-        if( !pbf->bf_filename ){
-          delete []tmpfn;
-          return -1;
+          if( !pbf->bf_filename ){
+            delete []tmpfn;
+            return -1;
+          }
+#endif
+          strcpy(pbf->bf_filename, tmpfn);
+        }else if(!f_warned){
+          CONSOLE.Warning(3,
+            "Filename contains non-printable characters; use -T to convert.");
+          f_warned = 1;
         }
-#endif
-        strcpy(pbf->bf_filename, tmpfn);
-        delete []tmpfn;
-      }else{
+      }
+      delete []tmpfn;
+      if( !f_conv || !arg_flg_convert_filenames ){
         pbf->bf_filename = new char[strlen(path) + 1];
 #ifndef WINDOWS
         if( !pbf->bf_filename ) return -1;
@@ -745,9 +766,9 @@ size_t btFiles::GetFilePieces(size_t nfile) const
   return 0;
 }
 
-void btFiles::ConvertFilename(char *dst, const char *src, int size)
+int btFiles::ConvertFilename(char *dst, const char *src, int size)
 {
-  int i, j, f_print=0, f_punct=0;
+  int retval=0, i, j, f_print=0, f_punct=0;
 
   for(i=j=0; src[i] != '\0' && j < size-2; i++){
     if( isprint(src[i]) ){
@@ -761,9 +782,11 @@ void btFiles::ConvertFilename(char *dst, const char *src, int size)
       snprintf(dst+j, 3, "%.2X", (unsigned char)(src[i]));
       j += 2;
       f_print = f_punct = 0;
+      if( !retval ) retval = 1;
     }
   }
   dst[j] = '\0';
+  return retval;
 }
 
 char *btFiles::GetDataName() const

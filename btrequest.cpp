@@ -1,7 +1,7 @@
-#include <sys/types.h>
+#include "btrequest.h"  // def.h
+
 #include <stdlib.h>
 
-#include "btrequest.h"
 #include "btcontent.h"
 #include "btconfig.h"
 #include "console.h"
@@ -164,6 +164,12 @@ size_t RequestQueue::Qlen(size_t piece) const
     cnt++;
   }
   return cnt;
+}
+
+int RequestQueue::LastSlice() const
+{
+  return ( rq_head &&
+          (!rq_head->next || rq_head->index != rq_head->next->index) ) ? 1 : 0;
 }
 
 int RequestQueue::Insert(PSLICE ps,size_t idx,size_t off,size_t len)

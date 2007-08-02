@@ -29,7 +29,11 @@ class PeerList
 
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;
-  unsigned char m_reserved:5;
+  unsigned char m_f_limitd:1;
+  unsigned char m_f_limitu:1;
+  unsigned char m_f_dlate:1;
+  unsigned char m_f_ulate:1;
+  unsigned char m_reserved:2;
   
   int Accepter();
   int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
@@ -50,20 +54,20 @@ class PeerList
   void PrintOut() const;
 
   int NewPeer(struct sockaddr_in addr, SOCKET sk);
-  
+
   void CloseAllConnectionToSeed();
   void CloseAll();
-  
+
   int IntervalCheck(fd_set *rfd, fd_set *wfd);
 
   void SetUnchokeIntervals();
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
-  
-  int BandWidthLimitUp() const { return BandWidthLimitUp(0); }
-  int BandWidthLimitUp(double when) const;
-  int BandWidthLimitDown() const { return BandWidthLimitDown(0); }
-  int BandWidthLimitDown(double when) const;
+
+  int BandWidthLimitUp() { return BandWidthLimitUp(0); }
+  int BandWidthLimitUp(double when);
+  int BandWidthLimitDown() { return BandWidthLimitDown(0); }
+  int BandWidthLimitDown(double when);
   double WaitBW() const;
   void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
 
@@ -85,6 +89,7 @@ class PeerList
   size_t GetSeedsCount() const { return m_seeds_count; }
   size_t GetPeersCount() const { return m_peers_count; }
   size_t GetConnCount() const { return m_conn_count; }
+  void AdjustPeersCount();  // passthrough to tracker function
 
   size_t GetUnchoked() const;
   size_t GetSlowestUp(size_t minimum) const;
@@ -94,7 +99,8 @@ class PeerList
   void Defer() { m_defer_count++; }
   void Upload() { m_upload_count++; }
 
-  int IsIdle() const;
+  int IsIdle();
+  void UnLate() { m_f_dlate = m_f_ulate = 0; }
   void Pause();
   void Resume();
   int IsPaused() const { return m_f_pause ? 1 : 0; }

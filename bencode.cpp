@@ -218,7 +218,7 @@ size_t bencode_end_dict_list(FILE *fp)
 
 size_t bencode_path2list(const char *pathname, FILE *fp)
 {
-  char *pn;
+  const char *pn;
   const char *p = pathname;
   
   if( bencode_begin_list(fp) != 1 ) return 0;

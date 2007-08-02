@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
 #include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -114,7 +115,8 @@ class btPeer:public btBasic
   unsigned char m_retried:1;     // already retried connecting
   unsigned char m_connect_seed:1; // connected while I am seed
   unsigned char m_requested:1;   // received a request since unchoke
-  unsigned char m_reserved:4;
+  unsigned char m_prefetch_completion:2; // prefetched for piece completion
+  unsigned char m_reserved:2;
 
   BTSTATUS m_state;
 
@@ -180,8 +182,8 @@ class btPeer:public btBasic
   
   void SetStatus(unsigned char s){ m_status = s; }
   unsigned char GetStatus() const { return m_status; }
-  int NeedWrite();
-  int NeedRead();
+  int NeedWrite(int limited);
+  int NeedRead(int limited);
 
   
   void CloseConnection();
@@ -203,6 +205,7 @@ class btPeer:public btBasic
 
   int PutPending();
 
+  int NeedPrefetch() const;
   void Prefetch(time_t deadline);
 
   void dump();

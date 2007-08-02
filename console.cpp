@@ -1,3 +1,5 @@
+#include "console.h"  // def.h
+
 #include <stdlib.h>     // atoi()
 #include <sys/types.h>  // fstat(), FD_SET(), fork()
 #include <sys/stat.h>   // fstat()
@@ -8,7 +10,6 @@
 #include <signal.h>
 
 #include "btconfig.h"
-#include "console.h"
 #include "ctcs.h"
 #include "btcontent.h"
 #include "tracker.h"
@@ -18,7 +19,8 @@
 #include "bttime.h"
 #include "sigint.h"
 
-#if !defined(HAVE_VSNPRINTF) || !defined(HAVE_SNPRINTF)
+#if !defined(HAVE_VSNPRINTF) || !defined(HAVE_SNPRINTF) || \
+    !defined(HAVE_STRCASECMP)
 #include "compat.h"
 #endif
 
@@ -124,7 +126,10 @@ void ConStream::RestoreMode()
 
 void ConStream::SetInputMode(int keymode)
 {
-  if( m_suspend || !IsTTY() ) return;
+  if( m_suspend ) return;
+
+  m_inputmode = keymode;
+  if( !IsTTY() ) return;
 
 #if defined(USE_TERMIOS)
   struct termios termset;
@@ -141,9 +146,13 @@ void ConStream::SetInputMode(int keymode)
   case K_CHARS:     // read a char at a time, no echo
 #if defined(USE_TERMIOS)
     termset.c_lflag &= ~(ICANON | ECHO);
+    termset.c_cc[VMIN] = 1;
+    termset.c_cc[VTIME] = 0;
     tcsetattr(Fileno(), TCSANOW, &termset);
 #elif defined(USE_TERMIO)
     termset.c_lflag &= ~(ICANON | ECHO);
+    termset.c_cc[VMIN] = 1;
+    termset.c_cc[VTIME] = 0;
     ioctl(Fileno(), TCSETA, &termset);
 #elif defined(USE_SGTTY)
     termset.sg_flags |= CBREAK;
@@ -155,9 +164,13 @@ void ConStream::SetInputMode(int keymode)
   case K_LINES:     // read a line at a time (allow terminal editing)
 #if defined(USE_TERMIOS)
     termset.c_lflag |= (ICANON | ECHO);
+    termset.c_cc[VMIN] = 1;
+    termset.c_cc[VTIME] = 0;
     tcsetattr(Fileno(), TCSANOW, &termset);
 #elif defined(USE_TERMIO)
     termset.c_lflag |= (ICANON | ECHO);
+    termset.c_cc[VMIN] = 1;
+    termset.c_cc[VTIME] = 0;
     ioctl(Fileno(), TCSETA, &termset);
 #elif defined(USE_SGTTY)
     termset.sg_flags &= ~CBREAK;
@@ -169,7 +182,6 @@ void ConStream::SetInputMode(int keymode)
   default:
     break;
   }
-  m_inputmode = keymode;
 }
 
 
@@ -305,7 +317,7 @@ int Console::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
   }else{
     if( m_streams[O_INPUT]->Fileno() >= 0 )
       FD_CLR(m_streams[O_INPUT]->Fileno(), rfdp);
-    return 0;
+    return -1;
   }
 }
 
@@ -389,7 +401,17 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
     }else{     // command character received
 
       m_skip_status = 1;
-      c = m_streams[O_INPUT]->CharIn();
+      if( (c = m_streams[O_INPUT]->CharIn()) == EOF ){
+        if( m_streams[O_INPUT]->Eof() ){
+          Interact("End of input reached.");
+          if( ChangeChannel(O_INPUT, "off") < 0 )
+            m_streams[O_INPUT]->Suspend();
+        }else if(errno){
+          if( ENODEV==errno || ENOTTY==errno ) m_streams[O_INPUT]->Suspend();
+          else Interact("Input error:  %s", strerror(errno));
+        }else Interact("Input error!");
+        return;
+      }
       if( c!='+' && c!='-' ) pending = c;
       switch( c ){
       case 'h':				// help
@@ -653,10 +675,10 @@ int Console::ChangeChannel(int channel, const char *param)
 {
   ConStream *dest = (ConStream *)0;
 
-  if( 0==strcmp(param, m_stdout.GetName()) ) dest = &m_stdout;
-  else if( 0==strcmp(param, m_stderr.GetName()) ) dest = &m_stderr;
-  else if( 0==strcmp(param, m_stdin.GetName()) ) dest = &m_stdin;
-  else if( 0==strcmp(param, m_off.GetName()) ) dest = &m_off;
+  if( 0==strcasecmp(param, m_stdout.GetName()) ) dest = &m_stdout;
+  else if( 0==strcasecmp(param, m_stderr.GetName()) ) dest = &m_stderr;
+  else if( 0==strcasecmp(param, m_stdin.GetName()) ) dest = &m_stdin;
+  else if( 0==strcasecmp(param, m_off.GetName()) ) dest = &m_off;
   else{
     for( int i=0; i <= O_NCHANNELS; i++ ){
       if( channel != i && 0==strcmp(param, m_streams[i]->GetName()) &&

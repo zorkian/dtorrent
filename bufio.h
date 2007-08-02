@@ -17,9 +17,9 @@
 class BufIo
 {
  private:
-  char *b;
-  size_t p;
-  size_t n;
+  char *b;   // buffer
+  size_t p;  // amount of data in the buffer
+  size_t n;  // buffer size
 
   int f_socket_remote_closed;
 
@@ -51,7 +51,7 @@ class BufIo
   ssize_t Put(SOCKET sk,char *buf,size_t len); //将buf内容添加到缓存
   ssize_t PutFlush(SOCKET sk,char *buf,size_t len);
 
-  char *BasePointer(){ return b; }
+  char *BasePointer() { return b; }
   char *CurrentPointer() { return ( b + p); }
 };
 

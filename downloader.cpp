@@ -1,22 +1,14 @@
+#include "def.h"
+
 #include <sys/types.h>
 
 #include <sys/time.h>
 #include <time.h>
 
-#ifdef WINDOWS
-#include <Winsock2.h>
-#else
-#include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
-#include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
-#include <sys/socket.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "peerlist.h"
 #include "tracker.h"
@@ -32,14 +24,14 @@ time_t now = time((time_t *)0);
 
 void Downloader()
 {
-  int nfds = 0, prevnfds = 0, maxfd = 0, r;
+  int nfds = 0, maxfd, r;
   struct timeval timeout;
   fd_set rfd, rfdnext;
   fd_set wfd, wfdnext;
-  int stopped = 0, f_idleused = 0;
+  int stopped = 0, f_idleused = 0, f_poll = 0;
   struct timespec nowspec;
-  double maxsleep, prevsleep = 0;
-  time_t then;
+  double maxsleep;
+  time_t then, concheck = (time_t)0;
 
   FD_ZERO(&rfdnext); FD_ZERO(&wfdnext);
 
@@ -54,43 +46,45 @@ void Downloader()
       }
     }
 
-    prevsleep = maxsleep;
+    maxfd = -1;
     maxsleep = -1;
-
     rfd = rfdnext;
     wfd = wfdnext;
 
-    if( 0==prevnfds && prevsleep > 0 && prevsleep < MAX_SLEEP ){
-      FD_ZERO(&rfd); FD_ZERO(&wfd);
-      maxfd = 0;
+    if( f_poll ){
+      FD_ZERO(&rfd); FD_ZERO(&wfd);  // remove non-peers from sets
       maxsleep = 0;  // waited for bandwidth--poll now
-    }
-    else if( WORLD.IsIdle() ){
-      f_idleused = 0;
-      if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
-        if( BTCONTENT.CheckNextPiece() < 0 ){
-          CONSOLE.Warning(1, "Error while checking piece %d of %d",
-            (int)(BTCONTENT.CheckedPieces()), (int)(BTCONTENT.GetNPieces()));
-          Tracker.SetStoped();
-          maxsleep = 2;
-        }else maxsleep = 0;
-        f_idleused = 1;
-      }
-      if( !f_idleused || WORLD.IsIdle() ){
+    }else{
+      WORLD.DontWaitBW();
+      if( WORLD.IsIdle() ){
+        f_idleused = 0;
+        if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() &&
+            !BTCONTENT.NeedFlush() ){
+          if( BTCONTENT.CheckNextPiece() < 0 ){
+            CONSOLE.Warning(1, "Error while checking piece %d of %d",
+              (int)(BTCONTENT.CheckedPieces()), (int)(BTCONTENT.GetNPieces()));
+            Tracker.SetStoped();
+            maxsleep = 2;
+          }else maxsleep = 0;
+          f_idleused = 1;
+        }
         r = Tracker.IntervalCheck(&rfd, &wfd);
         if( r > maxfd ) maxfd = r;
         if( arg_ctcs ){
           r = CTCS.IntervalCheck(&rfd, &wfd);
           if( r > maxfd ) maxfd = r;
         }
-        r = CONSOLE.IntervalCheck(&rfd, &wfd);
-        if( r > maxfd ) maxfd = r;
+        if( !f_idleused || concheck <= now-2 || WORLD.IsIdle() ){
+          concheck = now;
+          r = CONSOLE.IntervalCheck(&rfd, &wfd);
+          if( r > maxfd ) maxfd = r;
+        }
       }
     }
     r = WORLD.IntervalCheck(&rfd, &wfd);
     if( r > maxfd ) maxfd = r;
 
-    if( BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
+    while( !f_poll && BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
       BTCONTENT.FlushQueue();
       maxsleep = 0;
     }
@@ -98,31 +92,27 @@ void Downloader()
     rfdnext = rfd;
     wfdnext = wfd;
 
-   again:
-    if( maxsleep < 0 ){
-      maxsleep = WORLD.WaitBW();  // must do after intervalchecks/fillfdset!
-      if( maxsleep <= 0 || maxsleep > MAX_SLEEP ) maxsleep = MAX_SLEEP;
+    if( maxsleep < 0 ){  //not yet set
+      maxsleep = WORLD.WaitBW();  // must do after intervalchecks!
+      if( maxsleep <= -100 ) maxsleep = 0;
+      else if( maxsleep <= 0 || maxsleep > MAX_SLEEP ) maxsleep = MAX_SLEEP;
     }
 
     timeout.tv_sec = (long)maxsleep;
     timeout.tv_usec = (long)( (maxsleep-(long)maxsleep) * 1000000 );
 
-    if( maxfd < 0 ) maxfd = 0;
+    WORLD.UnLate();
     nfds = select(maxfd + 1,&rfd,&wfd,(fd_set*) 0,&timeout);
 
-    if( nfds > 0 && maxsleep > 0 ) WORLD.DontWaitBW();
-    else if( 0==nfds && 0==maxsleep && prevsleep > 0 ){
-      prevsleep = maxsleep;
-      maxsleep = -1;
-      goto again;
-    }
+    if( f_poll ) f_poll = 0;
+    else if( nfds > 0 ) WORLD.DontWaitBW();
+    else if( maxsleep > 0 && maxsleep < MAX_SLEEP ) f_poll = 1;
 
     then = now;
     time(&now);
     if( now == then-1 ) now = then;
 
-    prevnfds = nfds;
-    if( (maxsleep > 0 || 0==prevsleep) && nfds > 0 ){
+    if( !f_poll && nfds > 0 ){
       if(T_FREE != Tracker.GetStatus())
         Tracker.SocketReady(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
       if(nfds > 0 && T_FREE != CTCS.GetStatus())

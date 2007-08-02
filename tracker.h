@@ -11,6 +11,7 @@
 
 #else
 #include <unistd.h>
+#include <netdb.h>   // Solaris defines MAXHOSTNAMELEN here.
 #include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
 #include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
 #include <sys/socket.h>
@@ -44,7 +45,8 @@ class btTracker
   unsigned char m_f_stoped:1;
   unsigned char m_f_completed:1;
   unsigned char m_f_restart:1;
-  unsigned char m_reserved:2;
+  unsigned char m_f_boguspeercnt:1;
+  unsigned char m_reserved:1;
 
 
   time_t m_interval;		// 与Tracker通信的时间间隔
@@ -58,7 +60,7 @@ class btTracker
   size_t m_prevpeers;	// number of peers previously seen
 
   SOCKET m_sock;
-  BufIo m_reponse_buffer;
+  BufIo m_request_buffer, m_reponse_buffer;
   
   int _IPsin(char *h, int p, struct sockaddr_in *psin);
   int _s2sin(char *h,int p,struct sockaddr_in *psin);
@@ -97,6 +99,8 @@ class btTracker
   size_t GetOkClick() const { return m_ok_click; }
   size_t GetPeersCount() const;
   size_t GetSeedsCount() const;
+  void AdjustPeersCount() {
+    if(m_f_boguspeercnt && m_peers_count) m_peers_count--; }
   time_t GetInterval() const { return m_default_interval; }
 };
 

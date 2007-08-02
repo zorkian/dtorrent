@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #include "btstream.h"
 #include "./btcontent.h"
@@ -62,8 +63,9 @@ void btBasic::SetAddress(struct sockaddr_in addr)
 
 int btBasic::IpEquiv(struct sockaddr_in addr)
 {
-//  CONSOLE.Print("IpEquiv: %s <=> %s", inet_ntoa(m_sin.sin_addr),
-//    inet_ntoa(addr.sin_addr));
+//  CONSOLE.Debug_n("IpEquiv: %s <=> ", inet_ntoa(m_sin.sin_addr));
+//  CONSOLE.Debug_n("%s", inet_ntoa(addr.sin_addr));
+//  CONSOLE.Debug_n("");
   return (memcmp(&m_sin.sin_addr,&addr.sin_addr,sizeof(struct in_addr)) == 0) ? 
     1 : 0;
 }
@@ -121,6 +123,7 @@ btPeer::btPeer()
   m_connect_seed = 0;
   m_prefetch_time = (time_t)0;
   m_requested = 0;
+  m_prefetch_completion = 0;
 
   rate_dl.SetSelf(Self.DLRatePtr());
   rate_ul.SetSelf(Self.ULRatePtr());
@@ -364,6 +367,7 @@ int btPeer::MsgDeliver()
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 0;
+      m_prefetch_completion = 0;
       retval = RequestCheck();
       break;
 
@@ -521,7 +525,8 @@ int btPeer::ReponseSlice()
 
   retval = BTCONTENT.ReadSlice(BTCONTENT.global_piece_buffer,idx,off,len);
   if( retval < 0 ) return -1;
-  else if( retval ) Self.OntimeUL(0);  // delayed, read from disk
+  else if( retval && cfg_cache_size ) Self.OntimeUL(0);  // disk read delay
+  // If not using cache, need to always allow time for a disk read.
 
   size_t currentrate = CurrentUL();
   if(arg_verbose) CONSOLE.Debug("Sending %d/%d/%d to %p",
@@ -555,6 +560,8 @@ int btPeer::ReponseSlice()
     if( !m_want_again && BTCONTENT.Seeding() )
       m_want_again = 1;
   }
+  else if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+
   return (int)retval;
 }
 
@@ -696,10 +703,6 @@ int btPeer::ReportComplete(size_t idx)
   if( (r = BTCONTENT.APieceComplete(idx)) > 0 ){
     if(arg_verbose) CONSOLE.Debug("Piece #%d completed", (int)idx);
     WORLD.Tell_World_I_Have(idx);
-    // We don't track request duplication accurately, so clean up just in case.
-    WORLD.CancelPiece(idx);
-    PENDINGQUEUE.Delete(idx);
-
     BTCONTENT.CheckFilter();
     if( BTCONTENT.IsFull() )
       WORLD.CloseAllConnectionToSeed();
@@ -713,6 +716,11 @@ int btPeer::ReportComplete(size_t idx)
       ResetDLTimer(); // set peer rate=0 so we don't favor for upload
     }
   }
+  // Need to re-download entire piece if check failed, so cleanup in any case.
+  m_prefetch_completion = 0;
+  // We don't track request duplication accurately, so clean up just in case.
+  WORLD.CancelPiece(idx);
+  PENDINGQUEUE.Delete(idx);
   return r;
 }
 
@@ -892,11 +900,13 @@ int btPeer::HandShake()
   char txtid[PEER_ID_LEN*2+3];
   ssize_t r = stream.Feed();
   if( r < 0 ){
-//  if(arg_verbose) CONSOLE.Debug("hs: r<0 (%d)", r);
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this,
+      (r==-2) ? "remote closed" : strerror(errno));
     return -1;
   }
-  else if( r < 68 ){
-    if(r >= 21){	// Ignore 8 reserved bytes following protocol ID.
+  if( (r=stream.in_buffer.Count()) < 68 ){
+    // If it's not BitTorrent, don't wait around for a complete handshake.
+    if( r > 20 ){  // ignore 8 reserved bytes following protocol ID
       if( memcmp(stream.in_buffer.BasePointer()+20,
           BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8) != 0 ){
         if(arg_verbose){
@@ -930,6 +940,13 @@ int btPeer::HandShake()
       return -1;
     }
     return 0;
+  }
+
+  if( memcmp(stream.in_buffer.BasePointer(), BTCONTENT.GetShakeBuffer(), 68)
+        == 0 ){
+    if(arg_verbose) CONSOLE.Debug("peer %p is myself", this);
+    WORLD.AdjustPeersCount();
+    return -1;
   }
 
   // If the reserved bytes differ, make them the same.
@@ -987,6 +1004,7 @@ int btPeer::HandShake()
       if( 0 == m_unchoke_timestamp ) m_unchoke_timestamp = now;
       m_connect_seed = 1;
     }
+    if( stream.HaveMessage() ) return RecvModule();
   }
   return r;
 }
@@ -996,7 +1014,7 @@ int btPeer::Send_ShakeInfo()
   return stream.Send_Buffer((char*)BTCONTENT.GetShakeBuffer(),68);
 }
 
-int btPeer::NeedWrite()
+int btPeer::NeedWrite(int limited)
 {
   int yn = 0;
   size_t r;
@@ -1006,8 +1024,7 @@ int btPeer::NeedWrite()
   else if( P_CONNECTING == m_status )
     yn = 1;                                               // peer is connecting
   else if( WORLD.IsPaused() ) yn = 0;         // paused--no up/download allowed
-  else if( !m_state.local_choked && !reponse_q.IsEmpty() &&
-           !WORLD.BandWidthLimitUp(Self.LateUL()) )
+  else if( !m_state.local_choked && !reponse_q.IsEmpty() && !limited )
     yn = 1;                                                //can upload a slice
   else if( !m_state.remote_choked && m_state.local_interested &&
            request_q.IsEmpty() ){
@@ -1026,13 +1043,12 @@ int btPeer::NeedWrite()
   return yn;
 }
 
-int btPeer::NeedRead()
+int btPeer::NeedRead(int limited)
 {
   int yn = 1;
 
-  if( P_SUCCESS == m_status && M_PIECE == stream.PeekMessage() &&
-      ((g_next_dn && g_next_dn != this) ||
-       WORLD.BandWidthLimitDown(Self.LateDL())) ){
+  if( P_SUCCESS == m_status && stream.PeekMessage(M_PIECE) &&
+      ((g_next_dn && g_next_dn != this) || limited) ){
     yn = 0;
   }
 
@@ -1066,25 +1082,30 @@ int btPeer::RecvModule()
     return -1;
   }
 
-  if( M_PIECE == stream.PeekMessage() ){
+  if( stream.PeekMessage(M_PIECE) ){
     if( !g_next_dn || g_next_dn==this ){
       int limited = WORLD.BandWidthLimitDown(Self.LateDL());
       if( !limited ){
         if( g_next_dn ) g_next_dn = (btPeer *)0;
         r = stream.Feed(&rate_dl);  // feed full amount (can download)
 //      if(r>=0) CONSOLE.Debug("%p fed piece, now has %d bytes", this, r);
+        Self.OntimeDL(0);
       }
       else if( !g_next_dn ){
         if(arg_verbose) CONSOLE.Debug("%p waiting for DL bandwidth", this);
         g_next_dn = this;
       }
     }  // else deferring DL, unless limited.
-  }else{
+  }else if( !stream.HaveMessage() ){  // could have been called post-handshake
     r = stream.Feed(BUF_DEF_SIZ, &rate_dl);
 //  if(r>=0) CONSOLE.Debug("%p fed, now has %d bytes (msg=%d)",
 //    this, r, (int)(stream.PeekMessage()));
   }
-  if( r < 0 ) return -1;
+  if( r < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this,
+      (r==-2) ? "remote closed" : strerror(errno));
+    return -1;
+  }
 
   while( r = stream.HaveMessage() ){
     if( r < 0 ) return -1;
@@ -1100,7 +1121,10 @@ int btPeer::RecvModule()
 
 int btPeer::SendModule()
 {
-  if( stream.out_buffer.Count() && stream.Flush() < 0) return -1;
+  if( stream.out_buffer.Count() && stream.Flush() < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  }
 
   if( !reponse_q.IsEmpty() && CouldReponseSlice() ){
     int limited = WORLD.BandWidthLimitUp(Self.LateUL());
@@ -1110,6 +1134,7 @@ int btPeer::SendModule()
         StartULTimer();
         Self.StartULTimer();
         if( ReponseSlice() < 0 ) return -1;
+        Self.OntimeUL(0);
       }
       else if( !g_next_up ){
         if(arg_verbose) CONSOLE.Debug("%p waiting for UL bandwidth", this);
@@ -1193,12 +1218,52 @@ int btPeer::PutPending()
   return retval;
 }
 
+int btPeer::NeedPrefetch() const
+{
+  if( P_SUCCESS == m_status &&
+      ( Is_Local_UnChoked() ||
+        (!BTCONTENT.IsFull() && Is_Remote_UnChoked() &&
+         m_prefetch_completion < 2 && request_q.LastSlice()) ) )
+    return 1;
+  else return 0;
+}
+
+// Call NeedPrefetch() first, which checks additional conditions!
 void btPeer::Prefetch(time_t deadline)
 {
+  size_t rd, ru;
   size_t idx, off, len;
   time_t predict, next_chance;
 
-  if( reponse_q.Peek(&idx, &off, &len) == 0 ){
+  if( !BTCONTENT.IsFull() && Is_Remote_UnChoked() &&
+      m_prefetch_completion < 2 && request_q.LastSlice() && (rd=RateDL()) > 0 &&
+      request_q.Peek(&idx, &off, &len)==0 &&
+      m_last_timestamp + len / rd < now + WORLD.GetUnchokeInterval() &&
+      m_last_timestamp + len / rd <
+        now + (cfg_cache_size*1024*1024 - BTCONTENT.GetPieceLength(idx)) /
+              Self.RateDL() ){
+    switch( BTCONTENT.CachePrep(idx) ){
+    case -1:  // don't prefetch
+      m_prefetch_completion = 2;
+      break;
+    case 0:  // ready, no data flushed
+      if( m_prefetch_completion || off==0 ){
+        if( off+len < BTCONTENT.GetPieceLength(idx) )
+          BTCONTENT.ReadSlice(NULL, idx, off+len,
+            BTCONTENT.GetPieceLength(idx)-off-len);
+        m_prefetch_completion = 2;
+      }else{
+        BTCONTENT.ReadSlice(NULL, idx, 0, off);
+        if( off+len < BTCONTENT.GetPieceLength(idx) )
+          m_prefetch_completion = 1;
+        else m_prefetch_completion = 2;
+      }
+      break;
+    case 1:  // data was flushed (time used)
+      break;
+    }
+  }
+  else if( Is_Local_UnChoked() && reponse_q.Peek(&idx, &off, &len) == 0 ){
     if( cfg_max_bandwidth_up )
       next_chance = (time_t)( Self.LastSendTime() +
                     (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up );
@@ -1214,7 +1279,6 @@ void btPeer::Prefetch(time_t deadline)
     else predict = m_next_send_time;
 
     // Don't prefetch if it will expire from cache before being sent.
-    size_t rd, ru;
     if( predict < deadline && (0==(rd = Self.RateDL()) ||
         predict <= now + cfg_cache_size*1024*1024 / rd) ){
       // This allows re-prefetch if it might have expired from the cache.

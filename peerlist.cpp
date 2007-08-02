@@ -1,6 +1,6 @@
-#include <sys/types.h>
+#include "peerlist.h"  // def.h
 
-#include "peerlist.h"
+#include <sys/types.h>
 
 #include <stdlib.h>
 
@@ -53,7 +53,7 @@ PeerList::PeerList()
   m_head = m_dead = (PEERNODE*) 0;
   m_listen_sock = INVALID_SOCKET;
   m_peers_count = m_seeds_count = m_conn_count = 0;
-  m_f_pause = 0;
+  m_f_pause = m_f_dlate = m_f_ulate = 0;
   m_max_unchoke = MIN_UNCHOKES;
   m_defer_count = m_missed_count = 0;
   m_upload_count = m_up_opt_count = 0;
@@ -98,8 +98,11 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
     return -4;
   }
-  
-  if( Self.IpEquiv(addr) ){  // myself
+
+  if( INVALID_SOCKET != sk && Self.IpEquiv(addr) ){
+    if(arg_verbose)
+      CONSOLE.Debug("Connection from myself %s", inet_ntoa(addr.sin_addr));
+    Tracker.AdjustPeersCount();
     if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
     return -3;
   }
@@ -107,7 +110,11 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   for( p = m_head; p; p = p->next ){
     if(PEER_IS_FAILED(p->peer)) continue;
     if( p->peer->IpEquiv(addr) ){  // already exist.
-      if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk); 
+      if( INVALID_SOCKET != sk ){
+        if(arg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
+          inet_ntoa(addr.sin_addr));
+        CLOSE_SOCKET(sk); 
+      }
       return -3;
     }
   }
@@ -130,12 +137,12 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
 
   if( INVALID_SOCKET == sk ){
     if( INVALID_SOCKET == (sk = socket(AF_INET,SOCK_STREAM,0)) ) return -1;
-    
+
     if( setfd_nonblock(sk) < 0) goto err;
 
     if( -1 == (r = connect_nonb(sk,(struct sockaddr*)&addr)) ){
-      if(arg_verbose) CONSOLE.Debug("Connect to peer at %s:%hu failed",
-        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+      if(arg_verbose) CONSOLE.Debug("Connect to peer at %s:%hu failed:  %s",
+        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), strerror(errno));
       return -1;
     }
 
@@ -162,6 +169,8 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus(P_HANDSHAKE);
+    if(arg_verbose) CONSOLE.Debug("Connection from %s:%hu (peer %p)",
+        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
   }
 
   if( !BTCONTENT.Seeding() &&
@@ -279,6 +288,19 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       }
     }else if( now < m_interval_timestamp ) m_interval_timestamp = now;
   }
+
+  if( cfg_cache_size && !m_f_pause && IsIdle() ){
+    int f_idle = 1;
+    for( PEERNODE *p = m_head; p; p = p->next ){
+      if( p->peer->NeedPrefetch() ){
+        if( f_idle || IsIdle() ){
+          p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval);
+          f_idle = 0;
+        }else break;
+      }
+    }
+  }
+
   return FillFDSet(rfdp, wfdp, f_keepalive_check, f_unchoke_check, UNCHOKER);
 }
 
@@ -290,6 +312,10 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   int maxfd = -1;
   SOCKET sk = INVALID_SOCKET;
 
+  m_f_limitu = BandWidthLimitUp(Self.LateUL());
+  m_f_limitd = BandWidthLimitDown(Self.LateDL());
+
+ again:
   m_seeds_count = 0;
   m_conn_count = 0;
   size_t interested_count = 0;
@@ -352,12 +378,10 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
       if( PEER_IS_FAILED(p->peer) ) goto skip_continue;  // failsafe
       if(maxfd < sk) maxfd = sk;
-      if( !FD_ISSET(sk,rfdp) && p->peer->NeedRead() ) FD_SET(sk,rfdp);
-      if( !FD_ISSET(sk,wfdp) && p->peer->NeedWrite() ) FD_SET(sk,wfdp);
-
-      if( p->peer->Is_Local_UnChoked() && cfg_cache_size && !m_f_pause &&
-          IsIdle() )
-        p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval);
+      if( !FD_ISSET(sk,rfdp) && p->peer->NeedRead((int)m_f_limitd) )
+        FD_SET(sk,rfdp);
+      if( !FD_ISSET(sk,wfdp) && p->peer->NeedWrite((int)m_f_limitu) )
+        FD_SET(sk,wfdp);
 
     skip_continue: 
       if( PEER_IS_FAILED(p->peer) ){
@@ -368,6 +392,9 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       p = p->next;
     }
   } // end for
+  if( (m_f_limitu && !(m_f_limitu = BandWidthLimitUp(Self.LateUL()))) ||
+      (m_f_limitd && !(m_f_limitd = BandWidthLimitDown(Self.LateDL()))) )
+    goto again;
 
   if( 0==interested_count ) Self.StopDLTimer();
 
@@ -397,7 +424,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         continue;
       }
 
-      if( !FD_ISSET(sk,wfdp) && UNCHOKER[i]->NeedWrite() ){
+      if( !FD_ISSET(sk,wfdp) && UNCHOKER[i]->NeedWrite((int)m_f_limitu) ){
         FD_SET(sk,wfdp);
         if( maxfd < sk) maxfd = sk;
       }
@@ -658,9 +685,11 @@ int PeerList::Accepter()
   struct sockaddr_in addr;
   addrlen = sizeof(struct sockaddr_in);
   newsk = accept(m_listen_sock,(struct sockaddr*) &addr,&addrlen);
-  
+//  CONSOLE.Debug("incoming! %s:%hu",
+//    inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+
   if( INVALID_SOCKET == newsk ) return -1;
-  
+
   if( AF_INET != addr.sin_family || addrlen != sizeof(struct sockaddr_in) ){
     CLOSE_SOCKET(newsk);
     return -1;
@@ -670,7 +699,7 @@ int PeerList::Accepter()
     CLOSE_SOCKET(newsk);
     return -1;
   }
-  
+
   return NewPeer(addr,newsk);
 }
 
@@ -810,7 +839,7 @@ void PeerList::PrintOut() const
 void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
-  PEERNODE *p,*p2;
+  PEERNODE *p;
   btPeer *peer;
   SOCKET sk;
   int need_check_send = 0;
@@ -840,8 +869,8 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if(arg_verbose) CONSOLE.Debug("close: unhealthy");
           peer->CloseConnection();
         }
-        if( PEER_IS_FAILED(peer) && FD_ISSET(sk,wfdp) ){
-          (*nready)--;
+        if( PEER_IS_FAILED(peer) ){
+          if( FD_ISSET(sk,wfdp) ) (*nready)--;
           FD_CLR(sk,wfdnextp);
         }
       }
@@ -854,6 +883,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if( peer->SendModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: send");
             peer->CloseConnection();
+            FD_CLR(sk,rfdnextp);
           }
           need_check_send = 1;
         }
@@ -868,6 +898,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if( peer->HandShake() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: bad handshake");
             peer->CloseConnection();
+            FD_CLR(sk,wfdnextp);
           }
         }
       }
@@ -878,29 +909,30 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if( peer->SendModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: send handshake");
             peer->CloseConnection();
+            FD_CLR(sk,rfdnextp);
           }
         }
       }
     }
     else if( P_CONNECTING == peer->GetStatus() ){
-      if( FD_ISSET(sk,rfdp) ){  // connect failed.
-        (*nready)--; 
-        if( FD_ISSET(sk,wfdp) ){
-          (*nready)--; 
-          FD_CLR(sk,wfdnextp);
-        }
-        if( !Self.OntimeDL() && !Self.OntimeUL() ){
-          FD_CLR(sk,rfdnextp);
-          peer->CloseConnection();
-        }
-      }else if( FD_ISSET(sk,wfdp) ){
+      if( FD_ISSET(sk,wfdp) ){
         (*nready)--; 
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk,wfdnextp);
           if( peer->Send_ShakeInfo() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: Sending handshake");
             peer->CloseConnection();
+            FD_CLR(sk,rfdnextp);
           }else peer->SetStatus(P_HANDSHAKE);
+        }
+        if( FD_ISSET(sk,rfdp) ) (*nready)--; 
+      }else if( FD_ISSET(sk,rfdp) ){  // connect failed.
+        (*nready)--; 
+        if( !Self.OntimeDL() && !Self.OntimeUL() ){
+          FD_CLR(sk,rfdnextp);
+          if(arg_verbose) CONSOLE.Debug("close: connect failed");
+          peer->CloseConnection();
+          FD_CLR(sk,wfdnextp);
         }
       }
     }
@@ -1202,16 +1234,17 @@ size_t PeerList::GetDownloads() const
   return count;
 }
 
-int PeerList::BandWidthLimitUp(double when) const
+int PeerList::BandWidthLimitUp(double when)
 {
+  int limited = 0;
   double nexttime;
 
   if( cfg_max_bandwidth_up <= 0 ) return 0;
 
   nexttime = Self.LastSendTime() +
              (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up;
-  if( nexttime >= now + 1 + when ) return 1;
-  else if( nexttime < now + when ) return 0;
+  if( nexttime >= now + 1 + when ) limited = 1;
+  else if( nexttime < now + when ) limited = 0;
   else{
     struct timespec nowspec;
     double rightnow;
@@ -1219,13 +1252,16 @@ int PeerList::BandWidthLimitUp(double when) const
     clock_gettime(CLOCK_REALTIME, &nowspec);
     rightnow = nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000;
 
-    if( nexttime <= rightnow + when ) return 0;
-    else return 1;
+    if( nexttime <= rightnow + when ) limited = 0;
+    else limited = 1;
   }
+  if( limited ) m_f_ulate = 1;
+  return limited;
 }
 
-int PeerList::BandWidthLimitDown(double when) const
+int PeerList::BandWidthLimitDown(double when)
 {
+  int limited = 0;
   double nexttime;
 
   // Don't check SeedOnly() here--need to let the input stream drain.
@@ -1233,8 +1269,8 @@ int PeerList::BandWidthLimitDown(double when) const
 
   nexttime = Self.LastRecvTime() +
              (double)(Self.LastSizeRecv()) / cfg_max_bandwidth_down;
-  if( nexttime >= now + 1 + when ) return 1;
-  else if( nexttime < now + when ) return 0;
+  if( nexttime >= now + 1 + when ) limited = 1;
+  else if( nexttime < now + when ) limited = 0;
   else{
     struct timespec nowspec;
     double rightnow;
@@ -1242,24 +1278,38 @@ int PeerList::BandWidthLimitDown(double when) const
     clock_gettime(CLOCK_REALTIME, &nowspec);
     rightnow = nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000;
 
-    if( nexttime <= rightnow + when ) return 0;
-    else return 1;
+    if( nexttime <= rightnow + when ) limited = 0;
+    else limited = 1;
   }
+  if( limited ) m_f_dlate = 1;
+  return limited;
 }
 
-int PeerList::IsIdle() const
+int PeerList::IsIdle()
 {
-  return (
+  int idle = 0, dlate=0, ulate=0;
+
+  if(
     ( 0==cfg_max_bandwidth_down ||
-      now > (time_t)(Self.LastRecvTime() + Self.LateDL() +
-                     Self.LastSizeRecv() / (double)cfg_max_bandwidth_down) ||
+      (dlate = (now > (time_t)(Self.LastRecvTime() + Self.LateDL() +
+                     Self.LastSizeRecv() / (double)cfg_max_bandwidth_down))) ||
       BandWidthLimitDown(Self.LateDL()) )
-    &&
+
+    && !(dlate && m_f_dlate) &&
+
     ( 0==cfg_max_bandwidth_up ||
-      now > (time_t)(Self.LastSendTime() + Self.LateUL() +
-                     Self.LastSizeSent() / (double)cfg_max_bandwidth_up) ||
+      (ulate = (now > (time_t)(Self.LastSendTime() + Self.LateUL() +
+                     Self.LastSizeSent() / (double)cfg_max_bandwidth_up))) ||
       BandWidthLimitUp(Self.LateUL()) )
-  );
+  ){
+    idle = 1;
+  }
+
+  if( !dlate ) m_f_dlate = 1;
+  else if( m_f_dlate ) idle = 0;
+  if( !ulate ) m_f_ulate = 1;
+  else if( m_f_ulate ) idle = 0;
+  return idle;
 }
 
 // How long must we wait for bandwidth to become available in either direction?
@@ -1302,16 +1352,24 @@ double PeerList::WaitBW() const
     nextwake = late = 0;
   }
 
-  if( nextwake > rightnow ){
+  if( (m_f_limitd && nextdn <= rightnow + Self.LateDL()) ||
+      (m_f_limitu && nextup <= rightnow + Self.LateUL()) ){
+    // socket setup is outdated; send a problem indicator value back
+    Self.OntimeUL(0);
+    Self.OntimeDL(0);
+    maxwait = -100;
+  }else if( nextwake > rightnow ){
     maxwait = nextwake - rightnow - late;
     if( maxwait < 0 ){
       use_up = use_dn = 0;
     }
     Self.OntimeUL(use_up);
     Self.OntimeDL(use_dn);
+//  CONSOLE.Debug("waitbw %f at %f", maxwait, rightnow);
   }else{
     Self.OntimeUL(0);
     Self.OntimeDL(0);
+//  CONSOLE.Debug("nextwake %f at %f", nextwake, rightnow);
   }
   return maxwait;
 }
@@ -1330,5 +1388,10 @@ void PeerList::UnchokeIfFree(btPeer *peer)
     }
   }
   if( peer->SetLocal(M_UNCHOKE) < 0 ) peer->CloseConnection();
+}
+
+void PeerList::AdjustPeersCount()
+{
+  Tracker.AdjustPeersCount();
 }
 

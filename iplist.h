@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
 #include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>

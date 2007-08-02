@@ -97,8 +97,8 @@ class btContent
   ~btContent();
   
   void CacheConfigure();
-  void FlushCache() { FlushCache(m_npieces); }
-  void FlushCache(size_t idx);
+  void FlushCache();
+  void FlushPiece(size_t idx);
   void Uncache(size_t idx);
   void FlushQueue();
   int NeedFlush() const;
@@ -127,6 +127,7 @@ class btContent
   int APieceComplete(size_t idx);
   int GetHashValue(size_t idx,unsigned char *md);
 
+  int CachePrep(size_t idx);
   ssize_t ReadSlice(char *buf,size_t idx,size_t off,size_t len);
   ssize_t WriteSlice(char *buf,size_t idx,size_t off,size_t len);
   ssize_t ReadPiece(char *buf,size_t idx);

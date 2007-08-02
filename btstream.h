@@ -5,9 +5,9 @@
 #include "./bufio.h"
 
 #ifdef WINDOWS
-#include "Winsock2.h"
+#include <Winsock2.h>
 #else
-#include "unistd.h"
+#include <unistd.h>
 #endif
 
 #include "rate.h"
@@ -48,6 +48,7 @@ public:
 
   int HaveMessage();  // 返回值 1: 缓存中有消息 0: 暂无消息 -1: 失败
   char PeekMessage();
+  int PeekMessage(char m);
 
   ssize_t Send_Keepalive();
   ssize_t Send_State(unsigned char state);

@@ -1,6 +1,7 @@
+#include "rate.h"  // def.h
+
 #include <sys/time.h>
 
-#include "rate.h"
 #include "bufio.h" // for BUF_DEF_SIZ
 #include "bttime.h"
 #include "console.h"
@@ -159,10 +160,12 @@ void Rate::RateAdd(size_t nbytes, size_t bwlimit, double timestamp)
 
   if( !m_selfrate && m_ontime ){
     double late=timestamp - (m_last_realtime + (double)m_last_size / bwlimit);
+//  double tmplate = late;
     // keep the change under control in case the system gets weird on us
     if( late < 0 ) late /= 2;
     else if( m_late && late > m_late ) late = m_late / 2;
     m_late += late;
+//  CONSOLE.Debug("%p late %f->%f: %f", this, tmplate, late, m_late);
     m_ontime = 0;
   }
 
@@ -185,6 +188,9 @@ void Rate::RateAdd(size_t nbytes, size_t bwlimit, double timestamp)
   }else m_recent_size += nbytes;
 
   if( m_selfrate ) m_selfrate->RateAdd(nbytes, bwlimit, timestamp);
+
+//if(!m_selfrate) CONSOLE.Debug("%p RateAdd %u @ %f next=%f", this,
+//  nbytes, timestamp, m_last_realtime + (double)m_last_size / bwlimit);
 }
 
 void Rate::operator=(const Rate &ra)

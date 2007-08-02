@@ -2,6 +2,75 @@
                         Enhanced CTorrent Change Log
      _________________________________________________________________
 
+   Changes for "dnh3.2" Release
+
+   Features and Performance
+     * Various code optimizations in cache searching and management.
+     * Added proactive flushing of the oldest cache entry during idle
+       time when the cache is full.
+     * Flush the cache in piece order if/when the entire cache is
+       flushed.
+     * Prefetch uncached slices when a downloading piece is nearly
+       complete.
+     * Try to reduce thrashing if a small cache is specified.
+     * Flushing completed pieces to disk is now given a higher priority
+       than hash-checking existing pieces.
+     * An informational warning is given if any filenames contain
+       non-printable characters and the -T option is not used.
+     * Added more methods of detecting connections from the client to
+       itself.
+     * If the tracker doesn't supply a peer count, count the peers it
+       gives for connection instead. (This can be off by 1 if you're
+       using NAT and a lame tracker gives you yourself as a peer, but you
+       can't connect.)
+     * Don't let initial hash-checking prevent checking tracker, ctcs,
+       and console.
+     * Improved efficiency of peer status/prefetch checking.
+     * A 16K (default slice size) file I/O buffer is now used to
+       potentially improve read/write performance.
+     * Added support for systems without the strncasecmp() library
+       function.
+
+   Bug Fixes
+     * Fixed a crash at program exit.
+     * Fixed an error when reading an empty file.
+     * Fixed a potential cache corruption issue.
+     * Bad piece data wasn't always removed from cache.
+     * Updated builtin SHA1 code to include a fix or two and take
+       advantage of autoconf (including endianness; cross-compilers take
+       note).
+     * Improved/corrected the method of determining the local IP address.
+     * Corrected the comparison of local and peer IP address.
+     * Corrected peer connection failure detection (could cause peer
+       disconnects).
+     * Corrected a potential problem in the peer handshake handling code.
+     * Corrected a problem that could prevent or delay receiving the
+       peer's bitfield.
+     * Fixed a problem with handling of tracker response data. Now
+       separate send and receive buffers are used for tracker
+       communication.
+     * Corrected end-of-header check in httpencode.cpp (tracker
+       response).
+     * Various timing-related fixes to improve maximum transfer rates.
+     * Avoid running too many idle-time tasks at a time.
+     * Improved the upload timing when not using cache.
+     * Adjusted the CTCS seed time (-e) option processing to make the
+       result more intuitive (it could be perceived as being an hour
+       off).
+     * Fixed a problem where the torrent metainfo would not be shown if
+       input was redirected. Also added input EOF/error detection for
+       cases not previously covered.
+     * Fix console input on Solaris (and potentially some other
+       platforms).
+
+   Code Cleanup
+     * Additional verbose output for cache management.
+     * Moved strnstr() from httpencode.cpp to compat.c.
+     * Improve handling of tracker contact intervals.
+     * Optimized PeekMessage function.
+     * Removed unnecessary headers from downloader.cpp.
+     _________________________________________________________________
+
    Changes for "dnh3.1" Release
 
    Features and Performance
@@ -317,8 +386,6 @@
        handling code has been cleaned up and tweaked to fix this.
      * A piece could be incorrectly reported as complete if an error
        occurred reading the piece data for hash verification.
-     * Ensure that the client sends the tracker the "completed" event
-       upon the next connection if contacting the tracker fails.
 
    Code Cleanup
      * Moved version number into a new m4 file to make patch distribution

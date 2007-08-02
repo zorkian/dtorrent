@@ -1,5 +1,5 @@
+#include "iplist.h"  // def.h
 #include <string.h>
-#include "iplist.h"
 
 IpList IPQUEUE;
 

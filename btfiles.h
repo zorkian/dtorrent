@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "bitfield.h"
+#include "btconfig.h"
 
 typedef struct _btfile{
   char *bf_filename;	// full path of file.
@@ -36,6 +37,7 @@ class btFiles
   size_t m_total_opened;	// already opened
   size_t m_nfiles;
   BTFILE **m_file;
+  char m_buffer[DEFAULT_SLICE_SIZE];
 
   uint8_t m_flag_automanage:1;
   uint8_t m_flag_reserved:7;	// current version not implement
@@ -48,7 +50,7 @@ class btFiles
   int _btf_creat_by_path(const char *pathname, int64_t file_length);
   int _btf_destroy();
   int _btf_recurses_directory(const char *cur_path, BTFILE **plastnode);
-  void ConvertFilename(char *dst, const char *src, int size);
+  int ConvertFilename(char *dst, const char *src, int size);
 
  public:
   int CreateFiles();

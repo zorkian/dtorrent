@@ -1,6 +1,4 @@
-#include <sys/types.h>
-
-#include "connect_nonb.h"
+#include "connect_nonb.h"  // def.h
 
 #include <errno.h>
 

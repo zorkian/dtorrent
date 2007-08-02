@@ -1,6 +1,8 @@
 #ifndef SLICE_H
 #define SLICE_H
 
+#include "def.h"
+
 #include <sys/types.h>
 #include <time.h>
 #include "btcontent.h"
@@ -41,6 +43,7 @@ class RequestQueue
   int CopyShuffle(RequestQueue *prq, size_t piece);
   size_t Qsize() const;
   size_t Qlen(size_t piece) const;
+  int LastSlice() const;
 
   int IsEmpty() const { return rq_head ? 0 : 1; }
 

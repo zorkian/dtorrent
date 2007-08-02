@@ -68,7 +68,7 @@ ssize_t BufIo::_SEND(SOCKET sk,  char *buf, size_t len)
 #endif
       return (EWOULDBLOCK == errno || EAGAIN == errno) ? (ssize_t)t : -1;
     }else if( 0 == r ){
-      return t;			// no possible???
+      return (ssize_t)t;			// no possible???
     }else{
       buf += r;
       len -= r;
@@ -91,7 +91,7 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf,size_t len)
       return (EWOULDBLOCK == errno || EAGAIN == errno) ? (ssize_t)t : -1;
     }else if( 0 == r ){
       f_socket_remote_closed = 1;
-      return t;		//connection closed by remote.
+      return (ssize_t)t;		//connection closed by remote.
     }else{
       buf += r;
       len -= r;

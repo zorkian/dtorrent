@@ -9,31 +9,9 @@
 
 #include "./config.h"
 
-#ifndef HAVE_STRNSTR
-
-/* FUNCTION PROGRAMER: Siberiaic Sang */
-static char* strnstr(const char *haystack,const char *needle,size_t haystacklen)
-{
-   char *p;
-   ssize_t plen;
-   ssize_t len = strlen(needle);
-
-  if (*needle == '\0')
-    return (char*) haystack;
-
-  plen = haystacklen;
-  for (p = (char*) haystack; p != (char*) 0; p = (char*)memchr(p + 1, *needle, plen-1)) {
-    plen = haystacklen - (p - haystack);
-
-    if (plen < len) return (char*) 0;
-
-    if (strncmp(p, needle, len) == 0)
-      return (p);
-  }
-  return (char*) 0;
-}
+#if !defined(HAVE_STRNSTR) || !defined(HAVE_STRNCASECMP)
+#include "compat.h"
 #endif
-/* ************************************************** */
 
 static void url_encode_char(char *b,char c)
 {
@@ -43,7 +21,7 @@ static void url_encode_char(char *b,char c)
   b[2] = HEX_TABLE[c & 0x0F];
 }
 
-char* Http_url_encode(char *s,char *b,size_t n)
+char* Http_url_encode(char *s,const char *b,size_t n)
 {
   size_t r,i;
   for(r = 0,i = 0 ; i < n; i++){
@@ -59,9 +37,9 @@ char* Http_url_encode(char *s,char *b,size_t n)
   return s;
 }
 
-int Http_url_analyse(char *url,char *host,int *port,char *path)
+int Http_url_analyse(const char *url,char *host,int *port,char *path)
 {
-  char *p;
+  const char *p;
   int r;
   *port = 80;	/* default port 80 */
   p = strstr(url,"://");
@@ -98,7 +76,7 @@ size_t Http_split(char *b,size_t n,char **pd,size_t *dlen)
   char *p;
   size_t addtion, hlen;
 
-  addtion = 2; hlen = 0;
+  hlen = 0;
 
   if( n < 16 ) return 0;	// 长度太小，不可能是一个HTML报文
 
@@ -108,8 +86,8 @@ size_t Http_split(char *b,size_t n,char **pd,size_t *dlen)
     //*pd = b;
     //*dlen = n;
   }else{
-    p = strnstr(b,"\n\n",n);
-    if( !p ){ p = strnstr(b,"\r\n\r\n",n); if(p) addtion = 4;}
+    if( p = strnstr(b,"\r\n\r\n",n) ) addtion = 4;
+    else if( p = strnstr(b,"\n\n",n) ) addtion = 2;
 
     if( p ){
       hlen = p - b;
@@ -124,7 +102,7 @@ size_t Http_split(char *b,size_t n,char **pd,size_t *dlen)
   return hlen;
 }
 
-int Http_reponse_code(char *b,size_t n)
+int Http_reponse_code(const char *b,size_t n)
 {
   int r = -1;
 
@@ -137,9 +115,10 @@ int Http_reponse_code(char *b,size_t n)
   return r;
 }
 
-int Http_get_header(char *b,int n,char *header,char *v)
+int Http_get_header(const char *b,int n,const char *header,char *v)
 {
-  char *e,h[64];
+  const char *e;
+  char h[64];
   int r,header_len;
 
   strcpy(h,header);
@@ -160,7 +139,7 @@ int Http_get_header(char *b,int n,char *header,char *v)
   
     if( r > header_len ){
       if( strncasecmp(b, h, header_len) == 0){
-        /* header founded */
+        /* header found */
         b += header_len;
         for(; *b != '\r' && *b != '\n'; v++,b++) *v = *b;
         *v = '\0';

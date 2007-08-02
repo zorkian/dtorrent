@@ -1,7 +1,4 @@
-#ifndef WINDOWS
-#include <unistd.h>
-#include <netdb.h>
-#endif
+#include "ctcs.h"  // def.h
 
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +6,6 @@
 
 #include <ctype.h>
 
-#include "ctcs.h"
 #include "btcontent.h"
 #include "setnonblock.h"
 #include "connect_nonb.h"
@@ -39,7 +35,7 @@ Ctcs::Ctcs()
   m_sock = INVALID_SOCKET;
   m_port = 2780;
   m_status = T_FREE;
-  m_interval = 1;
+  m_interval = 5;
   m_protocol = CTCS_PROTOCOL;
 
   m_last_timestamp = m_sent_ctstatus_time = m_statustime = (time_t) 0;
@@ -59,6 +55,7 @@ void Ctcs::Reset(time_t new_interval)
   if(new_interval) m_interval = new_interval;
 
   if( INVALID_SOCKET != m_sock ){
+    if(T_READY==m_status) CONSOLE.Warning(2, "Connection to CTCS closed");
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
   }
@@ -97,20 +94,19 @@ int Ctcs::CheckMessage()
 
   r = in_buffer.FeedIn(m_sock);
 
-  if( r == 0 ) return 0;	// no data
-  if( r < 0 ){ Reset(5); return -1; }	// error
+  // This differs from tracker.cpp since we maintain a persistent connection.
+  if( r == 0 ) return 0;	// no data (should return an error)
 
   q = in_buffer.Count();
 
   if( !q ){
     int error = 0;
     socklen_t n = sizeof(error);
-    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
-       error != 0 ){
-      CONSOLE.Warning(2, "warn, received nothing from CTCS:  %s",
-        strerror(error));
-    }
-    Reset(0);
+    if( getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 )
+      error = errno;
+    if( error != 0 ) CONSOLE.Warning(2,
+      "warn, received nothing from CTCS:  %s", strerror(error));
+    Reset(5);
     return -1;
   }
 
@@ -142,7 +138,7 @@ int Ctcs::CheckMessage()
     }else if( !strncmp("CTRESTART",msgbuf,9) ){
       RestartTracker();
     }else if( !strncmp("CTUPDATE",msgbuf,8) ){
-      Tracker.Reset(1);
+      Tracker.Reset(15);
     }else if( !strncmp("PROTOCOL",msgbuf,8) ){
       int proto = atoi(msgbuf+9);
       if( proto <= CTCS_PROTOCOL ) m_protocol = proto;
@@ -431,7 +427,8 @@ int Ctcs::Set_Config(char *msgbuf)
       if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
       arg_verbose = arg;
     }else if( 0==strcmp(name, "seed_time") ){
-      time_t arg = (time_t)strtoul(valstr, NULL, 10);
+      double value = strtod(valstr, NULL);
+      time_t arg = (time_t)value + ((value - (int)value) ? 1 : 0);
       arg += BTCONTENT.GetSeedTime() ?
              ((now - BTCONTENT.GetSeedTime()) / 3600) : 0;
       if( arg > 0 || 0==BTCONTENT.GetSeedTime() ||
@@ -677,16 +674,17 @@ int Ctcs::Connect()
   }
 
   m_sock = socket(AF_INET,SOCK_STREAM,0);
-  if(INVALID_SOCKET == m_sock) return -1;
+  if( INVALID_SOCKET == m_sock ) return -1;
 
-  if(setfd_nonblock(m_sock) < 0) {CLOSE_SOCKET(m_sock); return -1; }
+  if( setfd_nonblock(m_sock) < 0 ){ CLOSE_SOCKET(m_sock); return -1; }
 
   r = connect_nonb(m_sock,(struct sockaddr*)&m_sin);
 
-  if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1;}
+  if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1; }
   else if( r == -2 ) m_status = T_CONNECTING;
   else{
     m_status = T_READY;
+    if(arg_verbose) CONSOLE.Debug("Connected to CTCS");
     if( Send_Protocol() != 0 && errno != EINPROGRESS ){
       CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
         strerror(errno));
@@ -769,6 +767,7 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       return -1;
     }else{
       m_status = T_READY; 
+      if(arg_verbose) CONSOLE.Debug("Connected to CTCS");
       if( Send_Protocol() != 0 && errno != EINPROGRESS ){
         CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
           strerror(errno));

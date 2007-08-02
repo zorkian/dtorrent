@@ -13,7 +13,7 @@ extern size_t cfg_req_slice_size;
 extern size_t cfg_req_queue_length;
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CD0301-"
+#define PEER_PFX "-CD0302-"
 
 extern char *cfg_user_agent;	// HTTP header
 

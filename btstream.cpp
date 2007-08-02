@@ -1,9 +1,10 @@
+#include "btstream.h"  // def.h
+
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <sys/time.h>
 #include <string.h>	// memcpy
 
-#include "btstream.h"
 #include "msgencode.h"
 #include "btconfig.h"
 
@@ -171,11 +172,14 @@ ssize_t btStream::Send_Buffer(char *buf, size_t len)
 // Does not distinguish between keepalive, choke (msg 0), and no message.
 char btStream::PeekMessage()
 {
-  size_t r = 0;
+  return ( H_LEN < in_buffer.Count() && get_nl(in_buffer.BasePointer()) ) ?
+           in_buffer.BasePointer()[H_LEN] : 0;
+}
 
-  if( H_LEN < in_buffer.Count() )
-    r = get_nl(in_buffer.BasePointer());
-
-  return r ? in_buffer.BasePointer()[H_LEN] : 0 ;
+// Is the next message known to match m?
+int btStream::PeekMessage(char m)
+{
+  return ( H_LEN < in_buffer.Count() && m == in_buffer.BasePointer()[H_LEN] &&
+           get_nl(in_buffer.BasePointer()) ) ? 1 : 0;
 }
 

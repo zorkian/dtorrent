@@ -1,4 +1,5 @@
 #ifndef WINDOWS
+#include "sigint.h"  // def.h
 
 #include <sys/types.h>
 #include <signal.h>
@@ -8,7 +9,8 @@
 #include "peerlist.h"
 #include "btconfig.h"
 #include "console.h"
-#include "sigint.h"
+
+extern "C" {
 
 RETSIGTYPE sig_catch(int sig_no)
 {
@@ -36,6 +38,8 @@ RETSIGTYPE signals(int sig_no)
 {
   return CONSOLE.Signal(sig_no);
 }
+
+} // extern "C"
 
 #endif
 
