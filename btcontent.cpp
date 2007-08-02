@@ -617,11 +617,12 @@ void btContent::CacheConfigure()
 
 void btContent::FlushCache(size_t idx)
 {
-  BTCACHE *p;
+  BTCACHE *p, *pnext;
 
   p = m_cache[idx];
   if( idx == m_npieces ) p = m_cache_oldest;
-  for( ; p; p = (idx < m_npieces) ? p->bc_next : p->age_next ){
+  for( ; p; p = pnext ){
+    pnext = (idx < m_npieces) ? p->bc_next : p->age_next;
     if( idx == p->bc_off / m_piece_length ||
         (p->bc_f_flush && idx == m_npieces) ||
         idx == (p->bc_off+p->bc_len-1) / m_piece_length ){
@@ -662,7 +663,7 @@ void btContent::FlushCache(size_t idx)
           }
         }
       }
-    }else if( idx < p->bc_off / m_piece_length ) break;
+    }
   }
 }
 
