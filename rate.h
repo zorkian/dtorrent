@@ -8,7 +8,7 @@
 
 typedef struct _bwsample{
   double timestamp;
-  uint64_t bytes;
+  unsigned long bytes;
   struct _bwsample *next;
 }BWSAMPLE;
 

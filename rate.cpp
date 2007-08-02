@@ -213,7 +213,7 @@ size_t Rate::RateMeasure()
 {
   // calculate rate based on bandwidth history data
   time_t timestamp = now;
-  uint64_t countbytes = 0;
+  unsigned long countbytes = 0;
   double timeused = 0;
   BWSAMPLE *p;
 
@@ -249,7 +249,7 @@ size_t Rate::RateMeasure()
             m_prev_size / (m_recent_realtime - m_prev_realtime) ){
     // "tone down" the most recent to match the previous addition's rate
     countbytes -= m_recent_size;
-    countbytes += (uint64_t)(
+    countbytes += (unsigned long)(
       m_prev_size / (m_recent_realtime - m_prev_realtime) *
       (now - (time_t)m_recent_realtime) );
   }
