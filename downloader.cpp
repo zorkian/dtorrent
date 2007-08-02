@@ -61,6 +61,7 @@ void Downloader()
 
     if( 0==prevnfds && prevsleep > 0 && prevsleep < MAX_SLEEP ){
       FD_ZERO(&rfd); FD_ZERO(&wfd);
+      maxfd = 0;
       maxsleep = 0;  // waited for bandwidth--poll now
     }
     else if( WORLD.IsIdle() ){
