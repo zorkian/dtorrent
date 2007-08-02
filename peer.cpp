@@ -533,12 +533,13 @@ int btPeer::SendRequest()
 int btPeer::CancelPiece()
 {
   PSLICE ps = request_q.GetHead();
+  PSLICE next;
   size_t idx;
   int cancel = 1;
   int retval;
 
   idx = ps->index;
-  for( ; ps; ps = ps->next){
+  for( ; ps; ps = next){
     if( ps->index != idx ) break;
     if( ps == request_q.NextSend() ) cancel = 0;
     if( cancel ){
@@ -551,6 +552,7 @@ int btPeer::CancelPiece()
         m_req_out = 0;
       }
     }
+    next = ps->next;
     request_q.Remove(ps->index, ps->offset, ps->length);
   }
   if( !m_req_out && g_next_dn == this ) g_next_dn = (btPeer *)0;
