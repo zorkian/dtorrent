@@ -47,7 +47,8 @@ AC_FUNC_MEMCMP
 AC_TYPE_SIGNAL
 AC_FUNC_STAT
 AC_FUNC_STRTOD
-AC_CHECK_FUNCS([clock_gettime ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select socket strchr strerror strncasecmp strstr strtol strtoll strnstr])
+AC_CHECK_FUNCS([clock_gettime ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir select snprintf socket strerror strncasecmp strtol strtoll strnstr system vsnprintf])
+AC_FUNC_FORK
 
 # Enable/check large file support
 AC_SYS_LARGEFILE

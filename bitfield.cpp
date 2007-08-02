@@ -86,6 +86,18 @@ void BitField::SetAll()
   nset = nbits;
 }
 
+void BitField::Clear()
+{
+  if( _isfull() ){
+    b = new unsigned char[nbytes];
+#ifndef WINDOWS
+    if( !b ) throw 9;
+#endif
+  }
+  memset(b, 0, nbytes);
+  nset = 0;
+}
+
 int BitField::IsSet(size_t idx) const
 {
   if( idx >= nbits ) return 0;
@@ -144,9 +156,11 @@ void BitField::Invert()
     for( ; i < nbytes - 1; i++ ) b[i] = ~b[i];
 
     if( nbits % 8 ){
-      for( i = 8 * (nbytes - 1); i < nbits; i++ ) if( _isset(i) ) UnSet(i); else _set(i);
-    }else
-      b[nbytes - 1] = ~b[nbytes - 1];
+      for( i = 8 * (nbytes - 1); i < nbits; i++ ){
+        if( _isset(i) ) UnSet(i);
+        else _set(i);
+      }
+    }else b[nbytes - 1] = ~b[nbytes - 1];
 
     nset = nbits - s;
   }

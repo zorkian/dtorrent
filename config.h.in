@@ -19,6 +19,9 @@
 /* Define to 1 if you have the <fcntl.h> header file. */
 #undef HAVE_FCNTL_H
 
+/* Define to 1 if you have the `fork' function. */
+#undef HAVE_FORK
+
 /* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
 #undef HAVE_FSEEKO
 
@@ -82,6 +85,9 @@
 /* Define to 1 if you have the <sha.h> header file. */
 #undef HAVE_SHA_H
 
+/* Define to 1 if you have the `snprintf' function. */
+#undef HAVE_SNPRINTF
+
 /* Define to 1 if you have the `socket' function. */
 #undef HAVE_SOCKET
 
@@ -98,9 +104,6 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
-/* Define to 1 if you have the `strchr' function. */
-#undef HAVE_STRCHR
-
 /* Define to 1 if you have the `strerror' function. */
 #undef HAVE_STRERROR
 
@@ -116,14 +119,14 @@
 /* Define to 1 if you have the `strnstr' function. */
 #undef HAVE_STRNSTR
 
-/* Define to 1 if you have the `strstr' function. */
-#undef HAVE_STRSTR
-
 /* Define to 1 if you have the `strtol' function. */
 #undef HAVE_STRTOL
 
 /* Define to 1 if you have the `strtoll' function. */
 #undef HAVE_STRTOLL
+
+/* Define to 1 if you have the `system' function. */
+#undef HAVE_SYSTEM
 
 /* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
    */
@@ -159,6 +162,21 @@
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
+
+/* Define to 1 if you have the `vfork' function. */
+#undef HAVE_VFORK
+
+/* Define to 1 if you have the <vfork.h> header file. */
+#undef HAVE_VFORK_H
+
+/* Define to 1 if you have the `vsnprintf' function. */
+#undef HAVE_VSNPRINTF
+
+/* Define to 1 if `fork' works. */
+#undef HAVE_WORKING_FORK
+
+/* Define to 1 if `vfork' works. */
+#undef HAVE_WORKING_VFORK
 
 /* Define to 1 if `lstat' dereferences a symlink specified with a trailing
    slash. */
@@ -255,6 +273,9 @@
    a type exists and the standard includes do not define it. */
 #undef int8_t
 
+/* Define to `int' if <sys/types.h> does not define. */
+#undef pid_t
+
 /* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t
 
@@ -276,3 +297,6 @@
 /* Define to the type of an unsigned integer type of width exactly 8 bits if
    such a type exists and the standard includes do not define it. */
 #undef uint8_t
+
+/* Define as `fork' if `vfork' does not work. */
+#undef vfork

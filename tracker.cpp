@@ -24,6 +24,10 @@
 #include "console.h"
 #include "bttime.h"
 
+#ifndef HAVE_SNPRINTF
+#include "compat.h"
+#endif
+
 btTracker Tracker;
 
 btTracker::btTracker()
@@ -35,8 +39,7 @@ btTracker::btTracker()
   m_sock = INVALID_SOCKET;
   m_port = 80;
   m_status = T_FREE;
-  m_f_started = m_f_stoped = m_f_pause = m_f_completed = 0;
-  m_f_restart = 0;
+  m_f_started = m_f_stoped = m_f_completed = m_f_restart = 0;
 
   m_interval = 15;
   m_peers_count = m_seeds_count = 0;
@@ -62,9 +65,9 @@ void btTracker::Reset(time_t new_interval)
 
   m_reponse_buffer.Reset();
   time(&m_last_timestamp);
-  if (m_f_stoped){
+  if( m_f_stoped ){
     m_status = T_FINISHED;
-    if( m_f_restart ) Resume();
+    if( m_f_restart ) Restart();
   }
   else m_status = T_FREE;
 }
@@ -229,8 +232,6 @@ int btTracker::CheckReponse()
 
   q = m_reponse_buffer.Count();
 
-  Reset( (-1 == r) ? 15 : 0 );
-
   if( !q ){
     int error = 0;
     socklen_t n = sizeof(error);
@@ -239,8 +240,11 @@ int btTracker::CheckReponse()
     if( error != 0 ) CONSOLE.Warning(2,
       "warn, received nothing from tracker:  %s", strerror(error));
     else CONSOLE.Warning(2, "warn, received nothing from tracker!");
+    Reset( (-1 == r) ? 15 : 0 );
     return -1;
   }
+
+  Reset( (-1 == r) ? 15 : 0 );  // can't reset socket before error check
 
   hlen = Http_split(m_reponse_buffer.BasePointer(), q, &pdata,&dlen);
 
@@ -252,120 +256,120 @@ int btTracker::CheckReponse()
   r = Http_reponse_code(m_reponse_buffer.BasePointer(),hlen);
   if ( r != 200 ){
     if( r == 301 || r == 302 ){
-      char redirect[MAXPATHLEN],ih_buf[20 * 3 + 1],pi_buf[20 * 3 + 1],tmppath[MAXPATHLEN];
-      if( Http_get_header(m_reponse_buffer.BasePointer(), hlen, "Location", redirect) < 0 )
+      char redirect[MAXPATHLEN], ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1],
+           tmppath[MAXPATHLEN];
+
+      if( Http_get_header(m_reponse_buffer.BasePointer(), hlen, "Location",
+          redirect) < 0 )
         return -1;
 
-      if( Http_url_analyse(redirect,m_host,&m_port,m_path) < 0){
+      if( Http_url_analyse(redirect,m_host,&m_port,m_path) < 0 ){
         CONSOLE.Warning(1,
           "warn, tracker redirected to an invalid url %s", redirect);
         return -1;
+      }else{
+        char *c = strstr(m_path, "?info_hash=");
+        if( !c ) c = strstr(m_path, "&info_hash=");
+        if( c ) *c = '\0';
+        if(arg_verbose) CONSOLE.Debug("tracker redirect to %s", redirect);
+        if( BuildBaseRequest() < 0 ) return -1;
       }
 
-      if(!strstr(m_path, "info_hash=")) {
-        strcpy(tmppath,m_path);
-
-        if(strchr(m_path, '?'))
-          format=REQ_URL_P1A_FMT;
-        else format=REQ_URL_P1_FMT;
-
-        if(MAXPATHLEN < snprintf(m_path,MAXPATHLEN,format,
-                                 tmppath,
-                                 Http_url_encode(ih_buf, (char*)BTCONTENT.GetInfoHash(), 20),
-                                 Http_url_encode(pi_buf, (char*)BTCONTENT.GetPeerId(), 20),
-                                 cfg_listen_port,
-                                 m_key)){
-          return -1;
-        }
-      }
-
-      return Connect();
+      if( Connect() < 0 ){
+        Reset(15);
+        return -1;
+      }else return 0;
     }else if( r >= 400 ){
       CONSOLE.Warning(2, "Tracker reponse code >= 400 !!!");
       CONSOLE.Warning(2,
-        "The file is not registered on this tracker, or it may have been removed.");
+        "The file is not registered on this tracker or may have been removed.");
       CONSOLE.Warning(2,
-        "IF YOU SEE THIS MESSAGE FOR A LONG TIME AND DOWNLOAD DOESN'T BEGIN, RECOMMEND YOU STOP NOW!!!");
-      CONSOLE.Warning(0, "Tracker reponse data DUMP:");
-      if( pdata && dlen )  // write(STDERR_FILENO, pdata, dlen);
+        "IF YOU CONTINUE TO GET THIS MESSAGE AND DOWNLOAD DOES NOT BEGIN, PLEASE STOP CTORRENT!");
+      if( pdata && dlen ){  // write(STDERR_FILENO, pdata, dlen);
+        CONSOLE.Warning(0, "Tracker reponse data DUMP:");
         CONSOLE.Warning(0, "%s", pdata);
-      CONSOLE.Warning(0, "== DUMP OVER==");
+        CONSOLE.Warning(0, "== DUMP OVER==");
+      }
       return -1;
     }else
       return 0;
-  }
-
-  if ( !pdata ){
-    CONSOLE.Warning(2, "warn, peers list received from tracker is empty.");
-    return 0;
   }
 
   if( !m_f_started ) m_f_started = 1;
   m_connect_refuse_click = 0;
   m_ok_click++;
 
+  if ( !pdata ){
+    CONSOLE.Warning(2, "warn, peers list received from tracker is empty.");
+    return 0;
+  }
   return _UpdatePeerList(pdata,dlen);
 }
 
 int btTracker::Initial()
 {
-  char ih_buf[20 * 3 + 1],pi_buf[20 * 3 + 1],tmppath[MAXPATHLEN];
-  char *format;
-
   if(Http_url_analyse(BTCONTENT.GetAnnounce(),m_host,&m_port,m_path) < 0){
     CONSOLE.Warning(1, "error, invalid tracker url format!");
     return -1;
   }
-
-  strcpy(tmppath,m_path);
-
-  if(strchr(m_path, '?'))
-    format=REQ_URL_P1A_FMT;
-  else format=REQ_URL_P1_FMT;
 
   char chars[37] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   for(int i=0; i<8; i++)
     m_key[i] = chars[random()%36];
   m_key[8] = 0;
 
-  if(MAXPATHLEN < snprintf((char*)m_path,MAXPATHLEN,format,
-                           tmppath,
-                           Http_url_encode(ih_buf,(char*)BTCONTENT.GetInfoHash(),20),
-                           Http_url_encode(pi_buf,(char*)BTCONTENT.GetPeerId(),20),
-                           cfg_listen_port,
-                           m_key)){
-    return -1;
-  }
+  if( BuildBaseRequest() < 0 ) return -1;
 
   /* get local ip address */
   // 1st: if behind firewall, this only gets local side
   {
-  struct sockaddr_in addr;
-  socklen_t addrlen = sizeof(struct sockaddr_in);
-  if(getsockname(m_sock,(struct sockaddr*)&addr,&addrlen) == 0)
-        Self.SetIp(addr);
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(struct sockaddr_in);
+    if(getsockname(m_sock,(struct sockaddr*)&addr,&addrlen) == 0)
+          Self.SetIp(addr);
   }
   // 2nd: better to use addr of our domain
   {
-          struct sockaddr_in addr;
-          struct hostent *h;
-          char hostname[128];
-          char *hostdots[2]={0,0}, *hdptr=hostname;
+    struct sockaddr_in addr;
+    struct hostent *h;
+    char hostname[128];
+    char *hostdots[2]={0,0}, *hdptr=hostname;
 
-          if (gethostname(hostname, 128) == -1) return -1;
-//        CONSOLE.Print("%s", hostname);
-          while(*hdptr) if(*hdptr++ == '.') {
-            hostdots[0] = hostdots[1];
-            hostdots[1] = hdptr;
-          }
-          if (hostdots[0] == 0) return -1;
-//        CONSOLE.Print("%s", hostdots[0]);
-          if ((h = gethostbyname(hostdots[0])) == NULL) return -1;
-          //CONSOLE.Print("Host domain  : %s", h->h_name);
-          //CONSOLE.Print("IP Address : %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
-          memcpy(&addr.sin_addr,h->h_addr,sizeof(struct in_addr));
-          Self.SetIp(addr);
+    if (gethostname(hostname, 128) == -1) return -1;
+//  CONSOLE.Print("%s", hostname);
+    while(*hdptr) if(*hdptr++ == '.') {
+      hostdots[0] = hostdots[1];
+      hostdots[1] = hdptr;
+    }
+    if (hostdots[0] == 0) return -1;
+//  CONSOLE.Print("%s", hostdots[0]);
+    if ((h = gethostbyname(hostdots[0])) == NULL) return -1;
+//  CONSOLE.Print("Host domain  : %s", h->h_name);
+//  CONSOLE.Print("IP Address : %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
+    memcpy(&addr.sin_addr,h->h_addr,sizeof(struct in_addr));
+    Self.SetIp(addr);
   }
+  return 0;
+}
+
+int btTracker::BuildBaseRequest()
+{
+  char ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1], tmppath[MAXPATHLEN], *format;
+
+  strcpy(tmppath,m_path);
+  if(strchr(m_path, '?'))
+    format=REQ_URL_P1A_FMT;
+  else format=REQ_URL_P1_FMT;
+
+  if(MAXPATHLEN < snprintf((char*)m_path,MAXPATHLEN,format,
+                     tmppath,
+                     Http_url_encode(ih_buf,(char*)BTCONTENT.GetInfoHash(),20),
+                     Http_url_encode(pi_buf,(char*)BTCONTENT.GetPeerId(),20),
+                     cfg_listen_port,
+                     m_key)){
+    return -1;
+  }
+
   return 0;
 }
 
@@ -402,15 +406,16 @@ int btTracker::Connect()
     }
   }
 
-  if(setfd_nonblock(m_sock) < 0) {CLOSE_SOCKET(m_sock); return -1; }
+  if(setfd_nonblock(m_sock) < 0){ CLOSE_SOCKET(m_sock); return -1; }
 
   r = connect_nonb(m_sock,(struct sockaddr*)&m_sin);
 
-  if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1;}
+  if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1; }
   else if( r == -2 ) m_status = T_CONNECTING;
   else{
-    if( 0 == SendRequest()) m_status = T_READY;
-    else{ CLOSE_SOCKET(m_sock); return -1;}
+    if(arg_verbose) CONSOLE.Debug("Connected to tracker");
+    if( 0 == SendRequest() ) m_status = T_READY;
+    else{ CLOSE_SOCKET(m_sock); return -1; }
   }
   return 0;
 }
@@ -424,40 +429,28 @@ int btTracker::SendRequest()
   if( m_f_stoped )
     event = str_event[1];	/* stopped */
   else if( !m_f_started ){
-    if( BTCONTENT.pBF->IsFull() ) m_f_completed = 1;
+    if( BTCONTENT.IsFull() ) m_f_completed = 1;
     event = str_event[0];	/* started */
-  }else if( BTCONTENT.pBF->IsFull() && !m_f_completed ){
+  }else if( BTCONTENT.IsFull() && !m_f_completed ){
     if( Self.TotalDL() > 0 ) event = str_event[2];  /* download complete */
     else event = (char*) 0;  /* interval */
     m_f_completed = 1;		/* only send download complete once */
   }else
     event = (char*) 0;  /* interval */
 
-  if(event){
-    if(MAXPATHLEN < snprintf(REQ_BUFFER,MAXPATHLEN,REQ_URL_P2_FMT,
-                             m_path,
-                             (unsigned long long)(Self.TotalUL()),
-                             (unsigned long long)(Self.TotalDL()),
-                             (unsigned long long)(BTCONTENT.GetLeftBytes()),
-                             event,
-                             (int)cfg_max_peers,
-                             m_key)){
-      return -1;
-    }
-  }else{
-    if(MAXPATHLEN < snprintf(REQ_BUFFER,MAXPATHLEN,REQ_URL_P3_FMT,
-                             m_path,
-                             (unsigned long long)(Self.TotalUL()),
-                             (unsigned long long)(Self.TotalDL()),
-                             (unsigned long long)(BTCONTENT.GetLeftBytes()),
-                             (int)cfg_max_peers,
-                             m_key)){
-      return -1;
-    }
+  char opt1[20] = "&event=";
+  char opt2[12+PEER_ID_LEN] = "&trackerid=";
+
+  if(MAXPATHLEN < snprintf(REQ_BUFFER,MAXPATHLEN,REQ_URL_P2_FMT,
+                     m_path,
+                     event ? strncat(opt1,event,12) : "",
+                     *m_trackerid ? strncat(opt2,m_trackerid,PEER_ID_LEN) : "",
+                     (unsigned long long)(Self.TotalUL()),
+                     (unsigned long long)(Self.TotalDL()),
+                     (unsigned long long)(BTCONTENT.GetLeftBytes()),
+                     (int)cfg_max_peers)){
+    return -1;
   }
-  if( *m_trackerid &&
-      MAXPATHLEN - strlen(m_path) > 11 + strlen(m_trackerid) )
-    strcat(strcat(m_path, "&trackerid="), m_trackerid);
 
   // if we have a tracker hostname (not just an IP), send a Host: header
   if(_IPsin(m_host, m_port, &addr) < 0){
@@ -490,6 +483,10 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   /* tracker communication */
   if( T_FREE == m_status ){
+    if( INVALID_SOCKET != m_sock ){
+      FD_CLR(m_sock, rfdp);
+      FD_CLR(m_sock, wfdp);
+    }
     if( now - m_last_timestamp >= m_interval ||
         // Connect to tracker early if we run low on peers.
         (WORLD.GetPeersCount() < cfg_min_peers &&
@@ -505,8 +502,9 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     if( m_status == T_CONNECTING ){
       FD_SET(m_sock, rfdp);
       FD_SET(m_sock, wfdp);
-    }else if (INVALID_SOCKET != m_sock){
+    }else if( INVALID_SOCKET != m_sock ){
       FD_SET(m_sock, rfdp);
+      if( m_reponse_buffer.Count() ) FD_SET(m_sock, wfdp);
     }
   }
   return m_sock;
@@ -526,16 +524,18 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       (*nfds)--;
       FD_CLR(m_sock, rfdnextp);
     }
-    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
-       error != 0 ){
-      if( ECONNREFUSED != error ){
-        CONSOLE.Warning(2,
-          "warn, connect to tracker failed:  %s", strerror(error));
-      }else
+    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0)
+      error = errno;
+    if( error ){
+      if( ECONNREFUSED == error ){
+        if(arg_verbose) CONSOLE.Debug("tracker connection refused");
         m_connect_refuse_click++;
+      }else CONSOLE.Warning(2,
+          "warn, connect to tracker failed:  %s", strerror(error));
       Reset(15);
       return -1;
     }else{
+      if(arg_verbose) CONSOLE.Debug("Connected to tracker");
       if( SendRequest() == 0 ) m_status = T_READY; 
       else { Reset(15); return -1; }
     }
@@ -544,26 +544,71 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     socklen_t n = sizeof(error);
     (*nfds)--;
     FD_CLR(m_sock, rfdnextp);
-    getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n);
+    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0)
+      error = errno;
     CONSOLE.Warning(2, "warn, connect to tracker failed:  %s", strerror(error));
     Reset(15);
     return -1;
-  }else if(INVALID_SOCKET != m_sock && FD_ISSET(m_sock, rfdp) ){
-    (*nfds)--;
-    FD_CLR(m_sock,rfdnextp);
-    CheckReponse();
+  }else if( INVALID_SOCKET != m_sock ){
+    if( FD_ISSET(m_sock, rfdp) ){
+      (*nfds)--;
+      FD_CLR(m_sock,rfdnextp);
+      SOCKET tmp_sock = m_sock;
+      int r = CheckReponse();
+      if( INVALID_SOCKET == m_sock ){
+        if( FD_ISSET(tmp_sock, wfdp) ){
+          (*nfds)--;
+          FD_CLR(tmp_sock,wfdnextp);
+        }
+        return r;
+      }
+    }
+    if( FD_ISSET(m_sock, wfdp) ){
+      (*nfds)--;
+      FD_CLR(m_sock,wfdnextp);
+      if( m_reponse_buffer.Count() && m_reponse_buffer.FlushOut(m_sock) < 0 ){
+        Reset(15);
+        return -1;
+      }
+    }
+  }else{  // failsafe
+    Reset(15);
+    return -1;
   }
   return 0;
 }
 
-void btTracker::Resume()
+void btTracker::Restart()
 {
-  m_f_pause = m_f_stoped = 0;
+  m_f_stoped = m_f_restart = 0;
 
   if( T_FINISHED == m_status ){
     m_status = T_FREE;
     m_f_started = 0;
     m_interval = 15;
   }
+}
+
+void btTracker::SetStoped()
+{
+  if( !m_f_started ){
+    m_f_stoped = 1;
+    m_status = T_FINISHED;
+  }else{
+    Reset(1);
+    m_f_stoped = 1;
+  }
+}
+
+size_t btTracker::GetPeersCount() const 
+{
+  // includes seeds, so must always be >= 1 (myself!)
+  return (m_peers_count > m_seeds_count) ? m_peers_count :
+           (GetSeedsCount() + (BTCONTENT.IsFull() ? 0 : 1));
+}
+
+size_t btTracker::GetSeedsCount() const
+{
+  return m_seeds_count ? m_seeds_count : (BTCONTENT.IsFull() ? 1 : 0);
 }
 

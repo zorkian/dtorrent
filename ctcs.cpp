@@ -20,8 +20,12 @@
 #include "bttime.h"
 #include "console.h"
 
+#ifndef HAVE_SNPRINTF
+#include "compat.h"
+#endif
 
-#define CTCS_PROTOCOL 2
+
+#define CTCS_PROTOCOL 3
 
 #define compset(a,member)  ( (a.member==member)? 0 : ((a.member = member)||1) )
 
@@ -111,9 +115,10 @@ int Ctcs::CheckMessage()
   }
 
   char *s, *msgbuf;
-  while(in_buffer.Count() && (s=strchr(msgbuf=in_buffer.BasePointer(), '\n'))){
+  while(in_buffer.Count() &&
+        (s=strpbrk(msgbuf=in_buffer.BasePointer(), "\r\n"))){
     *s = '\0';
-    if(arg_verbose) CONSOLE.Debug("CTCS: %s", msgbuf);
+    if(arg_verbose && s!=msgbuf) CONSOLE.Debug("CTCS: %s", msgbuf);
     if( !strncmp("SETDLIMIT",msgbuf,9) ){
       cfg_max_bandwidth_down = (int)(strtod(msgbuf+10, NULL));
       if(arg_verbose) CONSOLE.Debug("DLimit=%d", cfg_max_bandwidth_down);
@@ -132,6 +137,7 @@ int Ctcs::CheckMessage()
       Send_Detail();
     }else if( !strncmp("CTQUIT",msgbuf,6) ){
       CONSOLE.Print("CTCS sent Quit command");
+      Tracker.ClearRestart();
       Tracker.SetStoped();
     }else if( !strncmp("CTRESTART",msgbuf,9) ){
       RestartTracker();
@@ -141,7 +147,7 @@ int Ctcs::CheckMessage()
       int proto = atoi(msgbuf+9);
       if( proto <= CTCS_PROTOCOL ) m_protocol = proto;
       else m_protocol = CTCS_PROTOCOL;
-    }else{
+    }else if( s!=msgbuf ){
       if(arg_verbose) CONSOLE.Debug("unknown CTCS message: %s", msgbuf);
     }
     in_buffer.PickUp(s-msgbuf + 1);
@@ -151,7 +157,7 @@ int Ctcs::CheckMessage()
 }
 
 
-int Ctcs::SendMessage(char *message)
+int Ctcs::SendMessage(const char *message)
 {
   int len, r=0;
   char buf[CTCS_BUFSIZE];
@@ -193,7 +199,7 @@ int Ctcs::Send_Protocol()
 }
 
 
-int Ctcs::Send_Torrent(unsigned char *peerid, char *torrent)
+int Ctcs::Send_Torrent(const unsigned char *peerid, char *torrent)
 {
   char message[CTCS_BUFSIZE];
   char txtid[PEER_ID_LEN*2+3];
@@ -261,11 +267,11 @@ int Ctcs::Send_Status()
   else
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d:%d/%d:%d/%d %d/%d/%d %d,%d %llu,%llu %d,%d %d",
-      (int)(m_ctstatus.seeders), (int)(Tracker.GetSeedsCount() -
-        ((BTCONTENT.pBF->IsFull() && Tracker.GetSeedsCount() > 0) ? 1 : 0)),
+      (int)(m_ctstatus.seeders),
+        (int)(Tracker.GetSeedsCount()) - (BTCONTENT.IsFull() ? 1 : 0),
       (int)(m_ctstatus.leechers),
-        (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
-        ((!BTCONTENT.pBF->IsFull() && Tracker.GetPeersCount() > 0) ? 1 : 0)),
+        (int)(Tracker.GetPeersCount()) - Tracker.GetSeedsCount() -
+          (!BTCONTENT.IsFull() ? 1 : 0),
       (int)(WORLD.GetConnCount()),
       (int)(m_ctstatus.nhave), (int)(m_ctstatus.ntotal),
         (int)(WORLD.Pieces_I_Can_Get()),
@@ -296,58 +302,233 @@ int Ctcs::Send_Config()
 {
   char message[CTCS_BUFSIZE];
 
-  if( m_protocol == 1 )
-    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d %d",
-      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
-      (int)cfg_max_peers, (int)cfg_min_peers, (int)arg_file_to_download,
-      0, WORLD.IsPaused(), 0);
-  else
+  if( m_protocol >= 3 ){
+    int r = 0;
+    char value[MAXPATHLEN], desc[MAXPATHLEN], maxlen[10];
+
+    if( (r=SendMessage("CTCONFIGSTART")) < 0 ) return r;
+    snprintf(maxlen, sizeof(maxlen), "%u", (unsigned int)MAXPATHLEN);
+
+    if( (r = SendMessage(ConfigMsg("verbose", "B", "0", arg_verbose?"1":"0",
+        "Verbose output [-v]", arg_verbose ? "Enabled" : "Disabled"))) < 0 )
+      return r;
+
+    double num = BTCONTENT.GetSeedTime() ?
+        (cfg_seed_hours - (now - BTCONTENT.GetSeedTime())/3600.0) :
+        cfg_seed_hours;
+    unsigned long tmp = (unsigned long)(num * 100);
+    int pre = (tmp % 10) ? 2 : (tmp % 100) ? 1 : 0;
+    snprintf(value, MAXPATHLEN, "%.*f", pre, num);
+    snprintf(desc, MAXPATHLEN, "~hours remaining (-e %lu)", 
+      (unsigned long)cfg_seed_hours);
+    if( (r = SendMessage(ConfigMsg("seed_time", "F", "0", value,
+                                   "Seed time [-e]", desc))) < 0 )
+      return r;
+
+    snprintf(value, MAXPATHLEN, "%.2f", (double)cfg_seed_ratio);
+    if( (r = SendMessage(ConfigMsg("seed_ratio", "F", "0", value,
+        "Seed ratio [-E]", "Upload:Download"))) < 0 )
+      return r;
+
+    snprintf(value, MAXPATHLEN, "%d", (int)cfg_max_peers);
+    snprintf(desc, MAXPATHLEN, "Current peers: %d",
+      (int)(WORLD.GetPeersCount()));
+    if( (r = SendMessage(ConfigMsg("max_peers", "I", "20-1000", value,
+        "Max peers [-M]", desc))) < 0 )
+      return r;
+
+    snprintf(value, MAXPATHLEN, "%d", (int)cfg_min_peers);
+    snprintf(desc, MAXPATHLEN, "Current peers: %d",
+      (int)(WORLD.GetPeersCount()));
+    if( (r = SendMessage(ConfigMsg("min_peers", "I", "1-1000", value,
+        "Min peers [-m]", desc))) < 0 )
+      return r;
+
+    if( (r = SendMessage(ConfigMsg("file_list", "S", maxlen,
+        arg_file_to_download ? arg_file_to_download : "",
+        "Download files [-n]", ""))) < 0 )
+      return r;
+
+    snprintf(value, MAXPATHLEN, "%d", (int)cfg_cache_size);
+    snprintf(desc, MAXPATHLEN, "MB; %dKB now in use",
+      (int)(BTCONTENT.CacheUsed()/1024));
+    if( (r = SendMessage(ConfigMsg("cache", "I", "0", value,
+        "Cache size [-C]", desc))) < 0 )
+      return r;
+
+    if( (r = SendMessage(ConfigMsg("pause", "B", "0",
+        WORLD.IsPaused()?"1":"0",
+        "Pause torrent", "Stop upload/download"))) < 0 )
+      return r;
+
+    if( (r = SendMessage(ConfigMsg("user_exit", "S", maxlen,
+        arg_completion_exit ? arg_completion_exit : "",
+        "Completion command [-X]", ""))) < 0 )
+      return r;
+
+    if( (r = SendMessage(ConfigMsg("out_normal", "S", maxlen,
+        CONSOLE.GetChannel(O_NORMAL), "Normal/status output", ""))) < 0 )
+      return r;
+    if( (r = SendMessage(ConfigMsg("out_interact", "S", maxlen,
+        CONSOLE.GetChannel(O_INTERACT), "Interactive output", ""))) < 0 )
+      return r;
+    if( (r = SendMessage(ConfigMsg("out_error", "S", maxlen,
+        CONSOLE.GetChannel(O_WARNING), "Error/warning output", ""))) < 0 )
+      return r;
+    if( (r = SendMessage(ConfigMsg("out_debug", "S", maxlen,
+        CONSOLE.GetChannel(O_DEBUG), "Debug/verbose output", ""))) < 0 )
+      return r;
+    if( (r = SendMessage(ConfigMsg("input", "S", maxlen,
+        CONSOLE.GetChannel(O_INPUT), "Console input", ""))) < 0 )
+      return r;
+
+    sprintf(message, "CTCONFIGDONE");
+  }
+  else if( m_protocol == 2 )
     snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d",
       (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
-      (int)cfg_max_peers, (int)cfg_min_peers, (int)arg_file_to_download,
+      (int)cfg_max_peers, (int)cfg_min_peers,
+      BTCONTENT.GetFilter() ? atoi(BTCONTENT.GetFilterName()) : 0,
       (int)cfg_cache_size, WORLD.IsPaused());
+  else  // m_protocol == 1
+    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d %d",
+      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
+      (int)cfg_max_peers, (int)cfg_min_peers,
+      BTCONTENT.GetFilter() ? atoi(BTCONTENT.GetFilterName()) : 0,
+      0, WORLD.IsPaused(), 0);
 
   return SendMessage(message);
 }
 
+char *Ctcs::ConfigMsg(const char *name, const char *type, const char *range,
+  const char *value, const char *short_desc, const char *long_desc)
+{
+  static char *message = (char *)0;
+
+  if( !message ){
+    message = new char[CTCS_BUFSIZE];
+    if( !message ){
+      CONSOLE.Warning(1, "error, failed to allocate memory for CTCS message");
+      return (char *)0;
+    }
+  }
+  snprintf(message, CTCS_BUFSIZE, "CTCONFIG %s %s %s %d:%s %d:%s %d:%s",
+    name, type, range, (int)strlen(value), value,
+    (int)strlen(short_desc), short_desc, (int)strlen(long_desc), long_desc);
+
+  return message;
+}
+
 int Ctcs::Set_Config(char *msgbuf)
 {
-  if(msgbuf[9] != '.'){
-    int arg = atoi(msgbuf+9);
-    if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
-    arg_verbose = arg;
-  }
-  if(msgbuf[11] != '.') cfg_seed_hours = atoi(msgbuf+11);
-  msgbuf = strchr(msgbuf+11, ' ') + 1;
-  if(msgbuf[0] != '.') cfg_seed_ratio = atof(msgbuf);
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.') cfg_max_peers = atoi(msgbuf);
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.') cfg_min_peers = atoi(msgbuf);
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.'){
-    size_t foo = atoi(msgbuf);
-    if(foo != arg_file_to_download){
-      arg_file_to_download = foo;
+  if( m_protocol >= 3 ){
+    char *name, *valstr;
+    name = strtok(strchr(msgbuf, ' '), " ");
+    for( valstr=name+strlen(name)+1; *valstr==' '; valstr++ );
+
+    if( 0==strcmp(name, "verbose") ){
+      int arg = atoi(valstr);
+      if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
+      arg_verbose = arg;
+    }else if( 0==strcmp(name, "seed_time") ){
+      time_t arg = (time_t)strtoul(valstr, NULL, 10);
+      arg += BTCONTENT.GetSeedTime() ?
+             ((now - BTCONTENT.GetSeedTime()) / 3600) : 0;
+      if( arg > 0 || 0==BTCONTENT.GetSeedTime() ||
+          cfg_seed_ratio > (double) Self.TotalUL() /
+            (Self.TotalDL() ?
+             Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) )
+        cfg_seed_hours = arg;
+    }else if( 0==strcmp(name, "seed_ratio") ){
+      double arg = atof(valstr);
+      if( 0==BTCONTENT.GetSeedTime() ||
+          cfg_seed_hours > (now - BTCONTENT.GetSeedTime()) / 3600 ||
+          arg > (double) Self.TotalUL() /
+            (Self.TotalDL() ?
+             Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) )
+        cfg_seed_ratio = arg;
+    }else if( 0==strcmp(name, "max_peers") ){
+      cfg_max_peers = atoi(valstr);
+    }else if( 0==strcmp(name, "min_peers") ){
+      cfg_min_peers = atoi(valstr);
+    }else if( 0==strcmp(name, "file_list") ){
+      if( arg_file_to_download ) delete []arg_file_to_download;
+      if( 0==strlen(valstr) ) arg_file_to_download = (char *)0;
+      else{
+        arg_file_to_download = new char[strlen(valstr) + 1];
+        if( !arg_file_to_download )
+          CONSOLE.Warning(1, "error, failed to allocate memory for option");
+        else strcpy(arg_file_to_download, valstr);
+      }
       BTCONTENT.SetFilter();
+    }else if( 0==strcmp(name, "cache") ){
+      cfg_cache_size = atoi(valstr);
+      BTCONTENT.CacheConfigure();
+    }else if( 0==strcmp(name, "pause") ){
+      if( atoi(valstr) ){
+        if( !WORLD.IsPaused() ) WORLD.Pause();
+      }else if( WORLD.IsPaused() ) WORLD.Resume();
+    }else if( 0==strcmp(name, "user_exit") ){
+      if( arg_completion_exit ) delete []arg_completion_exit;
+      arg_completion_exit = new char[strlen(valstr) + 1];
+      if( !arg_completion_exit )
+        CONSOLE.Warning(1, "error, failed to allocate memory for option");
+      else strcpy(arg_completion_exit, valstr);
+    }else if( 0==strcmp(name, "out_normal") ){
+      CONSOLE.ChangeChannel(O_NORMAL, valstr);
+    }else if( 0==strcmp(name, "out_interact") ){
+      CONSOLE.ChangeChannel(O_INTERACT, valstr);
+    }else if( 0==strcmp(name, "out_error") ){
+      CONSOLE.ChangeChannel(O_WARNING, valstr);
+    }else if( 0==strcmp(name, "out_debug") ){
+      CONSOLE.ChangeChannel(O_DEBUG, valstr);
+    }else if( 0==strcmp(name, "input") ){
+      CONSOLE.ChangeChannel(O_INPUT, valstr);
+    }else CONSOLE.Warning(2, "Unknown config option %s from CTCS", name);
+  }else{  // m_protocol <= 2
+    if(msgbuf[9] != '.'){
+      int arg = atoi(msgbuf+9);
+      if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
+      arg_verbose = arg;
     }
-  }
-  if( m_protocol >= 2 ){
+    if(msgbuf[11] != '.') cfg_seed_hours = atoi(msgbuf+11);
+    msgbuf = strchr(msgbuf+11, ' ') + 1;
+    if(msgbuf[0] != '.') cfg_seed_ratio = atof(msgbuf);
+    msgbuf = strchr(msgbuf, ' ') + 1;
+    if(msgbuf[0] != '.') cfg_max_peers = atoi(msgbuf);
+    msgbuf = strchr(msgbuf, ' ') + 1;
+    if(msgbuf[0] != '.') cfg_min_peers = atoi(msgbuf);
     msgbuf = strchr(msgbuf, ' ') + 1;
     if(msgbuf[0] != '.'){
-      cfg_cache_size = atoi(msgbuf);
-      BTCONTENT.CacheConfigure();
+      char *p = strchr(msgbuf, ' ');
+      if( arg_file_to_download ) delete []arg_file_to_download;
+      arg_file_to_download = new char[p - msgbuf + 2 + 1];
+      if( !arg_file_to_download )
+        CONSOLE.Warning(1, "error, failed to allocate memory for option");
+      else{
+        strncpy(arg_file_to_download, msgbuf, p - msgbuf);
+        arg_file_to_download[p - msgbuf] = '\0';
+        strcat(arg_file_to_download, ",*");  // mock old behavior
+      }
+      BTCONTENT.SetFilter();
     }
-  }
-  if( m_protocol == 1 ){
+    if( m_protocol >= 2 ){
+      msgbuf = strchr(msgbuf, ' ') + 1;
+      if(msgbuf[0] != '.'){
+        cfg_cache_size = atoi(msgbuf);
+        BTCONTENT.CacheConfigure();
+      }
+    }
+    if( m_protocol == 1 ){
+      msgbuf = strchr(msgbuf, ' ') + 1;
+      // old cfg_exit_zero_peers option
+    }
     msgbuf = strchr(msgbuf, ' ') + 1;
-    // old cfg_exit_zero_peers option
-  }
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.'){
-    if(atoi(msgbuf)){
-      if( !WORLD.IsPaused() ) WORLD.Pause();
-    }else if( WORLD.IsPaused() ) WORLD.Resume();
+    if(msgbuf[0] != '.'){
+      if(atoi(msgbuf)){
+        if( !WORLD.IsPaused() ) WORLD.Pause();
+      }else if( WORLD.IsPaused() ) WORLD.Resume();
+    }
   }
 
   return 0;
@@ -357,10 +538,11 @@ int Ctcs::Set_Config(char *msgbuf)
 int Ctcs::Send_Detail()
 {
   char message[CTCS_BUFSIZE];
-  int r=0;
+  int r=0, priority, current=0;
   size_t n=0;
   BTFILE *file=0;
-  BitField tmpFilter, availbf;
+  BitField tmpBitField, fileFilter, availbf, tmpavail, allFilter, tmpFilter,
+    *pfilter;
 
   snprintf( message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
     BTCONTENT.GetTotalFilesLength(),
@@ -368,32 +550,63 @@ int Ctcs::Send_Detail()
     (long)(BTCONTENT.GetSeedTime()) );
   r = SendMessage(message);
 
-  if(r==0) r = SendMessage("CTFILES");
+  if(r==0) r = SendMessage((m_protocol >= 3) ? "CTFILESTART" : "CTFILES");
+
+  if( m_protocol >= 3 ){  // determine current download priority
+    pfilter = (BitField *)0;
+    while( pfilter != BTCONTENT.GetFilter() ){
+      current++;
+      pfilter = BTCONTENT.GetNextFilter(pfilter);
+    }
+  }
 
   WORLD.Pieces_I_Can_Get(&availbf);
 
-  while( r==0 && (file = BTCONTENT.GetNextFile(file)) ){
-    ++n;
-    BTCONTENT.SetTmpFilter(n, &tmpFilter);
-    BitField tmpBitField = *BTCONTENT.pBF;
-    tmpBitField.Except(tmpFilter);
-    BitField tmpavail = availbf;
-    tmpavail.Except(tmpFilter);
+  while( r==0 && ++n <= BTCONTENT.GetNFiles() ){
+    tmpBitField = *BTCONTENT.pBF;
+    BTCONTENT.SetTmpFilter(n, &fileFilter);
+    tmpBitField.Except(fileFilter);  // the pieces of this file that I have
+    tmpavail = availbf;
+    tmpavail.Except(fileFilter);     // the available pieces of this file
 
-    if( m_protocol == 1 )
-      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %llu %s",
-        (int)n, (int)(BTCONTENT.getFilePieces(n)),
-        (int)(tmpBitField.Count()),
-        (unsigned long long)(file->bf_length), file->bf_filename );
-    else
-      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %llu %s",
-        (int)n, (int)(BTCONTENT.getFilePieces(n)),
+    if( m_protocol >= 3 ){
+      priority = 0;
+      if( BTCONTENT.GetFilter() ){
+        fileFilter.Invert();
+        allFilter.SetAll();
+        pfilter = (BitField *)0;
+        while( pfilter = BTCONTENT.GetNextFilter(pfilter) ){
+          priority++;
+          allFilter.And(*pfilter);    // cumulation of filters
+          tmpFilter = allFilter;
+          tmpFilter.Invert();         // what's included by the filters...
+          tmpFilter.And(fileFilter);  // ...that's also in this file
+          if( tmpFilter.Count() >= fileFilter.Count() ) break;
+        }
+        if( !pfilter ) priority = 0;
+      }
+      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %d %d %llu %s",
+        (int)n, priority, current, (int)(BTCONTENT.GetFilePieces(n)),
         (int)(tmpBitField.Count()), (int)(tmpavail.Count()),
-        (unsigned long long)(file->bf_length), file->bf_filename );
+        (unsigned long long)(BTCONTENT.GetFileSize(n)),
+        BTCONTENT.GetFileName(n) );
+    }
+    else if( m_protocol == 2 )
+      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %llu %s",
+        (int)n, (int)(BTCONTENT.GetFilePieces(n)),
+        (int)(tmpBitField.Count()), (int)(tmpavail.Count()),
+        (unsigned long long)(BTCONTENT.GetFileSize(n)),
+        BTCONTENT.GetFileName(n) );
+    else  // m_protocol == 1
+      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %llu %s",
+        (int)n, (int)(BTCONTENT.GetFilePieces(n)),
+        (int)(tmpBitField.Count()),
+        (unsigned long long)(BTCONTENT.GetFileSize(n)),
+        BTCONTENT.GetFileName(n) );
 
     r = SendMessage(message);
   }
-  if(r==0) r = SendMessage("CTFDONE");
+  if(r==0) r = SendMessage((m_protocol >= 3) ? "CTFILESDONE" : "CTFDONE");
   return r;
 }
 
@@ -406,7 +619,7 @@ int Ctcs::Send_Peers()
   struct sockaddr_in psin;
   int r=0;
 
-  r=SendMessage("CTPEERS");
+  r=SendMessage((m_protocol >= 3) ? "CTPEERSTART" : "CTPEERS");
   while( r==0 && (peer = WORLD.GetNextPeer(peer)) ){
     TextPeerID(peer->id, txtid);
      peer->GetAddress(&psin);
@@ -423,7 +636,7 @@ int Ctcs::Send_Peers()
        (int)(peer->bitfield.Count()) );
      r = SendMessage(message);
   }
-  if(r==0) r = SendMessage("CTPDONE");
+  if(r==0) r = SendMessage((m_protocol >= 3) ? "CTPEERSDONE" : "CTPDONE");
   return r;
 }
 
@@ -498,6 +711,10 @@ int Ctcs::Connect()
 int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   if( T_FREE == m_status ){
+    if( INVALID_SOCKET != m_sock ){
+      FD_CLR(m_sock, rfdp);
+      FD_CLR(m_sock, wfdp);
+    }
     if( now - m_last_timestamp >= m_interval ){
       if(Connect() < 0){ Reset(15); return -1; }
 
@@ -508,7 +725,7 @@ int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     if( m_status == T_CONNECTING ){
       FD_SET(m_sock, rfdp);
       FD_SET(m_sock, wfdp);
-    }else if (INVALID_SOCKET != m_sock){
+    }else if( INVALID_SOCKET != m_sock ){
       if( now > m_statustime ){
         Report_Status(
           WORLD.GetSeedsCount(),
@@ -542,8 +759,9 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       (*nfds)--;
       FD_CLR(m_sock, rfdnextp);
     }
-    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
-       error != 0 ){
+    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0)
+      error = errno;
+    if( error != 0 ){
       if( ECONNREFUSED != error )
         CONSOLE.Warning(2, "warn, connect to CTCS failed:  %s",
           strerror(error));
@@ -573,7 +791,8 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     socklen_t n = sizeof(error);
     (*nfds)--;
     FD_CLR(m_sock, rfdnextp);
-    getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n);
+    if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0)
+      error = errno;
     CONSOLE.Warning(2, "warn, connect to CTCS failed:  %s", strerror(error));
     Reset(15);
     return -1;
@@ -581,16 +800,27 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     if( FD_ISSET(m_sock, rfdp) ){
       (*nfds)--;
       FD_CLR(m_sock,rfdnextp);
-      CheckMessage();
+      SOCKET tmp_sock = m_sock;
+      int r = CheckMessage();
+      if( INVALID_SOCKET == m_sock ){
+        if( FD_ISSET(tmp_sock, wfdp) ){
+          (*nfds)--;
+          FD_CLR(tmp_sock,wfdnextp);
+        }
+        return r;
+      }
     }
-    if( INVALID_SOCKET != m_sock && FD_ISSET(m_sock, wfdp) ){
+    if( FD_ISSET(m_sock, wfdp) ){
       (*nfds)--;
       FD_CLR(m_sock,wfdnextp);
-      if( out_buffer.Count() && out_buffer.FlushOut(m_sock) < 0){
+      if( out_buffer.Count() && out_buffer.FlushOut(m_sock) < 0 ){
         Reset(5);
         return -1;
       }
     }
+  }else{  // failsafe
+    Reset(5);
+    return -1;
   }
   return 0;
 }
@@ -598,10 +828,9 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
 
 void Ctcs::RestartTracker()
 {
-  Tracker.SetPause();  // prevents downloader from exiting
   Tracker.SetStoped(); // finish the tracker
   // Now we need to wait until the tracker updates (T_FINISHED == m_status),
-  // then Tracker.Resume().
+  // then Tracker.Restart().
   Tracker.SetRestart();
 }
 

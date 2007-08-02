@@ -3,10 +3,7 @@
 
 #define REQ_URL_P1_FMT "GET %s?info_hash=%s&peer_id=%s&port=%d&key=%s"
 #define REQ_URL_P1A_FMT "GET %s&info_hash=%s&peer_id=%s&port=%d&key=%s"
-//#define REQ_URL_P2_FMT "%s&uploaded=%d&downloaded=%d&left=%d&event=%s&compact=1 HTTP/1.0"
-//#define REQ_URL_P3_FMT "%s&uploaded=%d&downloaded=%d&left=%d&compact=1 HTTP/1.0"
-#define REQ_URL_P2_FMT "%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&event=%s&numwant=%d&key=%s HTTP/1.0"
-#define REQ_URL_P3_FMT "%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d&key=%s HTTP/1.0"
+#define REQ_URL_P2_FMT "%s%s%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d HTTP/1.0"
 
 
 char* Http_url_encode(char *s,char *b,size_t n);

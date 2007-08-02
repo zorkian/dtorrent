@@ -14,6 +14,10 @@
 #include <string.h>
 #include <ctype.h>
 
+#ifndef HAVE_SNPRINTF
+#include "compat.h"
+#endif
+
 static const char* next_key(const char *keylist)
 {
   for(;*keylist && *keylist != KEY_SP; keylist++);
@@ -194,7 +198,7 @@ size_t bencode_int(const int integer, FILE *fp)
   if( MAX_INT_SIZ <= snprintf(buf, MAX_INT_SIZ, "%lu", (unsigned long)integer) )
     return 0;
   if( fwrite(buf, strlen(buf), 1, fp) != 1 ) return 0;
-  return ( EOF == fputc('e', fp)) ? 0: 1;
+  return (EOF == fputc('e', fp)) ? 0: 1;
 }
 
 size_t bencode_begin_dict(FILE *fp)

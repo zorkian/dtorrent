@@ -30,14 +30,17 @@ unsigned char arg_flg_force_seed_mode = 0;
 unsigned char arg_flg_check_only = 0;
 unsigned char arg_flg_exam_only = 0;
 unsigned char arg_flg_make_torrent = 0;
-size_t arg_file_to_download = 0;
+unsigned char arg_flg_convert_filenames = 0;
+char *arg_file_to_download = (char *)0;
 unsigned char arg_verbose = 0;
 unsigned char arg_allocate = 0;
+unsigned char arg_daemon = 0;
 
 size_t arg_piece_length = 262144;
 char *arg_announce = (char*) 0;
 
 char *arg_ctcs = (char*) 0;
+char *arg_completion_exit = (char*) 0;
 
 char *cfg_user_agent = (char*) 0;
 

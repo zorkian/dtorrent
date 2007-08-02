@@ -27,13 +27,14 @@ class PeerList
   int m_prev_limit_up;
   char m_listen[22];
 
-  unsigned char m_seed_only:1;
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;
   unsigned char m_reserved:5;
   
   int Accepter();
   int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
+  int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
+    int f_unchoke_check, btPeer **UNCHOKER);
   
  public:
   PeerList();
@@ -41,9 +42,10 @@ class PeerList
 
   // TotalPeers() is now GetPeersCount() for consistency
   int Initial_ListenPort();
-  char *GetListen() { return m_listen; }
+  const char *GetListen() const { return m_listen; }
 
-  int IsEmpty() const;
+  int IsEmpty() const { return m_peers_count ? 0 : 1; }
+
 
   void PrintOut() const;
 
@@ -52,7 +54,8 @@ class PeerList
   void CloseAllConnectionToSeed();
   void CloseAll();
   
-  int FillFDSET(fd_set *rfd, fd_set *wfd);
+  int IntervalCheck(fd_set *rfd, fd_set *wfd);
+
   void SetUnchokeIntervals();
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
@@ -78,8 +81,7 @@ class PeerList
   void CheckInterest();
   btPeer* GetNextPeer(btPeer *peer) const;
   int Endgame() const;
-  int SeedOnly() const { return m_seed_only ? 1 : 0; }
-  void SeedOnly(int state);
+
   size_t GetSeedsCount() const { return m_seeds_count; }
   size_t GetPeersCount() const { return m_peers_count; }
   size_t GetConnCount() const { return m_conn_count; }

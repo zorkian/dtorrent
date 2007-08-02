@@ -21,15 +21,15 @@
 
 #include "bufio.h"
 
-#define CTCS_BUFSIZE 200
+#define CTCS_BUFSIZE (200+MAXPATHLEN)
 #define CTCS_PASS_SIZE 21
 
 struct ctstatus {
- public:
   size_t seeders, leechers, nhave, ntotal, dlrate, ulrate,
     dlimit, ulimit, cacheused;
   uint64_t dltotal, ultotal;
-  ctstatus() {
+
+  ctstatus(){
     seeders=leechers=nhave=ntotal=dlrate=ulrate=dltotal=
     ultotal=dlimit=ulimit=cacheused = 0;
   }
@@ -60,7 +60,9 @@ class Ctcs
   int m_sent_ctbw;
 
   int _s2sin(char *h,int p,struct sockaddr_in *psin);
-  int SendMessage(char *buf);
+  int SendMessage(const char *buf);
+  char *ConfigMsg(const char *name, const char *type, const char *range,    
+    const char *value, const char *short_desc, const char *long_desc);
 
  public:
   Ctcs();
@@ -72,7 +74,7 @@ class Ctcs
   int CheckMessage();
   int Send_Protocol();
   int Send_Auth();
-  int Send_Torrent(unsigned char *peerid, char *torrent);
+  int Send_Torrent(const unsigned char *peerid, char *torrent);
   int Report_Status(size_t seeders, size_t leechers, size_t nhave,
     size_t ntotal, size_t dlrate, size_t ulrate,
     uint64_t dltotal, uint64_t ultotal, size_t dlimit, size_t ulimit,

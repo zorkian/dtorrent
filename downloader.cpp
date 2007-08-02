@@ -28,17 +28,18 @@
 
 #define MAX_SLEEP 1
 
-time_t now = (time_t) 0;
+time_t now = time((time_t *)0);
 
 void Downloader()
 {
-  int nfds = 0, prevnfds = 0, maxfd, r;
+  int nfds = 0, prevnfds = 0, maxfd = 0, r;
   struct timeval timeout;
   fd_set rfd, rfdnext;
   fd_set wfd, wfdnext;
-  int stopped = 0;
+  int stopped = 0, f_idleused = 0;
   struct timespec nowspec;
   double maxsleep, prevsleep = 0;
+  time_t then;
 
   FD_ZERO(&rfdnext); FD_ZERO(&wfdnext);
 
@@ -65,6 +66,7 @@ void Downloader()
       maxsleep = 0;  // waited for bandwidth--poll now
     }
     else if( WORLD.IsIdle() ){
+      f_idleused = 0;
       if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
         if( BTCONTENT.CheckNextPiece() < 0 ){
           CONSOLE.Warning(1, "Error while checking piece %d of %d",
@@ -72,17 +74,26 @@ void Downloader()
           Tracker.SetStoped();
           maxsleep = 2;
         }else maxsleep = 0;
+        f_idleused = 1;
       }
-      maxfd = Tracker.IntervalCheck(&rfd, &wfd);
-      if( arg_ctcs ){
-        r = CTCS.IntervalCheck(&rfd, &wfd);
+      if( !f_idleused || WORLD.IsIdle() ){
+        r = Tracker.IntervalCheck(&rfd, &wfd);
+        if( r > maxfd ) maxfd = r;
+        if( arg_ctcs ){
+          r = CTCS.IntervalCheck(&rfd, &wfd);
+          if( r > maxfd ) maxfd = r;
+        }
+        r = CONSOLE.IntervalCheck(&rfd, &wfd);
         if( r > maxfd ) maxfd = r;
       }
-      r = CONSOLE.IntervalCheck(&rfd, &wfd);
-      if( r > maxfd ) maxfd = r;
     }
-    r = WORLD.FillFDSET(&rfd, &wfd);
+    r = WORLD.IntervalCheck(&rfd, &wfd);
     if( r > maxfd ) maxfd = r;
+
+    if( BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
+      BTCONTENT.FlushQueue();
+      maxsleep = 0;
+    }
 
     rfdnext = rfd;
     wfdnext = wfd;
@@ -106,7 +117,9 @@ void Downloader()
       goto again;
     }
 
+    then = now;
     time(&now);
+    if( now == then-1 ) now = then;
 
     prevnfds = nfds;
     if( (maxsleep > 0 || 0==prevsleep) && nfds > 0 ){
@@ -119,5 +132,5 @@ void Downloader()
     }
     if(nfds > 0)
       WORLD.AnyPeerReady(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
-  } while(Tracker.GetStatus() != T_FINISHED || Tracker.IsPaused());
+  } while(Tracker.GetStatus() != T_FINISHED || Tracker.IsRestarting());
 }

@@ -13,7 +13,7 @@
 RETSIGTYPE sig_catch(int sig_no)
 {
   if(SIGINT == sig_no || SIGTERM == sig_no){
-    if( Tracker.IsPaused() ) Tracker.ClearPause();
+    Tracker.ClearRestart();
     Tracker.SetStoped();
     signal(sig_no,sig_catch2);
   }

@@ -2,6 +2,114 @@
                         Enhanced CTorrent Change Log
      _________________________________________________________________
 
+   Changes for "dnh3.1" Release
+
+   Features and Performance
+     * Cached completed pieces are flushed to disk during idle time
+       rather than immediately.
+     * When the cache is full, a single entry is now flushed to make room
+       for new data rather than flushing the entire cache.
+     * Management of open files has been enabled in order to reduce the
+       number of active file descriptors needed for large torrents.
+       Detection and reporting of related errors is also improved.
+     * Files are now opened in read-only mode when seeding.
+     * The client will not connect to the tracker when quitting if it has
+       not successfully made contact before.
+     * A new command line option "-T" substitutes a hex representation of
+       any non-printable characters in filenames; an underscore will be
+       inserted between any such sequences and regular text. This applies
+       to printing the name of the file as well as accessing it on disk,
+       so you need to use it (or not) consistently across multiple runs
+       of the same torrent. It does not apply to names specified with the
+       -s option.
+     * A new command line option "-X" specifies a "user exit" command to
+       run upon download completion. The string parameter will be passed
+       to the sh shell for execution; see the system() man page for
+       further clarification. You will need to quote this string on the
+       command line in order to identify it as a single parameter and
+       prevent special characters from being interpreted. Some
+       substitution sequences beginning with ampersand (&) are available;
+       note that it's a good idea to quote the sequence within the string
+       so that the substituted names will be quoted in the final command.
+          + "&d" will be replaced by the name of the directory or
+            filename that contains the downloaded data.
+          + "&t" will be replaced by the name of the torrent metainfo
+            file (with path, if it was specified that way to ctorrent).
+          + "&w" will be replaced by the client's working directory.
+       Note that the fork() and system() system/library functions are
+       used for best portability. As a result, significant extra memory
+       may be used while the specified command is running. Be advised to
+       use this feature as a trigger mechanism to update a file or run a
+       short script that kicks off a background task rather than for
+       executing a longer task directly.
+     * A new command line option "-d" specifies "daemon mode". The client
+       will detach itself from the terminal session and become a
+       background process. This option is also available from the
+       operator menu.
+     * Prefetch and total sent counts are reported with the cache stats
+       in verbose mode. Note that these stats are all close
+       approximations based on the default slice size of 16KB.
+     * The -n option now accepts a list of files to download in priority
+       order. Groups of simultaneous files can be specified, and
+       "resuming normal behavior" after completion is now optional (and
+       not the default). See the User's Guide for more detailed
+       information.
+     * The partial completion indicator ("P:") now shows percentages
+       rather than number of pieces when using the new status line
+       format. The download time remaining for the current set is also
+       shown.
+     * The CTCS protocol version has been incremented. Please download
+       the new version of CTCS to take advantage of new features. This
+       provides support for additional file details and prioritization,
+       and for auto-configuration of available client configuration
+       options in CTCS.
+     * Output channels can now be changed via CTCS.
+     * The input channel can now be redirected from the operator menu and
+       CTCS.
+     * Added "off" as an additional target for input and output channels.
+     * Added support for systems that do not have snprintf() and/or
+       vsnprintf().
+
+   Bug Fixes
+     * Fixed a missing maxfd variable initialization in the main loop,
+       which could cause high CPU utilization. (maxfd patch)
+     * Detect if the clock_gettime library function is missing and
+       emulate it. This facilitates building on Mac OSX. (clock_gettime
+       patch)
+     * Avoid putting the "key" field into the tracker request twice.
+     * Tracker redirection is now handled correctly and works.
+     * Fixed problems with detection and reporting of tracker connection
+       errors.
+     * Error reading from disk with -c option is now reported.
+     * Fixed a looping problem when the torrent begins with a zero-length
+       file or a file of exactly one piece.
+     * Fixed the way variable argument lists are handled in the console
+       code, which could cause crashes. (console patch)
+     * Fixed a problem flushing downloaded data to disk in certain
+       situations. (flush patch)
+     * Remove sockets from the list to check for peers disconnected
+       during processing.
+     * Updated fdset handling in peerlist, tracker, and ctcs components
+       to set appropriate states in all cases.
+     * Fixed a potential crash when receiving a message from a peer
+       (after processing it). (msg patch)
+     * Fixed an issue with rate measurement on NSLU2 devices. This was
+       due to an apparent compiler bug (unconfirmed but raised to
+       developers). There are other areas where the same effect can show
+       itself (with the -E seed ratio option for instance) that cannot be
+       so easily worked around. (bwrate patch)
+     * Fixed an issue with null/redirected standard input.
+     * If the time changes backward by a second, it is disregarded. This
+       is not really a program bug fix, but a workaround for system clock
+       glitches (observed on an NSLU2).
+
+   Code Cleanup
+     * Tracker request construction is somewhat consolidated and
+       simplified.
+     * Split the FillFDSet function into two functions of distinct roles
+       and more manageable size.
+     _________________________________________________________________
+
    Changes for "dnh3" Release
 
    Important Stuff to Know
@@ -196,7 +304,7 @@
        transferring torrent data almost immediately but still interact
        with peers and the tracker.
 
-   Bux Fixes
+   Bug Fixes
      * Fixed a potential crash when reassigning a piece to a faster peer.
        While a serious bug, it would likely only show itself on
        memory-contrained systems.

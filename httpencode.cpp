@@ -128,7 +128,7 @@ int Http_reponse_code(char *b,size_t n)
 {
   int r = -1;
 
-  for(; n && *b != ' ' && *b != '\n'; b++,n--) ;
+  for(; n && *b != ' ' && *b !='\r' && *b != '\n'; b++,n--) ;
   if( !n || *b != ' ') r = -1;
   else{
           r = atoi(b);
@@ -162,7 +162,7 @@ int Http_get_header(char *b,int n,char *header,char *v)
       if( strncasecmp(b, h, header_len) == 0){
         /* header founded */
         b += header_len;
-        for(; *b != '\n'; v++,b++) *v = *b;
+        for(; *b != '\r' && *b != '\n'; v++,b++) *v = *b;
         *v = '\0';
         return 0;
       }

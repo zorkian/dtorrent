@@ -5,15 +5,15 @@
 
 extern size_t cfg_req_slice_size;
 
-#define MAX_METAINFO_FILESIZ	4*1024*1024
-#define DEFAULT_SLICE_SIZE 16*1024
+#define MAX_METAINFO_FILESIZ	(4*1024*1024)
+#define DEFAULT_SLICE_SIZE (16*1024)
 // According to specs the max slice size is 128K.  While most clients now do
 // not accept a value that large, we want max compatibility.
-#define cfg_max_slice_size 128*1024
+#define cfg_max_slice_size (128*1024)
 extern size_t cfg_req_queue_length;
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CD0300-"
+#define PEER_PFX "-CD0301-"
 
 extern char *cfg_user_agent;	// HTTP header
 
@@ -44,12 +44,15 @@ extern unsigned char arg_flg_force_seed_mode;
 extern unsigned char arg_flg_check_only;
 extern unsigned char arg_flg_exam_only;
 extern unsigned char arg_flg_make_torrent;
-extern size_t arg_file_to_download;
+extern unsigned char arg_flg_convert_filenames;
+extern char *arg_file_to_download;
 extern unsigned char arg_verbose;
 extern unsigned char arg_allocate;
+extern unsigned char arg_daemon;
 
 extern size_t arg_piece_length;
 extern char *arg_announce;
 
 extern char *arg_ctcs;
+extern char *arg_completion_exit;
 #endif

@@ -43,7 +43,8 @@ class ConStream
   unsigned char m_newline:1;
   unsigned char m_suspend:1;
   unsigned char m_inputmode:1;
-  unsigned char m_reserved:5;
+  unsigned char m_filemode:1;
+  unsigned char m_reserved:4;
 
 #if defined(USE_TERMIOS)
   struct termios m_original;
@@ -60,25 +61,31 @@ class ConStream
   ConStream();
   ~ConStream();
 
-  void Associate(FILE *stream, const char *name);
+  void Close();
+  void Associate(FILE *stream, const char *name, int mode);
   char *GetName() const { return m_name; }
-  int Fileno() const { return fileno(m_stream); }
+  int GetMode() const { return m_filemode ? 1 : 0; }
+  int Fileno() const { return m_stream ? fileno(m_stream) : -1; }
   int GetNewline() const { return m_newline ? 1 : 0; }
   void SyncNewline(ConStream *master) { m_newline = master->GetNewline(); }
   void Suspend() { m_suspend = 1; }
   void Resume() { m_suspend = 0; }
+  int IsSuspended() { return m_suspend ? 1 : 0; }
 
   int SameDev(ConStream *master) const;
   int GetInputMode() const { return m_inputmode; }
   void SetInputMode(int keymode);
   void PreserveMode();
   void RestoreMode();
+  int IsTTY() const;
 
   int Output(const char *message, va_list ap);
   int Output_n(const char *message, va_list ap);
   int Update(const char *message, va_list ap);
   char *Input(char *field, size_t length);
   int CharIn();
+
+  int Eof() const { return feof(m_stream); }
 };
 
 
@@ -92,13 +99,14 @@ class Console
   unsigned char m_reserved:3;
 
   int m_status_format;
+  int m_oldfd;
 
   typedef void (Console::*statuslinefn)(char buffer[], size_t length);
   statuslinefn m_statusline[STATUSLINES];
 
   Rate m_pre_dlrate, m_pre_ulrate;
 
-  ConStream m_stdout, m_stderr, m_stdin;
+  ConStream m_stdout, m_stderr, m_stdin, m_off;
   ConStream *m_streams[O_NCHANNELS+1];
 
   void SyncNewlines(int master);
@@ -127,9 +135,11 @@ class Console
   void InteractU(const char *message, ...);
   char *Input(const char *prompt, char *field, size_t length);
 
-  void ChangeChannel(int channel, const char *param);
+  char *GetChannel(int channel) const { return m_streams[channel]->GetName(); }
+  int ChangeChannel(int channel, const char *param);
 
   RETSIGTYPE Signal(int sig_no);
+  void Daemonize();
 };
 
 extern Console CONSOLE;

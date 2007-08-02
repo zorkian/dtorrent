@@ -25,6 +25,7 @@ class BitField
   void operator=(const BitField &bf);
 
   void SetAll();
+  void Clear();
   void SetReferBuffer(char *buf);
   void Set(size_t idx);
   void UnSet(size_t idx);
@@ -39,9 +40,12 @@ class BitField
   size_t Random() const;
 
   void Comb(const BitField &bf); 
+  void Comb(const BitField *pbf) { if(pbf) Comb(*pbf); }
   void Except(const BitField &bf);
-  void Invert();
+  void Except(const BitField *pbf) { if(pbf) Except(*pbf); }
   void And(const BitField &bf);
+  void And(const BitField *pbf) { if(pbf) And(*pbf); }
+  void Invert();
 
   int WriteToFile(const char *fname);
   int SetReferFile(const char *fname);

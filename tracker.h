@@ -43,10 +43,8 @@ class btTracker
   unsigned char m_f_started:1;
   unsigned char m_f_stoped:1;
   unsigned char m_f_completed:1;
-
-  unsigned char m_f_pause:1;
   unsigned char m_f_restart:1;
-  unsigned char m_reserved:1;
+  unsigned char m_reserved:2;
 
 
   time_t m_interval;		// 与Tracker通信的时间间隔
@@ -66,6 +64,12 @@ class btTracker
   int _s2sin(char *h,int p,struct sockaddr_in *psin);
   int _UpdatePeerList(char *buf,size_t bufsiz);
 
+  int BuildBaseRequest();
+  int Connect();
+  int SendRequest();
+  int CheckReponse();
+  void Restart();
+
  public:
   btTracker();
   ~btTracker();
@@ -74,31 +78,25 @@ class btTracker
 
   void Reset(time_t new_interval);
 
-  unsigned char GetStatus() { return m_status;}
+  unsigned char GetStatus() { return m_status; }
   void SetStatus(unsigned char s) { m_status = s; }
 
   SOCKET GetSocket() { return m_sock; }
 
-  void SetPause() { m_f_pause = 1; }
-  void ClearPause() { m_f_pause = 0; }
-  int IsPaused() const { return m_f_pause; }
-  void Resume();
-  int IsQuitting() const { return m_f_stoped; }
   void SetRestart() { m_f_restart = 1; }
+  void ClearRestart() { m_f_restart = 0; }
+  int IsRestarting() const { return m_f_restart; }
+  int IsQuitting() const { return m_f_stoped; }
+  void SetStoped();
 
-  void SetStoped() { Reset(15); m_f_stoped = 1; m_last_timestamp -= 15;}
-
-  int Connect();
-  int SendRequest();
-  int CheckReponse();
   int IntervalCheck(fd_set* rfdp, fd_set *wfdp);
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
   size_t GetRefuseClick() const { return m_connect_refuse_click; }
   size_t GetOkClick() const { return m_ok_click; }
-  size_t GetPeersCount() const { return m_peers_count; }
-  size_t GetSeedsCount() const { return m_seeds_count; }
+  size_t GetPeersCount() const;
+  size_t GetSeedsCount() const;
   time_t GetInterval() const { return m_default_interval; }
 };
 
