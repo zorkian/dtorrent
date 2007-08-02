@@ -2,7 +2,8 @@
 
 #ifndef WINDOWS
 #include <unistd.h>
-#include <sys/time.h>
+#include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
+#include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -13,30 +14,34 @@
 
 #include "btrequest.h"
 
-#define DEF_BUF_SIZ 36864  /* 36 KB */
-#define INCREAST_SIZ 32768  /*  32 KB */
-#define MAX_BUF_SIZ 135168  /* 132 KB */
-
 #define _left_buffer_size (n - p)
 
 BufIo::BufIo()
 {
   f_socket_remote_closed = 0;
-  b = new char[DEF_BUF_SIZ];
+  b = new char[BUF_DEF_SIZ];
 #ifndef WINDOWS
   if( !b ) throw 9;
 #endif
   p = 0;
-  n = DEF_BUF_SIZ;
+  n = BUF_DEF_SIZ;
 }
 
 ssize_t BufIo::_realloc_buffer()
 {
+  return SetSize(n + BUF_INC_SIZ);
+}
+
+ssize_t BufIo::SetSize(size_t len)
+{
   char *tbuf;
 
-  if( ( n + INCREAST_SIZ ) >= MAX_BUF_SIZ ) return -1; // buffer too long
+  if( len > BUF_MAX_SIZ ) return -1; // buffer too long
 
-  tbuf = new char[n + INCREAST_SIZ];
+  if( p > len) len = p;
+  if( len == n ) return 0;
+
+  tbuf = new char[len];
 #ifndef WINDOWS
   if( !tbuf ) return -1;
 #endif
@@ -44,7 +49,7 @@ ssize_t BufIo::_realloc_buffer()
   if(p) memcpy(tbuf, b, p);
   delete []b;
   b = tbuf;
-  n += INCREAST_SIZ;
+  n = len;
 
   return 0;
 }
@@ -112,12 +117,18 @@ ssize_t BufIo::Put(SOCKET sk, char *buf,size_t len)
 
 ssize_t BufIo::FeedIn(SOCKET sk)
 {
+  return FeedIn(sk, _left_buffer_size);
+}
+
+ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
+{
   ssize_t r;
 
   if(!_left_buffer_size)
     if(_realloc_buffer() < 0) return (ssize_t) -2;
-  
-  r = _RECV(sk, b + p, _left_buffer_size);
+
+  if( 0==limit || limit > _left_buffer_size ) limit = _left_buffer_size;
+  r = _RECV(sk, b + p, limit);
   if( r < 0 ) return -1;
   else{
     if( r ) p += r;

@@ -1,6 +1,7 @@
 #include <sys/types.h>
+#include "btconfig.h"
 
-size_t cfg_req_slice_size = 16384;
+size_t cfg_req_slice_size = DEFAULT_SLICE_SIZE;
 size_t cfg_req_queue_length = 74;
 
 size_t cfg_cache_size = 16;
@@ -31,10 +32,12 @@ unsigned char arg_flg_exam_only = 0;
 unsigned char arg_flg_make_torrent = 0;
 size_t arg_file_to_download = 0;
 unsigned char arg_verbose = 0;
+unsigned char arg_allocate = 0;
 
 size_t arg_piece_length = 262144;
 char *arg_announce = (char*) 0;
 
 char *arg_ctcs = (char*) 0;
-int cfg_exit_zero_peers = 0;
+
+char *cfg_user_agent = (char*) 0;
 

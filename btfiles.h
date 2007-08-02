@@ -2,19 +2,21 @@
 #define BTFILES_H
 
 #include "./def.h"
+#include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "bitfield.h"
 
 typedef struct _btfile{
   char *bf_filename;	// full path of file.
-  u_int64_t bf_length;
+  uint64_t bf_length;
   FILE *bf_fp;
 
   time_t bf_last_timestamp;	// last io timestamp.
 
-  u_int64_t bf_completed;		// already downloaded length
+  uint64_t bf_completed;		// already downloaded length
 
   size_t bf_npieces;  //number of pieces
 
@@ -32,11 +34,11 @@ class btFiles
   
   BTFILE *m_btfhead;
   char *m_directory;
-  u_int64_t m_total_files_length;
+  uint64_t m_total_files_length;
   size_t m_total_opened;	// already opened
 
-  u_int8_t m_flag_automanage:1;
-  u_int8_t m_flag_reserved:7;	// current version not implement
+  uint8_t m_flag_automanage:1;
+  uint8_t m_flag_reserved:7;	// current version not implement
 
   BTFILE* _new_bfnode();
   int _btf_open(BTFILE *sbf_p);
@@ -54,11 +56,11 @@ class btFiles
   int BuildFromFS(const char *pathname);
   int BuildFromMI(const char *metabuf, const size_t metabuf_len, const char *saveas);
 
-  u_int64_t GetTotalLength() const { return m_total_files_length; }
-  ssize_t IO(char *buf, u_int64_t off, size_t len, const int iotype);
+  uint64_t GetTotalLength() const { return m_total_files_length; }
+  ssize_t IO(char *buf, uint64_t off, size_t len, const int iotype);
   size_t FillMetaInfo(FILE* fp);
 
-  void SetFilter(int nfile, BitField *pFilter,size_t pieceLength);
+  void SetFilter(int nfile, BitField *pFilter, size_t pieceLength, int print);
   size_t getFilePieces(size_t nfile);
 
 #ifndef WINDOWS

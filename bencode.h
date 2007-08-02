@@ -1,6 +1,7 @@
 #ifndef BENCODE_H
 #define BENCODE_H
 
+#include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
 

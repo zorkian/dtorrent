@@ -1,7 +1,5 @@
 #ifndef WINDOWS
 #include <unistd.h>
-#include <sys/time.h>
-#include <time.h>
 #include <netdb.h>
 #endif
 
@@ -20,6 +18,10 @@
 #include "peer.h"
 #include "btconfig.h"
 #include "bttime.h"
+#include "console.h"
+
+
+#define CTCS_PROTOCOL 2
 
 #define compset(a,member)  ( (a.member==member)? 0 : ((a.member = member)||1) )
 
@@ -34,8 +36,9 @@ Ctcs::Ctcs()
   m_port = 2780;
   m_status = T_FREE;
   m_interval = 1;
+  m_protocol = CTCS_PROTOCOL;
 
-  m_last_timestamp = m_sent_ctstatus_time = (time_t) 0;
+  m_last_timestamp = m_sent_ctstatus_time = m_statustime = (time_t) 0;
   m_sent_ctstatus = 0;
   m_sent_ctbw = 0;
 }
@@ -91,7 +94,7 @@ int Ctcs::CheckMessage()
   r = in_buffer.FeedIn(m_sock);
 
   if( r == 0 ) return 0;	// no data
-  if( r < 0 ){ Reset(1); return -1; }	// error
+  if( r < 0 ){ Reset(5); return -1; }	// error
 
   q = in_buffer.Count();
 
@@ -100,7 +103,8 @@ int Ctcs::CheckMessage()
     socklen_t n = sizeof(error);
     if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
        error != 0 ){
-      fprintf(stderr,"warn, received nothing from CTCS! %s\n",strerror(error));
+      CONSOLE.Warning(2, "warn, received nothing from CTCS:  %s",
+        strerror(error));
     }
     Reset(0);
     return -1;
@@ -108,16 +112,14 @@ int Ctcs::CheckMessage()
 
   char *s, *msgbuf;
   while(in_buffer.Count() && (s=strchr(msgbuf=in_buffer.BasePointer(), '\n'))){
-//  msgbuf = in_buffer.BasePointer();
-//  if( s=strchr(msgbuf, '\n') ){	//have a complete message
     *s = '\0';
-    if(arg_verbose) fprintf(stderr, "CTCS: %s\n", msgbuf);
+    if(arg_verbose) CONSOLE.Debug("CTCS: %s", msgbuf);
     if( !strncmp("SETDLIMIT",msgbuf,9) ){
       cfg_max_bandwidth_down = (int)(strtod(msgbuf+10, NULL));
-      if(arg_verbose) fprintf(stderr, "DLimit=%d\n", cfg_max_bandwidth_down);
+      if(arg_verbose) CONSOLE.Debug("DLimit=%d", cfg_max_bandwidth_down);
     }else if( !strncmp("SETULIMIT",msgbuf,9) ){
       cfg_max_bandwidth_up = (int)(strtod(msgbuf+10, NULL));
-      if(arg_verbose) fprintf(stderr, "ULimit=%d\n", cfg_max_bandwidth_up);
+      if(arg_verbose) CONSOLE.Debug("ULimit=%d", cfg_max_bandwidth_up);
     }else if( !strncmp("SENDPEERS",msgbuf,9) ){
       Send_Peers();
     }else if( !strncmp("SENDSTATUS",msgbuf,10) ){
@@ -129,19 +131,22 @@ int Ctcs::CheckMessage()
     }else if( !strncmp("SENDDETAIL",msgbuf,10) ){
       Send_Detail();
     }else if( !strncmp("CTQUIT",msgbuf,6) ){
-      printf("CTCS sent Quit command\n");
+      CONSOLE.Print("CTCS sent Quit command");
       Tracker.SetStoped();
     }else if( !strncmp("CTRESTART",msgbuf,9) ){
       RestartTracker();
     }else if( !strncmp("CTUPDATE",msgbuf,8) ){
       Tracker.Reset(1);
     }else if( !strncmp("PROTOCOL",msgbuf,8) ){
-      // nothing yet
+      int proto = atoi(msgbuf+9);
+      if( proto <= CTCS_PROTOCOL ) m_protocol = proto;
+      else m_protocol = CTCS_PROTOCOL;
     }else{
-      if(arg_verbose) fprintf(stderr, "unknown CTCS message: %s", msgbuf);
+      if(arg_verbose) CONSOLE.Debug("unknown CTCS message: %s", msgbuf);
     }
     in_buffer.PickUp(s-msgbuf + 1);
   }
+  m_last_timestamp = now;
   return 0;
 }
 
@@ -162,7 +167,8 @@ int Ctcs::SendMessage(char *message)
       buf[CTCS_BUFSIZE-1] = '\0';
     }
     r = out_buffer.PutFlush(m_sock, buf, len+1);
-    if( r<0 ) Reset(1);
+    if( r<0 ) Reset(5);
+    else m_last_timestamp = now;
   }
   return r;
 }
@@ -182,7 +188,7 @@ int Ctcs::Send_Protocol()
 {
   char message[CTCS_BUFSIZE];
 
-  snprintf(message, CTCS_BUFSIZE, "PROTOCOL %s", CTCS_PROTOCOL);
+  snprintf(message, CTCS_BUFSIZE, "PROTOCOL %04d", CTCS_PROTOCOL);
   return SendMessage(message);
 }
 
@@ -201,8 +207,9 @@ int Ctcs::Send_Torrent(unsigned char *peerid, char *torrent)
 
 
 int Ctcs::Report_Status(size_t seeders, size_t leechers, size_t nhave,
-  size_t ntotal, size_t navail, size_t dlrate, size_t ulrate,
-  u_int64_t dltotal, u_int64_t ultotal, size_t dlimit, size_t ulimit)
+  size_t ntotal, size_t dlrate, size_t ulrate,
+  uint64_t dltotal, uint64_t ultotal, size_t dlimit, size_t ulimit,
+  size_t cacheused)
 {
   int changebw=0,change=0;
   int r;
@@ -213,21 +220,21 @@ int Ctcs::Report_Status(size_t seeders, size_t leechers, size_t nhave,
   nhad = m_ctstatus.nhave;
 
   changebw = (
-    compset(m_ctstatus, dlrate)		|
-    compset(m_ctstatus, ulrate)		|
-    compset(m_ctstatus, dlimit)		|
-    compset(m_ctstatus, ulimit)		);
-  change = ( changebw |
-    compset(m_ctstatus, seeders)	|
-    compset(m_ctstatus, leechers)	|
-    compset(m_ctstatus, nhave)		|
-    compset(m_ctstatus, ntotal)		|
-    compset(m_ctstatus, navail)		|
-    compset(m_ctstatus, dltotal)	|
-    compset(m_ctstatus, ultotal)	);
+    compset(m_ctstatus, dlrate) |
+    compset(m_ctstatus, ulrate) |
+    compset(m_ctstatus, dlimit) |
+    compset(m_ctstatus, ulimit) );
+  change = ( changebw             |
+    compset(m_ctstatus, seeders)  |
+    compset(m_ctstatus, leechers) |
+    compset(m_ctstatus, nhave)    |
+    compset(m_ctstatus, ntotal)   |
+    compset(m_ctstatus, dltotal)  |
+    compset(m_ctstatus, ultotal)  |
+    compset(m_ctstatus, cacheused) );
 
   if( ( !m_sent_ctstatus || (nhad<nhave && nhave==ntotal) ||
-        (Tracker.GetStatus() && m_sent_ctstatus_time+30 > now) ) &&
+        (Tracker.GetStatus() && now > m_sent_ctstatus_time+30) ) &&
       (r=Send_Status()) != 0 ) return r;
   else return (changebw || !m_sent_ctbw) ? Send_bw() : 0;
 }
@@ -241,12 +248,32 @@ int Ctcs::Send_Status()
     m_sent_ctstatus = 0;
     return 0;
   }
-  snprintf(message, CTCS_BUFSIZE, "CTSTATUS %u/%u %u/%u/%u %u,%u %llu,%llu %u,%u",
-    m_ctstatus.seeders, m_ctstatus.leechers,
-    m_ctstatus.nhave, m_ctstatus.ntotal, m_ctstatus.navail,
-    m_ctstatus.dlrate, m_ctstatus.ulrate,
-    m_ctstatus.dltotal, m_ctstatus.ultotal,
-    m_ctstatus.dlimit, m_ctstatus.ulimit );
+  if( m_protocol == 1 )
+    snprintf( message, CTCS_BUFSIZE,
+      "CTSTATUS %d/%d %d/%d/%d %d,%d %llu,%llu %d,%d",
+      (int)(m_ctstatus.seeders), (int)(m_ctstatus.leechers),
+      (int)(m_ctstatus.nhave), (int)(m_ctstatus.ntotal),
+        (int)(WORLD.Pieces_I_Can_Get()),
+      (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
+      (unsigned long long)(m_ctstatus.dltotal),
+        (unsigned long long)(m_ctstatus.ultotal),
+      (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit) );
+  else
+    snprintf( message, CTCS_BUFSIZE,
+      "CTSTATUS %d:%d/%d:%d/%d %d/%d/%d %d,%d %llu,%llu %d,%d %d",
+      (int)(m_ctstatus.seeders), (int)(Tracker.GetSeedsCount() -
+        ((BTCONTENT.pBF->IsFull() && Tracker.GetSeedsCount() > 0) ? 1 : 0)),
+      (int)(m_ctstatus.leechers),
+        (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
+        ((!BTCONTENT.pBF->IsFull() && Tracker.GetPeersCount() > 0) ? 1 : 0)),
+      (int)(WORLD.GetConnCount()),
+      (int)(m_ctstatus.nhave), (int)(m_ctstatus.ntotal),
+        (int)(WORLD.Pieces_I_Can_Get()),
+      (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
+      (unsigned long long)(m_ctstatus.dltotal),
+        (unsigned long long)(m_ctstatus.ultotal),
+      (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit),
+      (int)(m_ctstatus.cacheused) );
   m_sent_ctstatus = 1;
   m_sent_ctstatus_time = now;
   return SendMessage(message);
@@ -257,9 +284,9 @@ int Ctcs::Send_bw()
 {
   char message[CTCS_BUFSIZE];
 
-  snprintf(message, CTCS_BUFSIZE, "CTBW %u,%u %u,%u",
-    m_ctstatus.dlrate, m_ctstatus.ulrate,
-    m_ctstatus.dlimit, m_ctstatus.ulimit );
+  snprintf(message, CTCS_BUFSIZE, "CTBW %d,%d %d,%d",
+    (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
+    (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit) );
   m_sent_ctbw = 1;
   return SendMessage(message);
 }
@@ -269,18 +296,27 @@ int Ctcs::Send_Config()
 {
   char message[CTCS_BUFSIZE];
 
-  snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d %d",
-    (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
-    (int)cfg_max_peers, (int)cfg_min_peers, (int)arg_file_to_download,
-    (int)cfg_exit_zero_peers, Tracker.IsPaused(), Tracker.IsQuitting());
+  if( m_protocol == 1 )
+    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d %d",
+      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
+      (int)cfg_max_peers, (int)cfg_min_peers, (int)arg_file_to_download,
+      0, WORLD.IsPaused(), 0);
+  else
+    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d",
+      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
+      (int)cfg_max_peers, (int)cfg_min_peers, (int)arg_file_to_download,
+      (int)cfg_cache_size, WORLD.IsPaused());
+
   return SendMessage(message);
 }
 
 int Ctcs::Set_Config(char *msgbuf)
 {
-  unsigned char foo;
-
-  if(msgbuf[9] != '.') arg_verbose = atoi(msgbuf+9);
+  if(msgbuf[9] != '.'){
+    int arg = atoi(msgbuf+9);
+    if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
+    arg_verbose = arg;
+  }
   if(msgbuf[11] != '.') cfg_seed_hours = atoi(msgbuf+11);
   msgbuf = strchr(msgbuf+11, ' ') + 1;
   if(msgbuf[0] != '.') cfg_seed_ratio = atof(msgbuf);
@@ -290,29 +326,28 @@ int Ctcs::Set_Config(char *msgbuf)
   if(msgbuf[0] != '.') cfg_min_peers = atoi(msgbuf);
   msgbuf = strchr(msgbuf, ' ') + 1;
   if(msgbuf[0] != '.'){
-    foo = atoi(msgbuf);
+    size_t foo = atoi(msgbuf);
     if(foo != arg_file_to_download){
       arg_file_to_download = foo;
-      BTCONTENT.FlushCache();
       BTCONTENT.SetFilter();
-      WORLD.CheckInterest();
     }
   }
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.') cfg_exit_zero_peers = atoi(msgbuf);
-  msgbuf = strchr(msgbuf, ' ') + 1;
-  if(msgbuf[0] != '.'){
-    if(atoi(msgbuf)){
-      if( !Tracker.IsPaused() ) Tracker.SetPause();
-    }else if( Tracker.IsPaused() ) Tracker.Resume();
+  if( m_protocol >= 2 ){
+    msgbuf = strchr(msgbuf, ' ') + 1;
+    if(msgbuf[0] != '.'){
+      cfg_cache_size = atoi(msgbuf);
+      BTCONTENT.CacheConfigure();
+    }
+  }
+  if( m_protocol == 1 ){
+    msgbuf = strchr(msgbuf, ' ') + 1;
+    // old cfg_exit_zero_peers option
   }
   msgbuf = strchr(msgbuf, ' ') + 1;
   if(msgbuf[0] != '.'){
-    if(atoi(msgbuf)) Tracker.SoftQuit();
-    else Tracker.DontQuit();
     if(atoi(msgbuf)){
-      if( !Tracker.IsQuitting() ) Tracker.SoftQuit();
-    }else if( Tracker.IsQuitting() ) Tracker.DontQuit();
+      if( !WORLD.IsPaused() ) WORLD.Pause();
+    }else if( WORLD.IsPaused() ) WORLD.Resume();
   }
 
   return 0;
@@ -325,7 +360,7 @@ int Ctcs::Send_Detail()
   int r=0;
   size_t n=0;
   BTFILE *file=0;
-  BitField tmpFilter;
+  BitField tmpFilter, availbf;
 
   snprintf( message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
     BTCONTENT.GetTotalFilesLength(),
@@ -335,16 +370,27 @@ int Ctcs::Send_Detail()
 
   if(r==0) r = SendMessage("CTFILES");
 
+  WORLD.Pieces_I_Can_Get(&availbf);
+
   while( r==0 && (file = BTCONTENT.GetNextFile(file)) ){
     ++n;
     BTCONTENT.SetTmpFilter(n, &tmpFilter);
     BitField tmpBitField = *BTCONTENT.pBF;
     tmpBitField.Except(tmpFilter);
+    BitField tmpavail = availbf;
+    tmpavail.Except(tmpFilter);
 
-    snprintf( message, CTCS_BUFSIZE, "CTFILE %u %d %d %llu %s",
-      n, (int)(BTCONTENT.getFilePieces(n)),
-      (int)(tmpBitField.Count()),
-      file->bf_length, file->bf_filename );
+    if( m_protocol == 1 )
+      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %llu %s",
+        (int)n, (int)(BTCONTENT.getFilePieces(n)),
+        (int)(tmpBitField.Count()),
+        (unsigned long long)(file->bf_length), file->bf_filename );
+    else
+      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %llu %s",
+        (int)n, (int)(BTCONTENT.getFilePieces(n)),
+        (int)(tmpBitField.Count()), (int)(tmpavail.Count()),
+        (unsigned long long)(file->bf_length), file->bf_filename );
+
     r = SendMessage(message);
   }
   if(r==0) r = SendMessage("CTFDONE");
@@ -371,9 +417,10 @@ int Ctcs::Send_Peers()
        peer->Is_Local_Interested() ? 'i' : 'n',
        peer->Is_Local_UnChoked() ? 'U' : 'C',
        peer->Is_Remote_Interested() ? 'i' : 'n',
-       peer->RateDL(), peer->RateUL(),
-       peer->TotalDL(), peer->TotalUL(),
-       peer->bitfield.Count() );
+       (int)(peer->RateDL()), (int)(peer->RateUL()),
+       (unsigned long long)(peer->TotalDL()),
+         (unsigned long long)(peer->TotalUL()),
+       (int)(peer->bitfield.Count()) );
      r = SendMessage(message);
   }
   if(r==0) r = SendMessage("CTPDONE");
@@ -399,8 +446,7 @@ int Ctcs::Initial()
   if( s = strchr(m_host, ':') ) *s='\0';
   m_port = atoi(s=(strchr(arg_ctcs, ':')+1));
   if(strchr(s, ':')){
-    printf("Enter CTCS password: "); fflush(stdout);
-    fgets(m_pass, CTCS_PASS_SIZE, stdin);
+    CONSOLE.Input("Enter CTCS password: ", m_pass, CTCS_PASS_SIZE);
   } else *m_pass = '\0';
 
   return 0;
@@ -413,7 +459,7 @@ int Ctcs::Connect()
   m_last_timestamp = now;
 
   if(_s2sin(m_host,m_port,&m_sin) < 0) {
-    fprintf(stderr,"warn, get CTCS ip address failed.");
+    CONSOLE.Warning(2, "warn, get CTCS ip address failed.");
     return -1;
   }
 
@@ -429,16 +475,19 @@ int Ctcs::Connect()
   else{
     m_status = T_READY;
     if( Send_Protocol() != 0 && errno != EINPROGRESS ){
-      fprintf(stderr,"warn, send protocol to CTCS failed. %s\n",strerror(errno));
+      CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
+        strerror(errno));
       return -1;
     }
     if( Send_Auth() != 0 && errno != EINPROGRESS ) {
-      fprintf(stderr,"warn, send password to CTCS failed. %s\n",strerror(errno));
+      CONSOLE.Warning(2, "warn, send password to CTCS failed:  %s",
+        strerror(errno));
       return -1;
     }
     if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) != 0 &&
         errno != EINPROGRESS ){
-      fprintf(stderr,"warn, send torrent to CTCS failed. %s\n",strerror(errno));
+      CONSOLE.Warning(2, "warn, send torrent to CTCS failed:  %s",
+        strerror(errno));
       return -1;
     }
   }
@@ -446,24 +495,31 @@ int Ctcs::Connect()
 }
 
 
-int Ctcs::IntervalCheck(const time_t *pnow, fd_set *rfdp, fd_set *wfdp)
+int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   if( T_FREE == m_status ){
-    if(*pnow - m_last_timestamp >= m_interval){
+    if( now - m_last_timestamp >= m_interval ){
       if(Connect() < 0){ Reset(15); return -1; }
 
-      if( m_status == T_CONNECTING ){
-        FD_SET(m_sock, rfdp);
-        FD_SET(m_sock, wfdp);
-      }else{
-        FD_SET(m_sock, rfdp);
-      }
-    }
+      FD_SET(m_sock, rfdp);
+      if( m_status == T_CONNECTING ) FD_SET(m_sock, wfdp);
+    }else if( now < m_last_timestamp ) m_last_timestamp = now;
   }else{
     if( m_status == T_CONNECTING ){
       FD_SET(m_sock, rfdp);
       FD_SET(m_sock, wfdp);
     }else if (INVALID_SOCKET != m_sock){
+      if( now > m_statustime ){
+        Report_Status(
+          WORLD.GetSeedsCount(),
+          WORLD.GetPeersCount() - WORLD.GetSeedsCount() - WORLD.GetConnCount(),
+          BTCONTENT.pBF->Count(), BTCONTENT.GetNPieces(),
+          Self.RateDL(), Self.RateUL(),
+          Self.TotalDL(), Self.TotalUL(),
+          cfg_max_bandwidth_down, cfg_max_bandwidth_up,
+          BTCONTENT.CacheUsed()/1024 );
+        m_statustime = now;
+      }
       FD_SET(m_sock, rfdp);
       if( out_buffer.Count() ) FD_SET(m_sock, wfdp);
     }
@@ -472,7 +528,8 @@ int Ctcs::IntervalCheck(const time_t *pnow, fd_set *rfdp, fd_set *wfdp)
 }
 
 
-int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
+int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
+  fd_set *rfdnextp, fd_set *wfdnextp)
 {
   if( T_FREE == m_status ) return 0;
 
@@ -480,26 +537,34 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;
-    FD_CLR(m_sock, wfdp); 
+    FD_CLR(m_sock, wfdnextp);
+    if( FD_ISSET(m_sock, rfdp) ){
+      (*nfds)--;
+      FD_CLR(m_sock, rfdnextp);
+    }
     if(getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n) < 0 ||
        error != 0 ){
       if( ECONNREFUSED != error )
-        fprintf(stderr,"warn, connect to CTCS failed. %s\n",strerror(error));
+        CONSOLE.Warning(2, "warn, connect to CTCS failed:  %s",
+          strerror(error));
       Reset(15);
       return -1;
     }else{
       m_status = T_READY; 
       if( Send_Protocol() != 0 && errno != EINPROGRESS ){
-        fprintf(stderr,"warn, send protocol to CTCS failed. %s\n",strerror(errno));
+        CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
+          strerror(errno));
         return -1;
       }
       if( Send_Auth() != 0 && errno != EINPROGRESS ) {
-        fprintf(stderr,"warn, send password to CTCS failed. %s\n",strerror(errno));
+        CONSOLE.Warning(2, "warn, send password to CTCS failed:  %s",
+          strerror(errno));
         return -1;
       }
       if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) == 0
           && errno != EINPROGRESS ){
-        fprintf(stderr,"warn, send torrent to CTCS failed. %s\n",strerror(errno));
+        CONSOLE.Warning(2, "warn, send torrent to CTCS failed:  %s",
+          strerror(errno));
         return -1;
       }
     }
@@ -507,22 +572,22 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds)
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;
-    FD_CLR(m_sock, rfdp);
+    FD_CLR(m_sock, rfdnextp);
     getsockopt(m_sock, SOL_SOCKET,SO_ERROR,&error,&n);
-    fprintf(stderr,"warn, connect to CTCS failed. %s\n",strerror(error));
+    CONSOLE.Warning(2, "warn, connect to CTCS failed:  %s", strerror(error));
     Reset(15);
     return -1;
   }else if( INVALID_SOCKET != m_sock ){
     if( FD_ISSET(m_sock, rfdp) ){
       (*nfds)--;
-      FD_CLR(m_sock,rfdp);
+      FD_CLR(m_sock,rfdnextp);
       CheckMessage();
     }
     if( INVALID_SOCKET != m_sock && FD_ISSET(m_sock, wfdp) ){
       (*nfds)--;
-      FD_CLR(m_sock,wfdp);
+      FD_CLR(m_sock,wfdnextp);
       if( out_buffer.Count() && out_buffer.FlushOut(m_sock) < 0){
-        Reset(1);
+        Reset(5);
         return -1;
       }
     }

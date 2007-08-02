@@ -156,7 +156,7 @@ void BitField::Invert()
 // Use instead of Set() when you know nset is incorrect and will be corrected
 // afterward (as in Invert or by _recalc),
 // and either bitfield won't get full or you'll _recalc() afterward to fix it.
-void BitField::_set(size_t idx)
+inline void BitField::_set(size_t idx)
 {
   if( idx < nbits && !_isfull() && !_isset(idx) )
     b[idx / 8] |= BIT_HEX[idx % 8];
@@ -221,10 +221,10 @@ size_t BitField::Random() const
 {
    size_t idx;
 
-  if( _isfull() ) idx = rand() % nbits;
+  if( _isfull() ) idx = random() % nbits;
   else{
     size_t i;
-    i = rand() % nset + 1;
+    i = random() % nset + 1;
     for(idx = 0; idx < nbits && i; idx++) 
       if( _isset(idx) ) i--;
     idx--;
@@ -232,7 +232,7 @@ size_t BitField::Random() const
   return idx;
 }
 
-void BitField::_recalc()
+inline void BitField::_recalc()
 {
   // 重新计算 nset 的值
    size_t i;
@@ -264,7 +264,7 @@ void BitField::WriteToBuffer(char *buf)
     memcpy(buf,(char*)b,nbytes);
 }
 
-void BitField::_setall(unsigned char *buf)
+inline void BitField::_setall(unsigned char *buf)
 {
   size_t i;
 

@@ -1,18 +1,21 @@
 #ifndef BTCONFIG_H
 #define BTCONFIG_H
 
+#include <time.h>
+
 extern size_t cfg_req_slice_size;
 
-#define MAX_METAINFO_FILESIZ	4194304
-// According to specs the max slice size is 128K.  But most clients do not
-// accept a value that large, so we limit to 64K.  Note that there is a
-// comparison in RequestQueue::IsValidRequest() (see btrequest.cpp) that
-// doubles the value so that we will accept a request for 128K.
-#define cfg_max_slice_size 65536
+#define MAX_METAINFO_FILESIZ	4*1024*1024
+#define DEFAULT_SLICE_SIZE 16*1024
+// According to specs the max slice size is 128K.  While most clients now do
+// not accept a value that large, we want max compatibility.
+#define cfg_max_slice_size 128*1024
 extern size_t cfg_req_queue_length;
 #define MAX_PF_LEN 8
 #define PEER_ID_LEN 20
-#define PEER_PFX "-CD0202-"
+#define PEER_PFX "-CD0300-"
+
+extern char *cfg_user_agent;	// HTTP header
 
 extern size_t cfg_cache_size;
 
@@ -35,7 +38,7 @@ extern int cfg_max_bandwidth_up;
 extern char *arg_metainfo_file;
 extern char *arg_bitfield_file;
 extern char *arg_save_as;
-extern char *arg_user_agent;
+extern char *arg_user_agent;	// BT peer ID, not HTTP header
 
 extern unsigned char arg_flg_force_seed_mode;
 extern unsigned char arg_flg_check_only;
@@ -43,10 +46,10 @@ extern unsigned char arg_flg_exam_only;
 extern unsigned char arg_flg_make_torrent;
 extern size_t arg_file_to_download;
 extern unsigned char arg_verbose;
+extern unsigned char arg_allocate;
 
 extern size_t arg_piece_length;
 extern char *arg_announce;
 
 extern char *arg_ctcs;
-extern int cfg_exit_zero_peers;
 #endif

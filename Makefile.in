@@ -43,7 +43,8 @@ DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	$(top_srcdir)/configure AUTHORS COPYING ChangeLog INSTALL NEWS \
 	depcomp install-sh missing mkinstalldirs
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/configure.ac
+am__aclocal_m4_deps = $(top_srcdir)/version.m4 \
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -57,11 +58,11 @@ PROGRAMS = $(bin_PROGRAMS)
 am_ctorrent_OBJECTS = bencode.$(OBJEXT) bitfield.$(OBJEXT) \
 	btconfig.$(OBJEXT) btcontent.$(OBJEXT) btfiles.$(OBJEXT) \
 	btrequest.$(OBJEXT) btstream.$(OBJEXT) bufio.$(OBJEXT) \
-	connect_nonb.$(OBJEXT) ctcs.$(OBJEXT) ctorrent.$(OBJEXT) \
-	downloader.$(OBJEXT) httpencode.$(OBJEXT) iplist.$(OBJEXT) \
-	peer.$(OBJEXT) peerlist.$(OBJEXT) rate.$(OBJEXT) \
-	setnonblock.$(OBJEXT) sigint.$(OBJEXT) tracker.$(OBJEXT) \
-	sha1.$(OBJEXT)
+	connect_nonb.$(OBJEXT) console.$(OBJEXT) ctcs.$(OBJEXT) \
+	ctorrent.$(OBJEXT) downloader.$(OBJEXT) httpencode.$(OBJEXT) \
+	iplist.$(OBJEXT) peer.$(OBJEXT) peerlist.$(OBJEXT) \
+	rate.$(OBJEXT) setnonblock.$(OBJEXT) sigint.$(OBJEXT) \
+	tracker.$(OBJEXT) sha1.$(OBJEXT)
 ctorrent_OBJECTS = $(am_ctorrent_OBJECTS)
 ctorrent_LDADD = $(LDADD)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I.
@@ -102,9 +103,9 @@ AWK = @AWK@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
-CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CXX = @CXX@
+CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
 CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
@@ -132,6 +133,7 @@ PACKAGE_STRING = @PACKAGE_STRING@
 PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
+POW_LIB = @POW_LIB@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
@@ -168,7 +170,7 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-ctorrent_SOURCES = bencode.cpp bitfield.cpp btconfig.cpp btcontent.cpp btfiles.cpp btrequest.cpp btstream.cpp bufio.cpp connect_nonb.cpp ctcs.cpp ctorrent.cpp downloader.cpp httpencode.cpp iplist.cpp peer.cpp peerlist.cpp rate.cpp setnonblock.cpp sigint.cpp tracker.cpp sha1.c bencode.h bitfield.h btconfig.h btcontent.h btfiles.h btrequest.h btstream.h bufio.h connect_nonb.h ctcs.h def.h downloader.h httpencode.h iplist.h msgencode.h peer.h peerlist.h rate.h setnonblock.h sigint.h tracker.h sha1.h
+ctorrent_SOURCES = bencode.cpp bitfield.cpp btconfig.cpp btcontent.cpp btfiles.cpp btrequest.cpp btstream.cpp bufio.cpp connect_nonb.cpp console.cpp ctcs.cpp ctorrent.cpp downloader.cpp httpencode.cpp iplist.cpp peer.cpp peerlist.cpp rate.cpp setnonblock.cpp sigint.cpp tracker.cpp sha1.c bencode.h bitfield.h btconfig.h btcontent.h btfiles.h btrequest.h btstream.h bttime.h bufio.h connect_nonb.h console.h ctcs.h def.h downloader.h httpencode.h iplist.h msgencode.h peer.h peerlist.h rate.h setnonblock.h sigint.h tracker.h sha1.h
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -266,6 +268,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/btstream.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bufio.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/connect_nonb.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/console.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ctcs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ctorrent.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/downloader.Po@am__quote@
@@ -582,4 +585,3 @@ uninstall-am: uninstall-binPROGRAMS uninstall-info-am
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:
-

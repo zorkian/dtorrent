@@ -6,8 +6,6 @@
 #ifdef WINDOWS	//if Windows ********************
 typedef int ssize_t;
 typedef int socklen_t;
-typedef unsigned __int64 u_int64_t;
-typedef unsigned __int8 u_int8_t;
 
 #define PATH_SP '\\'
 #define MAXPATHLEN 1024

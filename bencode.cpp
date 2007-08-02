@@ -1,5 +1,4 @@
 #include "./def.h"
-#include <sys/types.h>
 
 #include "bencode.h"
 
@@ -172,7 +171,7 @@ size_t bencode_buf(const char *buf,size_t len,FILE *fp)
 {
   char slen[MAX_INT_SIZ];
   char *b;
-  if( MAX_INT_SIZ <= snprintf(slen, MAX_INT_SIZ, "%u:", len) ) return 0;
+  if( MAX_INT_SIZ <= snprintf(slen, MAX_INT_SIZ, "%d:", (int)len) ) return 0;
   if( fwrite( slen, strlen(slen), 1, fp) != 1) return 0;
   b = new char[len + strlen(slen)];
 #ifndef WINDOWS
@@ -192,7 +191,7 @@ size_t bencode_int(const int integer, FILE *fp)
 {
   char buf[MAX_INT_SIZ];
   if( EOF == fputc('i', fp)) return 0;
-  if( MAX_INT_SIZ <= snprintf(buf, MAX_INT_SIZ, "%u", integer) )
+  if( MAX_INT_SIZ <= snprintf(buf, MAX_INT_SIZ, "%lu", (unsigned long)integer) )
     return 0;
   if( fwrite(buf, strlen(buf), 1, fp) != 1 ) return 0;
   return ( EOF == fputc('e', fp)) ? 0: 1;

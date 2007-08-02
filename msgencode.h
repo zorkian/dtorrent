@@ -10,12 +10,15 @@
 #define M_REQUEST 		(unsigned char) 6
 #define M_PIECE 		(unsigned char) 7
 #define M_CANCEL 		(unsigned char) 8
+#define M_PORT 			(unsigned char) 9
 
-#define H_BASE_LEN		1	/* int_siz + chr_siz */
-
+#define H_INT_LEN		4	/* int_siz */
+#define H_LEN			4	/* int_siz */
+#define H_BASE_LEN		1	/* chr_siz */
 #define H_HAVE_LEN		5	/* chr_siz + int_siz */
 #define H_PIECE_LEN		9	/* chr_siz + int_siz*2 */
 #define H_REQUEST_LEN		13	/* chr_siz + int_siz*3 */
 #define H_CANCEL_LEN		13	/* chr_siz + int_siz*3 */
+#define H_PORT_LEN		3	/* chr_siz + port_siz */
 
 #endif

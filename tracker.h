@@ -11,12 +11,15 @@
 
 #else
 #include <unistd.h>
-#include <sys/time.h>
+#include <stdio.h>   // autoconf manual: Darwin + others prereq for stdlib.h
+#include <stdlib.h>  // autoconf manual: Darwin prereq for sys/socket.h
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/param.h>
 #endif
+
+#include <time.h>
 
 #include "btconfig.h"
 
@@ -42,16 +45,18 @@ class btTracker
   unsigned char m_f_completed:1;
 
   unsigned char m_f_pause:1;
-  unsigned char m_f_softquit:1;
   unsigned char m_f_restart:1;
+  unsigned char m_reserved:1;
 
 
   time_t m_interval;		// 与Tracker通信的时间间隔
+  time_t m_default_interval;		// interval that the tracker tells us to wait
   time_t m_last_timestamp;	// 最后一次成功与Tracker通信的时间
   size_t m_connect_refuse_click;
 
   size_t m_ok_click;	// tracker ok response counter
   size_t m_peers_count;	// total number of peers
+  size_t m_seeds_count;	// total number of seeds
   size_t m_prevpeers;	// number of peers previously seen
 
   SOCKET m_sock;
@@ -78,9 +83,7 @@ class btTracker
   void ClearPause() { m_f_pause = 0; }
   int IsPaused() const { return m_f_pause; }
   void Resume();
-  void SoftQuit() { m_f_softquit = 1; }
-  void DontQuit() { m_f_softquit = 0; }
-  int IsQuitting() const { return m_f_softquit; }
+  int IsQuitting() const { return m_f_stoped; }
   void SetRestart() { m_f_restart = 1; }
 
   void SetStoped() { Reset(15); m_f_stoped = 1; m_last_timestamp -= 15;}
@@ -88,12 +91,15 @@ class btTracker
   int Connect();
   int SendRequest();
   int CheckReponse();
-  int IntervalCheck(const time_t *pnow,fd_set* rfdp, fd_set *wfdp);
-  int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds);
+  int IntervalCheck(fd_set* rfdp, fd_set *wfdp);
+  int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
+    fd_set *rfdnextp, fd_set *wfdnextp);
 
   size_t GetRefuseClick() const { return m_connect_refuse_click; }
   size_t GetOkClick() const { return m_ok_click; }
   size_t GetPeersCount() const { return m_peers_count; }
+  size_t GetSeedsCount() const { return m_seeds_count; }
+  time_t GetInterval() const { return m_default_interval; }
 };
 
 extern btTracker Tracker;
