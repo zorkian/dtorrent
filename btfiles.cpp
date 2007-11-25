@@ -60,6 +60,7 @@ BTFILE* btFiles::_new_bfnode()
   pnew->bf_filename = (char*) 0;
   pnew->bf_fp = (FILE*) 0;
   pnew->bf_length = 0;
+  pnew->bf_buffer = (char *) 0;
 
   pnew->bf_last_timestamp = (time_t) 0;
   pnew->bf_next = (BTFILE*) 0;
@@ -94,6 +95,8 @@ int btFiles::_btf_close(BTFILE *pbf)
       pbf->bf_filename, strerror(errno));
   pbf->bf_flag_opened = 0;
   pbf->bf_fp = (FILE *)0;
+  delete pbf->bf_buffer;
+  pbf->bf_buffer = (char *)0;
   m_total_opened--;
   return 0;
 }
@@ -126,7 +129,9 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
         return -1;  // caller prints error
     }else return -1;  // caller prints error
   }
-  setvbuf(pbf->bf_fp, m_buffer, _IOFBF, DEFAULT_SLICE_SIZE);
+  pbf->bf_buffer = new char[DEFAULT_SLICE_SIZE];
+  if(pbf->bf_buffer)
+    setvbuf(pbf->bf_fp, pbf->bf_buffer, _IOFBF, DEFAULT_SLICE_SIZE);
 
   pbf->bf_flag_opened = 1;
   pbf->bf_flag_readonly = iotype ? 0 : 1;

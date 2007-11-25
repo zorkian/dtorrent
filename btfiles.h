@@ -14,6 +14,7 @@ typedef struct _btfile{
   char *bf_filename;	// full path of file.
   uint64_t bf_length;
   FILE *bf_fp;
+  char *bf_buffer;
 
   time_t bf_last_timestamp;	// last io timestamp.
 
@@ -37,7 +38,6 @@ class btFiles
   size_t m_total_opened;	// already opened
   size_t m_nfiles;
   BTFILE **m_file;
-  char m_buffer[DEFAULT_SLICE_SIZE];
 
   uint8_t m_flag_automanage:1;
   uint8_t m_flag_reserved:7;	// current version not implement

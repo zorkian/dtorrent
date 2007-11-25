@@ -954,7 +954,7 @@ int btContent::CheckNextPiece()
   if( idx >= m_npieces ) return 0;
   if( !pBRefer->IsSet(idx) ){
     while( idx < m_npieces && !pBRefer->IsSet(idx) ){
-      if(arg_verbose) CONSOLE.Debug("Checking: %u skipped", idx);
+      if(arg_verbose) CONSOLE.Debug("Check: %u skipped", idx);
       pBChecked->Set(idx);
       ++idx;
     }
@@ -971,7 +971,7 @@ int btContent::CheckNextPiece()
 
     pBChecked->Set(idx);  // need to set before CheckInterest below
     if( memcmp(md, m_hash_table + idx * 20, 20) == 0 ){
-      if(arg_verbose) CONSOLE.Debug("Checking: %u ok", idx);
+      if(arg_verbose) CONSOLE.Debug("Check: %u ok", idx);
       m_left_bytes -= GetPieceLength(idx);
       pBF->Set(idx);
       WORLD.Tell_World_I_Have(idx);
@@ -979,7 +979,7 @@ int btContent::CheckNextPiece()
         WORLD.CloseAllConnectionToSeed();
       }
     }else{
-      if(arg_verbose) CONSOLE.Debug("Checking: %u failed", idx);
+      if(arg_verbose) CONSOLE.Debug("Check: %u failed", idx);
       f_checkint = 1;
     }
     m_check_piece = idx + 1;
