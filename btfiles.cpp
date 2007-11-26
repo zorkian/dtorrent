@@ -95,7 +95,7 @@ int btFiles::_btf_close(BTFILE *pbf)
       pbf->bf_filename, strerror(errno));
   pbf->bf_flag_opened = 0;
   pbf->bf_fp = (FILE *)0;
-  delete pbf->bf_buffer;
+  delete []pbf->bf_buffer;
   pbf->bf_buffer = (char *)0;
   m_total_opened--;
   return 0;
