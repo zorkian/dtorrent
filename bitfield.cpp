@@ -284,7 +284,7 @@ inline void BitField::_setall(unsigned char *buf)
 
   memset(buf,0xFF,nbytes - 1);
 
-  if( nbits % nbytes ){
+  if( nbits % 8 ){
     for(i = 8 * (nbytes - 1); i < nbits; i++)
       buf[i / 8] |= BIT_HEX[i % 8];
   }else
