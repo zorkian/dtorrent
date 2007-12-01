@@ -449,13 +449,17 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         Interact_n("");
         break;
       case 'n':				// get1file
-        m_streams[O_INPUT]->SetInputMode(K_LINES);
-        ShowFiles();
-        Interact("Enter 0 or * for all files (normal behavior).");
-        if( arg_file_to_download )
-          Interact_n("Get file number/list (currently %s): ",
-            arg_file_to_download);
-        else Interact_n("Get file number/list: ");
+        if( BTCONTENT.IsFull() )
+          CONSOLE.Interact("Download is already complete.");
+        else{
+          m_streams[O_INPUT]->SetInputMode(K_LINES);
+          ShowFiles();
+          Interact("Enter 0 or * for all files (normal behavior).");
+          if( arg_file_to_download )
+            Interact_n("Get file number/list (currently %s): ",
+              arg_file_to_download);
+          else Interact_n("Get file number/list: ");
+        }
         break;
       case 'S':				// CTCS server
         m_streams[O_INPUT]->SetInputMode(K_LINES);
@@ -467,11 +471,15 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         else Interact_n("CTCS server:port: ");
         break;
       case 'X':				// completion command (user exit)
-        m_streams[O_INPUT]->SetInputMode(K_LINES);
-        Interact("Enter a command to run upon download completion.");
-        if( arg_completion_exit )
-          Interact("Currently: %s", arg_completion_exit);
-        Interact_n(">");
+        if( BTCONTENT.IsFull() )
+          CONSOLE.Interact("Download is already complete.");
+        else{
+          m_streams[O_INPUT]->SetInputMode(K_LINES);
+          Interact("Enter a command to run upon download completion.");
+          if( arg_completion_exit )
+            Interact("Currently: %s", arg_completion_exit);
+          Interact_n(">");
+        }
         break;
       case 'v':				// verbose
         if( arg_verbose && !m_streams[O_INPUT]->SameDev(m_streams[O_DEBUG]) )

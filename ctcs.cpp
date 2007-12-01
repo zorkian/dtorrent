@@ -340,7 +340,8 @@ int Ctcs::Send_Config()
         "Min peers [-m]", desc))) < 0 )
       return r;
 
-    if( (r = SendMessage(ConfigMsg("file_list", "S", maxlen,
+    if( !BTCONTENT.IsFull() &&
+        (r = SendMessage(ConfigMsg("file_list", "S", maxlen,
         arg_file_to_download ? arg_file_to_download : "",
         "Download files [-n]", ""))) < 0 )
       return r;
@@ -357,7 +358,8 @@ int Ctcs::Send_Config()
         "Pause torrent", "Stop upload/download"))) < 0 )
       return r;
 
-    if( (r = SendMessage(ConfigMsg("user_exit", "S", maxlen,
+    if( !BTCONTENT.IsFull() &&
+        (r = SendMessage(ConfigMsg("user_exit", "S", maxlen,
         arg_completion_exit ? arg_completion_exit : "",
         "Completion command [-X]", ""))) < 0 )
       return r;
@@ -448,7 +450,7 @@ int Ctcs::Set_Config(char *msgbuf)
       cfg_max_peers = atoi(valstr);
     }else if( 0==strcmp(name, "min_peers") ){
       cfg_min_peers = atoi(valstr);
-    }else if( 0==strcmp(name, "file_list") ){
+    }else if( 0==strcmp(name, "file_list") && !BTCONTENT.IsFull() ){
       if( arg_file_to_download ) delete []arg_file_to_download;
       if( 0==strlen(valstr) ) arg_file_to_download = (char *)0;
       else{
@@ -465,7 +467,7 @@ int Ctcs::Set_Config(char *msgbuf)
       if( atoi(valstr) ){
         if( !WORLD.IsPaused() ) WORLD.Pause();
       }else if( WORLD.IsPaused() ) WORLD.Resume();
-    }else if( 0==strcmp(name, "user_exit") ){
+    }else if( 0==strcmp(name, "user_exit") && !BTCONTENT.IsFull() ){
       if( arg_completion_exit ) delete []arg_completion_exit;
       arg_completion_exit = new char[strlen(valstr) + 1];
       if( !arg_completion_exit )
