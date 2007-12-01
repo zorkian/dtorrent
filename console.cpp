@@ -928,6 +928,12 @@ void Console::StatusLine1(char buffer[], size_t length)
       snprintf(timeleft, sizeof(timeleft), "%d:%2.2d",
         (int)(remain / 60), (int)(remain % 60));
     else strcpy(timeleft, ">999hr");
+  }else if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
+    // Don't say stalled if still checking and nothing to download yet.
+    BitField tmpBitfield = *BTCONTENT.pBChecked;
+    tmpBitfield.Except(BTCONTENT.pBF);
+    if(tmpBitfield.IsEmpty()) strcpy(timeleft, "unknown");
+    else strcpy(timeleft, "stalled");
   }else strcpy(timeleft, "stalled");
 
   snprintf(buffer, length,
