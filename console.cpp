@@ -434,6 +434,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case 'd':				// download bw limit
       case 'u':				// upload bw limit
+        if(arg_ctcs) Interact("Note, changes may be overridden by CTCS.");
       case 'e':				// seed time
       case 'E':				// seed ratio
       case 'm':				// min peers
