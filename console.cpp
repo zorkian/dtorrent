@@ -355,14 +355,19 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
               Interact("Invalid input");
             else{
               if( arg_ctcs ) delete []arg_ctcs;
-              arg_ctcs = new char[strlen(param) + 1];
-              if( !arg_ctcs )
-                CONSOLE.Warning(1,
-                  "error, failed to allocate memory for option");
-              else{
-                strcpy(arg_ctcs, param);
-                CTCS.Initial();
-                CTCS.Reset(1);
+              if(0==strcmp(":", param)){
+                if(arg_ctcs) CTCS.Reset(1);
+                arg_ctcs = (char*) 0;
+              }else{
+                arg_ctcs = new char[strlen(param) + 1];
+                if( !arg_ctcs )
+                  CONSOLE.Warning(1,
+                    "error, failed to allocate memory for option");
+                else{
+                  strcpy(arg_ctcs, param);
+                  CTCS.Initial();
+                  CTCS.Reset(1);
+                }
               }
             }
             break;
@@ -455,8 +460,10 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       case 'S':				// CTCS server
         m_streams[O_INPUT]->SetInputMode(K_LINES);
         Interact_n("");
-        if( arg_ctcs )
+        if( arg_ctcs ){
+          Interact("Enter ':' to stop using CTCS.");
           Interact_n("CTCS server:port (currently %s): ", arg_ctcs);
+        }
         else Interact_n("CTCS server:port: ");
         break;
       case 'X':				// completion command (user exit)
