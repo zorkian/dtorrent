@@ -573,7 +573,7 @@ const
 {
   PEERNODE *p;
   BitField bf_all_have = bf, bf_int_have = bf,
-    bf_others_have, bf_only_he_has = bf, bf_prefer;
+    bf_others_have, bf_only_he_has = bf, *bf_prefer;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ) continue;
@@ -593,10 +593,10 @@ const
   bf_all_have.Invert();
   bf.And(bf_all_have); // bf is now pertinent pieces that not everyone has
 
-  bf_prefer = initial ? bf_others_have : bf_only_he_has;
+  bf_prefer = initial ? &bf_others_have : &bf_only_he_has;
 
   BitField tmpBitField = bf;
-  tmpBitField.And(bf_prefer);
+  tmpBitField.And(*bf_prefer);
   /* If initial mode, tmpBitField is now pertinent pieces that more than one
      peer has, but not everyone.
      Otherwise, it's pertinent pieces that only the proposer has (not

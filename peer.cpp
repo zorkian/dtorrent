@@ -86,8 +86,7 @@ int btPeer::Need_Local_Data() const
 
 int btPeer::Need_Remote_Data() const
 {
-
-  if( BTCONTENT.Seeding() ) return 0;
+  if( BTCONTENT.Seeding() || bitfield.IsEmpty() ) return 0;
   else if( bitfield.IsFull() &&
     BTCONTENT.CheckedPieces() >= BTCONTENT.GetNPieces() ) return 1;
   else{
