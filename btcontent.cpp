@@ -319,19 +319,25 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       SaveBitfield();
       exit(0);
     }
-  }else if( pBRefer->SetReferFile(arg_bitfield_file) < 0 ){
-    CONSOLE.Warning(2, "warn, couldn't set bit field refer file \"%s\":  %s",
-      arg_bitfield_file, strerror(errno));
-    CONSOLE.Warning(2, "This is normal if you are starting or seeding.");
-    pBRefer->SetAll();  // need to check all pieces
-  }else if( unlink(arg_bitfield_file) < 0 ){
-    CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
-      arg_bitfield_file, strerror(errno));
+  }else if( r ){  // files exist already
+    if( pBRefer->SetReferFile(arg_bitfield_file) < 0 ){
+      CONSOLE.Warning(2, "warn, couldn't set bit field refer file \"%s\":  %s",
+        arg_bitfield_file, strerror(errno));
+      CONSOLE.Warning(2, "This is normal if you are seeding.");
+      pBRefer->SetAll();  // need to check all pieces
+    }else{
+      if( unlink(arg_bitfield_file) < 0 ){
+        CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
+          arg_bitfield_file, strerror(errno));
+      }
+      // Mark missing pieces as "checked" (eligible for download).
+      *pBChecked = *pBRefer;
+      pBChecked->Invert();
+    }
   }
   if( !r ){  // don't hash-check if the files were just created
     m_check_piece = m_npieces;
     pBChecked->SetAll();
-    delete pBRefer;
     if( arg_flg_force_seed_mode ){
       CONSOLE.Warning(2, "Files were not present; overriding force mode!");
     }
@@ -349,8 +355,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     }
     m_check_piece = m_npieces;
     pBChecked->SetAll();
-    delete pBRefer;
   }
+  delete pBRefer;
 
   m_cache = new BTCACHE *[m_npieces];
   if( !m_cache ){
@@ -941,7 +947,6 @@ int btContent::CheckExist()
   }
   m_check_piece = m_npieces;
   pBChecked->SetAll();
-  delete pBRefer;
   return 0;
 }
 
@@ -952,8 +957,8 @@ int btContent::CheckNextPiece()
   int f_checkint = 0;
 
   if( idx >= m_npieces ) return 0;
-  if( !pBRefer->IsSet(idx) ){
-    while( idx < m_npieces && !pBRefer->IsSet(idx) ){
+  if( pBChecked->IsSet(idx) ){
+    while( idx < m_npieces && pBChecked->IsSet(idx) ){
       if(arg_verbose) CONSOLE.Debug("Check: %u skipped", idx);
       pBChecked->Set(idx);
       ++idx;
@@ -975,9 +980,6 @@ int btContent::CheckNextPiece()
       m_left_bytes -= GetPieceLength(idx);
       pBF->Set(idx);
       WORLD.Tell_World_I_Have(idx);
-      if( pBF->IsFull() ){
-        WORLD.CloseAllConnectionToSeed();
-      }
     }else{
       if(arg_verbose) CONSOLE.Debug("Check: %u failed", idx);
       f_checkint = 1;
@@ -989,7 +991,9 @@ int btContent::CheckNextPiece()
   if( m_check_piece >= m_npieces ){
     CONSOLE.Print("Checking completed.");
     m_btfiles.PrintOut();  // show file completion
-    delete pBRefer;
+    if( pBF->IsFull() ){
+      WORLD.CloseAllConnectionToSeed();
+    }
   }
   return 0;
 }
@@ -1408,9 +1412,9 @@ void btContent::SaveBitfield()
 {
   if( arg_bitfield_file ){
     if( m_check_piece < m_npieces ){  // still checking
+      // Anything unchecked needs to be checked next time.
       pBChecked->Invert();
-      pBRefer->And(*pBChecked);
-      pBF->Comb(*pBRefer);
+      pBF->Comb(*pBChecked);
     }
     if( !pBF->IsFull() ) pBF->WriteToFile(arg_bitfield_file);
   }
