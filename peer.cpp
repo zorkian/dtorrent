@@ -532,11 +532,12 @@ int btPeer::ReponseSlice()
     (int)idx, (int)off, (int)len, this);
   // project the time to send another slice
   if( 0==currentrate ){  // don't know peer's rate; use best guess
+    // These are "int" for signed calculations below.
     int rate = (int)(Self.RateUL());
-    int unchoked = (int)(WORLD.GetUnchoked());
-    if( unchoked < 1 ) unchoked = 1;
-    if( 0==cfg_max_bandwidth_up ){
-      if( 0==rate ) m_next_send_time = now;
+    int unchoked = (int)(WORLD.GetUnchoked());  // can't be 0 here
+    if( cfg_max_bandwidth_up < unchoked || cfg_max_bandwidth_up <= rate ){
+      if( rate < unchoked || rate < (unchoked*len)/3600 )
+        m_next_send_time = now;
       else m_next_send_time = now + len / (rate / unchoked);
     }else{
       m_next_send_time = now + len /
