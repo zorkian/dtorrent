@@ -30,7 +30,6 @@ extern int cfg_min_listen_port;
 extern time_t cfg_seed_hours;
 extern double cfg_seed_ratio;
 
-extern int cfg_max_bandwidth;
 extern int cfg_max_bandwidth_down;
 extern int cfg_max_bandwidth_up;
 
