@@ -74,6 +74,8 @@ void BitField::SetReferBuffer(char *buf)
 #endif
   }
   memcpy((char*)b,buf,nbytes);
+  if( nbits % 8 )
+    b[nbytes - 1] &= ~(BIT_HEX[nbits % 8 - 1] - 1);
   _recalc();
 }
 
@@ -285,6 +287,7 @@ inline void BitField::_setall(unsigned char *buf)
   memset(buf,0xFF,nbytes - 1);
 
   if( nbits % 8 ){
+    buf[nbytes-1] = 0x00;
     for(i = 8 * (nbytes - 1); i < nbits; i++)
       buf[i / 8] |= BIT_HEX[i % 8];
   }else
