@@ -26,7 +26,6 @@ class BitField
 
   void SetAll();
   void Clear();
-  void SetReferBuffer(char *buf);
   void Set(size_t idx);
   void UnSet(size_t idx);
 
@@ -47,10 +46,10 @@ class BitField
   void And(const BitField *pbf) { if(pbf) And(*pbf); }
   void Invert();
 
-  int WriteToFile(const char *fname);
-  int SetReferFile(const char *fname);
-  
+  void SetReferBuffer(char *buf);
   void WriteToBuffer(char *buf);
+  int SetReferFile(const char *fname);
+  int WriteToFile(const char *fname);
 };
 
 #endif
