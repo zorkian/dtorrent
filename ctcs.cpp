@@ -208,36 +208,29 @@ int Ctcs::Send_Torrent(const unsigned char *peerid, char *torrent)
 }
 
 
-int Ctcs::Report_Status(size_t seeders, size_t leechers, size_t nhave,
-  size_t ntotal, size_t dlrate, size_t ulrate,
-  uint64_t dltotal, uint64_t ultotal, size_t dlimit, size_t ulimit,
-  size_t cacheused)
+int Ctcs::Report_Status()
 {
-  int changebw=0,change=0;
-  int r;
-  size_t nhad;
+  int changebw;
+  size_t dlrate, ulrate, dlimit, ulimit;
 
   if( T_READY != m_status ) return 0;
 
-  nhad = m_ctstatus.nhave;
+  dlrate = Self.RateDL();
+  ulrate = Self.RateUL();
+  dlimit = cfg_max_bandwidth_down;
+  ulimit = cfg_max_bandwidth_up;
 
   changebw = (
     compset(m_ctstatus, dlrate) |
     compset(m_ctstatus, ulrate) |
     compset(m_ctstatus, dlimit) |
     compset(m_ctstatus, ulimit) );
-  change = ( changebw             |
-    compset(m_ctstatus, seeders)  |
-    compset(m_ctstatus, leechers) |
-    compset(m_ctstatus, nhave)    |
-    compset(m_ctstatus, ntotal)   |
-    compset(m_ctstatus, dltotal)  |
-    compset(m_ctstatus, ultotal)  |
-    compset(m_ctstatus, cacheused) );
 
-  if( ( !m_sent_ctstatus || (nhad<nhave && nhave==ntotal) ||
-        (Tracker.GetStatus() && now > m_sent_ctstatus_time+30) ) &&
-      (r=Send_Status()) != 0 ) return r;
+  m_statustime = now;
+
+  if( !m_sent_ctstatus ||
+      (Tracker.GetStatus() && now > m_sent_ctstatus_time+30) )
+    return Send_Status();
   else return (changebw || !m_sent_ctbw) ? Send_bw() : 0;
 }
 
@@ -245,38 +238,47 @@ int Ctcs::Report_Status(size_t seeders, size_t leechers, size_t nhave,
 int Ctcs::Send_Status()
 {
   char message[CTCS_BUFSIZE];
+  size_t seeders, leechers, nhave, ntotal, dlrate, ulrate, dlimit, ulimit,
+    cacheused;
+  uint64_t dltotal, ultotal;
 
-  if( m_sent_ctstatus_time + 1 > now ) {
-    m_sent_ctstatus = 0;
-    return 0;
-  }
+  if( T_READY != m_status ) return 0;
+
+  seeders = WORLD.GetSeedsCount();
+  leechers = WORLD.GetPeersCount() - seeders - WORLD.GetConnCount();
+  nhave = BTCONTENT.pBF->Count();
+  ntotal = BTCONTENT.GetNPieces();
+  dlrate = m_ctstatus.dlrate;
+  ulrate = m_ctstatus.ulrate;
+  dltotal = Self.TotalDL();
+  ultotal = Self.TotalUL();
+  dlimit = cfg_max_bandwidth_down;
+  ulimit = cfg_max_bandwidth_up;
+  cacheused = BTCONTENT.CacheUsed()/1024;
+
   if( m_protocol == 1 )
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d/%d %d/%d/%d %d,%d %llu,%llu %d,%d",
-      (int)(m_ctstatus.seeders), (int)(m_ctstatus.leechers),
-      (int)(m_ctstatus.nhave), (int)(m_ctstatus.ntotal),
-        (int)(WORLD.Pieces_I_Can_Get()),
-      (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
-      (unsigned long long)(m_ctstatus.dltotal),
-        (unsigned long long)(m_ctstatus.ultotal),
-      (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit) );
+      (int)seeders, (int)leechers,
+      (int)nhave, (int)ntotal, (int)(WORLD.Pieces_I_Can_Get()),
+      (int)dlrate, (int)ulrate,
+      (unsigned long long)dltotal, (unsigned long long)ultotal,
+      (int)dlimit, (int)ulimit );
   else
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d:%d/%d:%d/%d %d/%d/%d %d,%d %llu,%llu %d,%d %d",
-      (int)(m_ctstatus.seeders),
+      (int)seeders,
         (int)(Tracker.GetSeedsCount()) - (BTCONTENT.IsFull() ? 1 : 0),
-      (int)(m_ctstatus.leechers),
+      (int)leechers,
         (int)(Tracker.GetPeersCount()) - Tracker.GetSeedsCount() -
           (!BTCONTENT.IsFull() ? 1 : 0),
       (int)(WORLD.GetConnCount()),
-      (int)(m_ctstatus.nhave), (int)(m_ctstatus.ntotal),
-        (int)(WORLD.Pieces_I_Can_Get()),
-      (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
-      (unsigned long long)(m_ctstatus.dltotal),
-        (unsigned long long)(m_ctstatus.ultotal),
-      (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit),
-      (int)(m_ctstatus.cacheused) );
-  m_sent_ctstatus = 1;
+      (int)nhave, (int)ntotal, (int)(WORLD.Pieces_I_Can_Get()),
+      (int)dlrate, (int)ulrate,
+      (unsigned long long)dltotal, (unsigned long long)ultotal,
+      (int)dlimit, (int)ulimit,
+      (int)cacheused );
+  m_sent_ctstatus = m_sent_ctbw = 1;
   m_sent_ctstatus_time = now;
   return SendMessage(message);
 }
@@ -721,25 +723,13 @@ int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       FD_SET(m_sock, rfdp);
       if( m_status == T_CONNECTING ) FD_SET(m_sock, wfdp);
     }else if( now < m_last_timestamp ) m_last_timestamp = now;
-  }else{
-    if( m_status == T_CONNECTING ){
-      FD_SET(m_sock, rfdp);
-      FD_SET(m_sock, wfdp);
-    }else if( INVALID_SOCKET != m_sock ){
-      if( now > m_statustime ){
-        Report_Status(
-          WORLD.GetSeedsCount(),
-          WORLD.GetPeersCount() - WORLD.GetSeedsCount() - WORLD.GetConnCount(),
-          BTCONTENT.pBF->Count(), BTCONTENT.GetNPieces(),
-          Self.RateDL(), Self.RateUL(),
-          Self.TotalDL(), Self.TotalUL(),
-          cfg_max_bandwidth_down, cfg_max_bandwidth_up,
-          BTCONTENT.CacheUsed()/1024 );
-        m_statustime = now;
-      }
-      FD_SET(m_sock, rfdp);
-      if( out_buffer.Count() ) FD_SET(m_sock, wfdp);
-    }
+  }else if( T_CONNECTING == m_status ){
+    FD_SET(m_sock, rfdp);
+    FD_SET(m_sock, wfdp);
+  }else if( INVALID_SOCKET != m_sock ){
+    if( now > m_statustime ) Report_Status();
+    FD_SET(m_sock, rfdp);
+    if( out_buffer.Count() ) FD_SET(m_sock, wfdp);
   }
   return m_sock;
 }

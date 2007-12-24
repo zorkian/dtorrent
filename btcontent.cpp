@@ -1114,6 +1114,7 @@ int btContent::SeedTimeout()
         if( arg_completion_exit )
           CompletionCommand();
       }
+      if(arg_ctcs) CTCS.Send_Status();
       CONSOLE.Print_n("Seed for others %lu hours",
         (unsigned long)cfg_seed_hours);
       if( cfg_seed_ratio )

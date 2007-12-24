@@ -42,6 +42,7 @@ void Downloader()
         Tracker.SetStoped();
       if( Tracker.IsQuitting() ){
         stopped = 1;
+        WORLD.Pause();
         if( arg_ctcs ) CTCS.Send_Status();
       }
     }
