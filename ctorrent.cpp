@@ -77,11 +77,11 @@ int main(int argc, char **argv)
 
   if( arg_flg_make_torrent ){
     if( !arg_announce ){
-      CONSOLE.Warning(1, "please use -u to specify a announce url!");
+      CONSOLE.Warning(1, "Please use -u to specify an announce url!");
       exit(1);
     }
     if( !arg_save_as ){
-      CONSOLE.Warning(1, "please use -s to specify a metainfo file name!");
+      CONSOLE.Warning(1, "Please use -s to specify a metainfo file name!");
       exit(1);
     }
     if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_announce,
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
       CONSOLE.Warning(1, "create metainfo failed.");
       exit(1);
     }
-    CONSOLE.Print("create metainfo file %s successful.", arg_save_as);
+    CONSOLE.Print("Create metainfo file %s successful.", arg_save_as);
     exit(0);
   }
 
