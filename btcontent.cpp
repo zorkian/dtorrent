@@ -537,7 +537,8 @@ void btContent::CacheEval()
     else for( ; p; p = p->age_next )
       if( p->bc_f_flush ) unflushed += p->bc_len;
     // Make sure we can read back and check a completed piece.
-    dlnext = ratedn * interval + m_piece_length;
+    // But free some cache if download has completely stalled.
+    dlnext = ratedn ? (ratedn * interval + m_piece_length) : 0;
   }
 
   // Upload: need enough to hold read/dl'd data until it can be sent
