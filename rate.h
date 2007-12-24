@@ -23,6 +23,11 @@ class Rate{
   double m_last_realtime, m_recent_realtime, m_prev_realtime;
   size_t m_last_size, m_recent_size, m_prev_size;
   double m_late;
+  struct{
+    size_t value;
+    time_t lasttime;
+    double recent;
+  } m_lastrate;
 
   unsigned char m_ontime:1;
   unsigned char m_reserved:7;

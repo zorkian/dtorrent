@@ -23,6 +23,7 @@ Rate::Rate()
   m_selfrate = (Rate *)0;
   m_late = 0;
   m_ontime = 0;
+  m_lastrate.lasttime = (time_t)0;
 }
 
 void Rate::Reset()
@@ -223,7 +224,14 @@ size_t Rate::RateMeasure()
   double timeused = 0;
   BWSAMPLE *p;
 
-  if( !m_last_timestamp || !m_history ) return 0; // no current rate
+  if( now == m_lastrate.lasttime && m_recent_realtime == m_lastrate.recent )
+    return m_lastrate.value;
+
+  m_lastrate.lasttime = now;
+  if( !m_last_timestamp || !m_history ){
+    m_lastrate.value = 0;
+    return 0; // no current rate
+  }
 
   Cleanup();
   for( p=m_history; p; p=p->next ){
@@ -242,7 +250,10 @@ size_t Rate::RateMeasure()
       m_recent_size = m_prev_size = 0;
     }
   }
-  if( !m_history ) return 0;
+  if( !m_history ){
+    m_lastrate.value = 0;
+    return 0;
+  }
 
   // Don't let the most recent addition inflate the rate measurement.
   if( now == (time_t)m_recent_realtime ){
@@ -260,7 +271,9 @@ size_t Rate::RateMeasure()
       (now - (time_t)m_recent_realtime) );
   }
 
-  return (size_t)(countbytes / timeused);
+  m_lastrate.value = (size_t)(countbytes / timeused);
+  m_lastrate.recent = m_recent_realtime;
+  return m_lastrate.value;
 }
 
 size_t Rate::RateMeasure(const Rate &ra_to)
