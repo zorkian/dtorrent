@@ -222,6 +222,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   char *b;
   const char *s;
   size_t flen, q, r;
+  int tmp;
 
   m_cache_hit = m_cache_miss = m_cache_pre = 0;
   time(&m_cache_eval_time);
@@ -276,7 +277,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     arg_flg_exam_only = 0;
   }
 
-  if( (r = m_btfiles.CreateFiles()) < 0 ) ERR_RETURN();
+  if( (tmp = m_btfiles.CreateFiles()) < 0 ) ERR_RETURN();
+  r = tmp;
 
   global_piece_buffer = new char[m_piece_length];
 #ifndef WINDOWS
