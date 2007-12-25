@@ -67,6 +67,8 @@ class btContent
   BTFLUSH *m_flushq;
 
   BFNODE *m_filters, *m_current_filter;
+
+  size_t m_prevdlrate;
   
   void _Set_InfoHash(unsigned char buf[20]);
   char* _file2mem(const char *fname, size_t *psiz);

@@ -86,6 +86,7 @@ btContent::btContent()
   m_check_piece = 0;
   m_flushq = (BTFLUSH *)0;
   m_filters = m_current_filter = (BFNODE *)0;
+  m_prevdlrate = 0;
 }
 
 int btContent::CreateMetainfoFile(const char *mifn)
@@ -1092,6 +1093,8 @@ int btContent::GetHashValue(size_t idx,unsigned char *md)
 int btContent::SeedTimeout()
 {
   uint64_t dl;
+  size_t oldrate = m_prevdlrate;
+
   if( Seeding() && (!m_flush_failed || IsFull()) ){
     if( !m_seed_timestamp ){
       if( IsFull() ){
@@ -1099,6 +1102,7 @@ int btContent::SeedTimeout()
         ReleaseHashTable();
       }
       Self.ResetDLTimer();  // set/report dl rate = 0
+      m_prevdlrate = 0;
       m_seed_timestamp = now;
       for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
         m_btfiles.CloseFile(n);  // files will reopen read-only
@@ -1136,8 +1140,13 @@ int btContent::SeedTimeout()
         }
       }else return 1;
     }
+  }else{
+    m_prevdlrate = Self.RateDL();
   }
-  if( cfg_cache_size && now >= m_cache_eval_time ) CacheEval();
+  if( (cfg_cache_size && now >= m_cache_eval_time) ||
+      (oldrate == 0 && m_prevdlrate > 0) ){
+    CacheEval();
+  }
   return 0;
 }
 
