@@ -352,6 +352,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
     if( !arg_flg_force_seed_mode ){
       SaveBitfield();
+      if( arg_completion_exit ) CompletionCommand();
       exit(0);
     }
   }else if( r ){  // files exist already
