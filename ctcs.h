@@ -84,7 +84,6 @@ class Ctcs
   int IntervalCheck(fd_set *rfdp, fd_set *wfdp);
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     fd_set *rfdnextp, fd_set *wfdnextp);
-  void RestartTracker();
 
   SOCKET GetSocket() { return m_sock; }
   unsigned char GetStatus() { return m_status;}

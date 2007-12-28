@@ -602,6 +602,14 @@ void btTracker::SetStoped()
   }
 }
 
+void btTracker::RestartTracker()
+{
+  SetStoped(); // finish the tracker
+  // Now we need to wait until the tracker updates (T_FINISHED == m_status),
+  // then Tracker.Restart().
+  SetRestart();
+}
+
 size_t btTracker::GetPeersCount() const 
 {
   // includes seeds, so must always be >= 1 (myself!)

@@ -85,6 +85,7 @@ class btTracker
 
   SOCKET GetSocket() { return m_sock; }
 
+  void RestartTracker();
   void SetRestart() { m_f_restart = 1; }
   void ClearRestart() { m_f_restart = 0; }
   int IsRestarting() const { return m_f_restart; }

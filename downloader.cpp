@@ -40,7 +40,7 @@ void Downloader()
     if( !stopped ){
       if( !Tracker.IsQuitting() && BTCONTENT.SeedTimeout() )
         Tracker.SetStoped();
-      if( Tracker.IsQuitting() ){
+      if( Tracker.IsQuitting() && !Tracker.IsRestarting() ){
         stopped = 1;
         WORLD.Pause();
         if( arg_ctcs ) CTCS.Send_Status();

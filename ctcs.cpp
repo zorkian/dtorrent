@@ -136,7 +136,7 @@ int Ctcs::CheckMessage()
       Tracker.ClearRestart();
       Tracker.SetStoped();
     }else if( !strncmp("CTRESTART",msgbuf,9) ){
-      RestartTracker();
+      Tracker.RestartTracker();
     }else if( !strncmp("CTUPDATE",msgbuf,8) ){
       Tracker.Reset(15);
     }else if( !strncmp("PROTOCOL",msgbuf,8) ){
@@ -814,14 +814,5 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     return -1;
   }
   return 0;
-}
-
-
-void Ctcs::RestartTracker()
-{
-  Tracker.SetStoped(); // finish the tracker
-  // Now we need to wait until the tracker updates (T_FINISHED == m_status),
-  // then Tracker.Restart().
-  Tracker.SetRestart();
 }
 

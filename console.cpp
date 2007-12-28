@@ -607,6 +607,8 @@ int Console::OperatorMenu(const char *param)
     else Interact(" %2d) Pause (suspend upload/download)", ++n_opt);
     if( !arg_daemon )
       Interact(" %2d) Become daemon (fork to background)", ++n_opt);
+    Interact(" %2d) Update tracker stats & get peers", ++n_opt);
+    Interact(" %2d) Restart (recover) the tracker session", ++n_opt);
     Interact_n("Enter selection: ");
     m_streams[O_INPUT]->SetInputMode(K_LINES);
     oper_mode = 1;
@@ -669,6 +671,15 @@ int Console::OperatorMenu(const char *param)
       return 1;
     }else if( sel == 3 + O_NCHANNELS+1 + STATUSLINES ){  // daemon
       Daemonize();
+      oper_mode = 0;
+      return 1;
+    }else if( sel == 4 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
+      if( Tracker.GetStatus() == T_FREE ) Tracker.Reset(15);
+      else CONSOLE.Interact("Already connecting, please be patient...");
+      oper_mode = 0;
+      return 1;
+    }else if( sel == 5 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
+      Tracker.RestartTracker();
       oper_mode = 0;
       return 1;
     }
@@ -854,8 +865,9 @@ void Console::StatusLine0(char buffer[], size_t length)
 
     (Tracker.GetStatus()==T_CONNECTING) ? "Connecting" :
       ( (Tracker.GetStatus()==T_READY) ? "Connected" :
-          (Tracker.IsQuitting() ? "Quitting" :
-           (WORLD.IsPaused() ? "Paused" : checked)) )
+          (Tracker.IsRestarting() ? "Restarting" :
+            (Tracker.IsQuitting() ? "Quitting" :
+              (WORLD.IsPaused() ? "Paused" : checked))) )
   );
 }
 
@@ -977,8 +989,9 @@ void Console::StatusLine1(char buffer[], size_t length)
 
     (Tracker.GetStatus()==T_CONNECTING) ? "Connecting" :
       ( (Tracker.GetStatus()==T_READY) ? "Connected" :
-          (Tracker.IsQuitting() ? "Quitting" :
-           (WORLD.IsPaused() ? "Paused" : checked)) )
+          (Tracker.IsRestarting() ? "Restarting" :
+            (Tracker.IsQuitting() ? "Quitting" :
+              (WORLD.IsPaused() ? "Paused" : checked))) )
   );
 }
 
