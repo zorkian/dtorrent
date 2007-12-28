@@ -136,7 +136,7 @@ class Console
   char *Input(const char *prompt, char *field, size_t length);
 
   char *GetChannel(int channel) const { return m_streams[channel]->GetName(); }
-  int ChangeChannel(int channel, const char *param);
+  int ChangeChannel(int channel, const char *param, int notify = 1);
 
   RETSIGTYPE Signal(int sig_no);
   void Daemonize();

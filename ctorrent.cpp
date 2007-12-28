@@ -266,6 +266,7 @@ int param_check(int argc, char **argv)
 
     case 't':			// make Torrent
       arg_flg_make_torrent = 1;
+      CONSOLE.ChangeChannel(O_INPUT, "off", 0);
       break;
 
     case 'l':			// piece Length (default 262144)
@@ -280,6 +281,7 @@ int param_check(int argc, char **argv)
 
     case 'x':			// print torrent information only
       arg_flg_exam_only = 1;
+      CONSOLE.ChangeChannel(O_INPUT, "off", 0);
       break;
 
     case 'S':			// CTCS server
@@ -359,6 +361,7 @@ int param_check(int argc, char **argv)
 
 void usage()
 {
+  CONSOLE.ChangeChannel(O_INPUT, "off", 0);
   fprintf(stderr,"%s   Original code Copyright: YuHong(992126018601033)\n",
     PACKAGE_STRING);
   fprintf(stderr,"WARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");

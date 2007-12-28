@@ -687,7 +687,7 @@ int Console::OperatorMenu(const char *param)
 }
 
 
-int Console::ChangeChannel(int channel, const char *param)
+int Console::ChangeChannel(int channel, const char *param, int notify)
 {
   ConStream *dest = (ConStream *)0;
 
@@ -731,7 +731,7 @@ int Console::ChangeChannel(int channel, const char *param)
       if( !in_use ) delete m_streams[channel];
       else if( O_INPUT==channel ) m_streams[O_INPUT]->RestoreMode();
     }
-    if( !arg_daemon || !m_streams[channel]->IsTTY() ){
+    if( notify && (!arg_daemon || !m_streams[channel]->IsTTY()) ){
       switch(channel){
       case O_NORMAL:
         Print("Output channel is now %s", dest->GetName());
@@ -1284,7 +1284,7 @@ void Console::Daemonize()
   arg_daemon = 1;
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
-    if( m_streams[i]->IsTTY() && ChangeChannel(i, "off") < 0 )
+    if( m_streams[i]->IsTTY() && ChangeChannel(i, "off", 0) < 0 )
       m_streams[i]->Suspend();
   }
   if( m_stdout.IsTTY() ) m_stdout.Close();
