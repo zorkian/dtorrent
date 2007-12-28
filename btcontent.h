@@ -49,6 +49,7 @@ class btContent
   char *m_announce;
   unsigned char *m_hash_table;
   unsigned char m_shake_buffer[68];
+  char *m_announcelist[9];
 
   size_t m_hashtable_length;
   size_t m_piece_length;

@@ -650,6 +650,7 @@ int Console::OperatorMenu(const char *param)
       Interact("Peers: %d   Min: %d   Max: %d",
         (int)(WORLD.GetPeersCount()), (int)cfg_min_peers, (int)cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
+      Interact("Announce URL: %s", BTCONTENT.GetAnnounce());
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
         (double)(Self.TotalUL()) / ( Self.TotalDL() ? Self.TotalDL() :

@@ -73,6 +73,7 @@ static void Sha1(char *ptr,size_t len,unsigned char *dm)
 btContent::btContent()
 {
   m_announce = global_piece_buffer = (char*) 0;
+  memset(m_announcelist, 0, 9*sizeof(char *));
   m_hash_table = (unsigned char *) 0;
   pBF = (BitField*) 0;
   pBMasterFilter = (BitField*) 0;
@@ -194,6 +195,11 @@ int btContent::PrintOut()
 {
   CONSOLE.Print("META INFO");
   CONSOLE.Print("Announce: %s", m_announce);
+  if( m_announcelist[0] ){
+    CONSOLE.Print("Alternates:");
+    for( int n=0; n < 9 && m_announcelist[n]; n++ )
+      CONSOLE.Print(" %d. %s", n+1, m_announcelist[n]);
+  }
   if( m_create_date ){
     char s[42];
 #ifdef HAVE_CTIME_R_3
@@ -236,6 +242,32 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   m_announce = new char [r + 1];
   memcpy(m_announce, s, r);
   m_announce[r] = '\0';
+
+  // announce-list
+  if( r = meta_pos("announce-list") ){
+    const char *sptr;
+    size_t slen, n=0;
+    if( q = decode_list(b+r, flen-r, (char *)0) ){
+      int alend = r + q;
+      r++;  // 'l'
+      for( ; r < alend && *(b+r) != 'e' && n < 9; ){  // each list
+        if( !(q = decode_list(b+r, alend-r, (char *)0)) ) break;
+        r++;  // 'l'
+        for( ; r < alend && n < 9; ){  // each value
+          if( !(q = buf_str(b+r, alend-r, &sptr, &slen)) )
+            break;  // next list
+          r += q;
+          if( strncasecmp(m_announce, sptr, slen) ){
+            m_announcelist[n] = new char[slen+1];
+            memcpy(m_announcelist[n], sptr, slen);
+            (m_announcelist[n])[slen] = '\0';
+            n++;
+          }
+        }
+        r++;  // 'e'
+      }
+    }
+  }
   
   // infohash
   if( !(r = meta_pos("info")) ) ERR_RETURN();
@@ -385,6 +417,16 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
         while (*sptr) *dptr++ = *sptr++;
         while (dptr < eptr) *dptr++ = (unsigned char)random();
   }
+
+  if( arg_announce ){
+    int n;
+    delete []m_announce;
+    if( (n = atoi(arg_announce)) && n <= 9 && m_announcelist[n-1] )
+      m_announce = m_announcelist[n-1];
+    else m_announce = arg_announce;
+    CONSOLE.Print("Using announce URL:  %s", m_announce);
+  }
+
   return 0;
 }
 

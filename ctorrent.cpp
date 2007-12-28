@@ -77,7 +77,7 @@ int main(int argc, char **argv)
 
   if( arg_flg_make_torrent ){
     if( !arg_announce ){
-      CONSOLE.Warning(1, "Please use -u to specify an announce url!");
+      CONSOLE.Warning(1, "Please use -u to specify an announce URL!");
       exit(1);
     }
     if( !arg_save_as ){
@@ -109,7 +109,10 @@ int main(int argc, char **argv)
       CONSOLE.Warning(2, "warn, you can't accept connections.");
     }
 
-    Tracker.Initial();
+    if( Tracker.Initial() < 0 ){
+      CONSOLE.Warning(1, "error, tracker setup failed.");
+      exit(1);
+    }
 
     sig_setup();  // setup signal handling
     CONSOLE.Interact(
@@ -255,7 +258,7 @@ int param_check(int argc, char **argv)
       break;
 
      // BELOW OPTIONS USED FOR CREATE TORRENT.
-    case 'u':			// Announce url
+    case 'u':			// Announce URL
       if( arg_announce ) return -1;  // specified twice
       arg_announce = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
@@ -381,6 +384,8 @@ void usage()
     "Listen for connections on specific IP address (default all/any)");
   fprintf(stderr, "%-15s %s\n", "-p port",
     "Listen port (default 2706 -> 2106)");
+  fprintf(stderr, "%-15s %s\n", "-u num or URL",
+    "Use an alternate announce (tracker) URL");
   fprintf(stderr, "%-15s %s\n", "-s filename",
     "Download (\"save as\") to a different file or directory");
   fprintf(stderr, "%-15s %s\n", "-C cache_size",
@@ -413,7 +418,7 @@ void usage()
 
   fprintf(stderr,"\nMake metainfo (torrent) file options:\n");
   fprintf(stderr, "%-15s %s\n", "-t", "Create a new torrent file");
-  fprintf(stderr, "%-15s %s\n", "-u url", "Tracker's url");
+  fprintf(stderr, "%-15s %s\n", "-u URL", "Tracker's URL");
   fprintf(stderr, "%-15s %s\n", "-l piece_len",
     "Piece length (default 262144)");
   fprintf(stderr, "%-15s %s\n", "-s filename", "Specify metainfo file name");
