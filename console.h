@@ -100,6 +100,7 @@ class Console
 
   int m_status_format;
   int m_oldfd;
+  int m_status_len;
 
   typedef void (Console::*statuslinefn)(char buffer[], size_t length);
   statuslinefn m_statusline[STATUSLINES];

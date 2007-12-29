@@ -279,6 +279,8 @@ Console::Console()
     exit(1);
   }
 
+  m_status_len = 80;
+
   m_stdout.Associate(stdout, "stdout", 1);
   m_stderr.Associate(stderr, "stderr", 1);
   m_stdin.Associate(stdin, "stdin", 0);
@@ -803,7 +805,25 @@ void Console::Status(int immediate)
       (CONSOLE.*m_statusline[m_status_format])(buffer, sizeof(buffer));
 
       if( !m_status_last ) Print_n("");
-      Update("%*s", -(int)sizeof(buffer)+1, buffer);
+      int tmplen = 0;
+      if( m_streams[O_NORMAL]->IsTTY() ){
+#ifdef TIOCGWINSZ
+        struct winsize tsize;
+        if( ioctl(m_streams[O_NORMAL]->Fileno(), TIOCGWINSZ, &tsize) >= 0 )
+          tmplen = tsize.ws_col - 1;
+#else
+#ifdef TIOCGSIZE
+        struct ttysize tsize;
+        if( ioctl(m_streams[O_NORMAL]->Fileno(), TIOCGSIZE, &tsize) >= 0 )
+          tmplen = tsize.ts_cols - 1;
+#endif
+#endif
+        if( tmplen > 80 ) tmplen = 80;
+      }
+      int len = strlen(buffer);
+      if( 0==tmplen ) tmplen = (len < m_status_len) ? m_status_len : len;
+      m_status_len = len;
+      Update("%*.*s", -tmplen, tmplen, buffer);
       m_status_last = 1;
 
       if(arg_verbose)
