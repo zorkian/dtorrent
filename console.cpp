@@ -9,6 +9,12 @@
 #include <ctype.h>      // isdigit()
 #include <signal.h>
 
+#if defined(HAVE_IOCTL_H)
+#include <ioctl.h>      // ioctl()
+#elif defined(HAVE_SYS_IOCTL_H)
+#include <sys/ioctl.h>
+#endif
+
 #include "btconfig.h"
 #include "ctcs.h"
 #include "btcontent.h"

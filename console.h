@@ -5,18 +5,8 @@
 
 #if defined(USE_TERMIOS)
 #include <termios.h>
-#if defined(GWINSZ_IN_SYS_IOCTL)
-#include <sys/ioctl.h>
-#endif
-
 #elif defined(USE_TERMIO)
 #include <termio.h>
-#if defined(HAVE_IOCTL_H)
-#include <ioctl.h>
-#elif defined(HAVE_SYS_IOCTL_H)
-#include <sys/ioctl.h>
-#endif
-
 #elif defined(USE_SGTTY)
 #include <sgtty.h> 
 #endif
