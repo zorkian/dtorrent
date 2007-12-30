@@ -823,6 +823,12 @@ void Console::Status(int immediate)
         struct ttysize tsize;
         if( ioctl(m_streams[O_NORMAL]->Fileno(), TIOCGSIZE, &tsize) >= 0 )
           tmplen = tsize.ts_cols - 1;
+#else
+#ifdef WIOCGETD
+        struct uwdata tsize;
+        if( ioctl(m_streams[O_NORMAL]->Fileno(), WIOCGETD, &tsize) >= 0 )
+          tmplen = tsize.uw_width / tsize.uw_hs - 1;
+#endif
 #endif
 #endif
         if( tmplen > 80 ) tmplen = 80;
