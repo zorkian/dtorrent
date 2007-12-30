@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <ctype.h>      // isdigit()
 #include <signal.h>
+#include <fcntl.h>      // open()
 
 #if defined(HAVE_IOCTL_H)
 #include <ioctl.h>      // ioctl()
@@ -1309,6 +1310,7 @@ void Console::Daemonize()
 #ifdef HAVE_WORKING_FORK
   size_t orig_cache_size = 0;
   pid_t r;
+  int nullfd = -1;
 
   if( cfg_cache_size && BTCONTENT.CacheUsed() ){
     orig_cache_size = cfg_cache_size;
@@ -1321,15 +1323,15 @@ void Console::Daemonize()
     arg_daemon = 0;
     goto restorecache;
   }else if(r) exit(EXIT_SUCCESS);
-  arg_daemon = 1;
+  if( !arg_daemon ) arg_daemon = 1;
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
     if( m_streams[i]->IsTTY() && ChangeChannel(i, "off", 0) < 0 )
       m_streams[i]->Suspend();
   }
-  if( m_stdout.IsTTY() ) m_stdout.Close();
-  if( m_stderr.IsTTY() ) m_stderr.Close();
-  if( m_stdin.IsTTY() ) m_stdin.Close();
+  nullfd = OpenNull(nullfd, &m_stdin, 0);
+  nullfd = OpenNull(nullfd, &m_stdout, 1);
+  nullfd = OpenNull(nullfd, &m_stderr, 2);
 
   if( setsid() < 0 ){
     CONSOLE.Warning(2,
@@ -1352,5 +1354,18 @@ void Console::Daemonize()
     BTCONTENT.CacheConfigure();
   }
 #endif
+}
+
+
+int Console::OpenNull(int nullfd, ConStream *stream, int sfd)
+{
+  if( stream->IsTTY() || arg_daemon == 1 ){
+    int mfd = stream->Fileno();
+    if( mfd < 0 ) mfd = sfd;
+    stream->Close();
+    if( nullfd < 0 ) nullfd = open("/dev/null", O_RDWR);
+    if( nullfd >= 0 && nullfd != mfd ) dup2(nullfd, mfd);
+  }
+  return nullfd;
 }
 

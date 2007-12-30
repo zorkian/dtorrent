@@ -100,6 +100,7 @@ class Console
   ConStream m_stdout, m_stderr, m_stdin, m_off;
   ConStream *m_streams[O_NCHANNELS+1];
 
+  int OpenNull(int nullfd, ConStream *stream, int sfd);
   void SyncNewlines(int master);
   int OperatorMenu(const char *param);
   void ShowFiles();

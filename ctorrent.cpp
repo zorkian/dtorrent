@@ -322,7 +322,7 @@ int param_check(int argc, char **argv)
       break;
 
     case 'd':			// daemon mode (fork to background)
-      arg_daemon = 1;
+      arg_daemon++;
       break;
 
     case 'h':
@@ -415,6 +415,7 @@ void usage()
   fprintf(stderr, "%-15s %s\n", "-X command",
     "Run command upon download completion (\"user exit\")");
   fprintf(stderr, "%-15s %s\n", "-d", "Daemon mode (fork to background)");
+  fprintf(stderr, "%-15s %s\n", "-dd", "Daemon mode with I/O redirection");
 
   fprintf(stderr,"\nMake metainfo (torrent) file options:\n");
   fprintf(stderr, "%-15s %s\n", "-t", "Create a new torrent file");
