@@ -73,6 +73,7 @@ static void Sha1(char *ptr,size_t len,unsigned char *dm)
 btContent::btContent()
 {
   m_announce = global_piece_buffer = (char*) 0;
+  global_buffer_size = 0;
   memset(m_announcelist, 0, 9*sizeof(char *));
   m_hash_table = (unsigned char *) 0;
   pBF = (BitField*) 0;
@@ -166,6 +167,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url, size_t piece_l
 #ifndef WINDOWS
   if( !global_piece_buffer ) return -1;
 #endif
+  global_buffer_size = m_piece_length;
   
   // n pieces
   m_npieces = m_btfiles.GetTotalLength() / m_piece_length;
@@ -280,12 +282,13 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if( !meta_str("info|pieces",&s,&m_hashtable_length) ||
       m_hashtable_length % 20 != 0 ) ERR_RETURN();
 
-  m_hash_table = new unsigned char[m_hashtable_length];
-
+  if( !arg_flg_exam_only ){
+    m_hash_table = new unsigned char[m_hashtable_length];
 #ifndef WINDOWS
-  if( !m_hash_table ) ERR_RETURN();
+    if( !m_hash_table ) ERR_RETURN();
 #endif
-  memcpy(m_hash_table, s, m_hashtable_length);
+    memcpy(m_hash_table, s, m_hashtable_length);
+  }
 
   if( !meta_int("info|piece length",&m_piece_length) ) ERR_RETURN();
   m_npieces = m_hashtable_length / 20;
@@ -312,32 +315,35 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if( (tmp = m_btfiles.CreateFiles()) < 0 ) ERR_RETURN();
   r = tmp;
 
-  global_piece_buffer = new char[m_piece_length];
+  if( !arg_flg_exam_only ){
+    global_piece_buffer = new char[cfg_max_slice_size];
 #ifndef WINDOWS
-  if( !global_piece_buffer ) ERR_RETURN();
+    if( !global_piece_buffer ) ERR_RETURN();
+#endif
+    global_buffer_size = cfg_max_slice_size;
+
+    pBF = new BitField(m_npieces);
+#ifndef WINDOWS
+    if( !pBF ) ERR_RETURN();
 #endif
 
-  pBF = new BitField(m_npieces);
+    pBRefer = new BitField(m_npieces);
 #ifndef WINDOWS
-  if( !pBF ) ERR_RETURN();
+    if( !pBRefer ) ERR_RETURN();
 #endif
 
-  pBRefer = new BitField(m_npieces);
+    pBChecked = new BitField(m_npieces);
 #ifndef WINDOWS
-  if( !pBRefer ) ERR_RETURN();
+    if( !pBChecked ) ERR_RETURN();
 #endif
 
-  pBChecked = new BitField(m_npieces);
+    //create the file filter
+    pBMasterFilter = new BitField(m_npieces);
 #ifndef WINDOWS
-  if( !pBChecked ) ERR_RETURN();
+     if( !pBMasterFilter ) ERR_RETURN();
 #endif
-
-  //create the file filter
-  pBMasterFilter = new BitField(m_npieces);
-#ifndef WINDOWS
-   if( !pBMasterFilter ) ERR_RETURN();
-#endif
-  if( arg_file_to_download ) SetFilter();
+    if( arg_file_to_download ) SetFilter();
+  }
 
   m_left_bytes = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_left_bytes++;
@@ -1134,6 +1140,11 @@ int btContent::APieceComplete(size_t idx)
 
 int btContent::GetHashValue(size_t idx,unsigned char *md)
 {
+  if( global_buffer_size < m_piece_length ){
+    delete []global_piece_buffer;
+    global_piece_buffer = new char[m_piece_length];
+    global_buffer_size = global_piece_buffer ? m_piece_length : 0;
+  }
   if( ReadPiece(global_piece_buffer,idx) < 0 ) return -1;
   Sha1(global_piece_buffer,GetPieceLength(idx),md);
   return 0;
@@ -1156,6 +1167,9 @@ int btContent::SeedTimeout()
       m_seed_timestamp = now;
       for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
         m_btfiles.CloseFile(n);  // files will reopen read-only
+      // Free global buffer prior to CompletionCommand fork (reallocate after).
+      delete []global_piece_buffer;
+      global_piece_buffer = (char *)0;
       if( Self.TotalDL() > 0 ){
         CONSOLE.Print("Download complete.");
         CONSOLE.Print("Total time used: %ld minutes.",
@@ -1169,6 +1183,9 @@ int btContent::SeedTimeout()
         if( arg_completion_exit )
           CompletionCommand();
       }
+      // Reallocate global buffer to max size for uploading.
+      global_piece_buffer = new char[cfg_max_slice_size];
+      global_buffer_size = global_piece_buffer ? cfg_max_slice_size : 0;
       if(arg_ctcs) CTCS.Send_Status();
       CONSOLE.Print_n("Seed for others %lu hours",
         (unsigned long)cfg_seed_hours);
@@ -1192,6 +1209,12 @@ int btContent::SeedTimeout()
     }
   }else{
     m_prevdlrate = Self.RateDL();
+    if( m_prevdlrate == 0 && oldrate > 0 &&
+        global_buffer_size > cfg_max_slice_size ){
+      delete []global_piece_buffer;
+      global_piece_buffer = new char[cfg_max_slice_size];
+      global_buffer_size = global_piece_buffer ? cfg_max_slice_size : 0;
+    }
   }
   if( (cfg_cache_size && now >= m_cache_eval_time) ||
       (oldrate == 0 && m_prevdlrate > 0) ){

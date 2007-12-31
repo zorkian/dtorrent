@@ -95,6 +95,7 @@ class btContent
   BitField *pBRefer;
   BitField *pBChecked;
   char *global_piece_buffer;
+  size_t global_buffer_size;
   
   btContent();
   ~btContent();
