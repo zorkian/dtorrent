@@ -316,11 +316,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   r = tmp;
 
   if( !arg_flg_exam_only ){
-    global_piece_buffer = new char[cfg_max_slice_size];
+    global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
 #ifndef WINDOWS
     if( !global_piece_buffer ) ERR_RETURN();
 #endif
-    global_buffer_size = cfg_max_slice_size;
+    global_buffer_size = DEFAULT_SLICE_SIZE;
 
     pBF = new BitField(m_npieces);
 #ifndef WINDOWS
@@ -1183,9 +1183,9 @@ int btContent::SeedTimeout()
         if( arg_completion_exit )
           CompletionCommand();
       }
-      // Reallocate global buffer to max size for uploading.
-      global_piece_buffer = new char[cfg_max_slice_size];
-      global_buffer_size = global_piece_buffer ? cfg_max_slice_size : 0;
+      // Reallocate global buffer for uploading.
+      global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
+      global_buffer_size = global_piece_buffer ? DEFAULT_SLICE_SIZE : 0;
       if(arg_ctcs) CTCS.Send_Status();
       CONSOLE.Print_n("Seed for others %lu hours",
         (unsigned long)cfg_seed_hours);
@@ -1210,10 +1210,10 @@ int btContent::SeedTimeout()
   }else{
     m_prevdlrate = Self.RateDL();
     if( m_prevdlrate == 0 && oldrate > 0 &&
-        global_buffer_size > cfg_max_slice_size ){
+        global_buffer_size > DEFAULT_SLICE_SIZE ){
       delete []global_piece_buffer;
-      global_piece_buffer = new char[cfg_max_slice_size];
-      global_buffer_size = global_piece_buffer ? cfg_max_slice_size : 0;
+      global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
+      global_buffer_size = global_piece_buffer ? DEFAULT_SLICE_SIZE : 0;
     }
   }
   if( (cfg_cache_size && now >= m_cache_eval_time) ||

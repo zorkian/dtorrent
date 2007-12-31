@@ -522,6 +522,11 @@ int btPeer::ReponseSlice()
   size_t idx,off;
   reponse_q.Pop(&idx,&off,&len);
 
+  if( BTCONTENT.global_buffer_size < len ){
+    delete []BTCONTENT.global_piece_buffer;
+    BTCONTENT.global_piece_buffer = new char[len];
+    BTCONTENT.global_buffer_size = BTCONTENT.global_piece_buffer ? len : 0;
+  }
   retval = BTCONTENT.ReadSlice(BTCONTENT.global_piece_buffer,idx,off,len);
   if( retval < 0 ) return -1;
   else if( retval && cfg_cache_size ) Self.OntimeUL(0);  // disk read delay
