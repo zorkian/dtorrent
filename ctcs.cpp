@@ -116,8 +116,11 @@ int Ctcs::CheckMessage()
     *s = '\0';
     if(arg_verbose && s!=msgbuf) CONSOLE.Debug("CTCS: %s", msgbuf);
     if( !strncmp("SETDLIMIT",msgbuf,9) ){
-      cfg_max_bandwidth_down = (int)(strtod(msgbuf+10, NULL));
-      if(arg_verbose) CONSOLE.Debug("DLimit=%d", cfg_max_bandwidth_down);
+      int arg = (int)strtod(msgbuf+10, NULL);
+      if( !BTCONTENT.IsFull() || arg < cfg_max_bandwidth_down ){
+        cfg_max_bandwidth_down = arg;
+        if(arg_verbose) CONSOLE.Debug("DLimit=%d", cfg_max_bandwidth_down);
+      }
     }else if( !strncmp("SETULIMIT",msgbuf,9) ){
       cfg_max_bandwidth_up = (int)(strtod(msgbuf+10, NULL));
       if(arg_verbose) CONSOLE.Debug("ULimit=%d", cfg_max_bandwidth_up);
@@ -452,16 +455,18 @@ int Ctcs::Set_Config(char *msgbuf)
       cfg_max_peers = atoi(valstr);
     }else if( 0==strcmp(name, "min_peers") ){
       cfg_min_peers = atoi(valstr);
-    }else if( 0==strcmp(name, "file_list") && !BTCONTENT.IsFull() ){
-      if( arg_file_to_download ) delete []arg_file_to_download;
-      if( 0==strlen(valstr) ) arg_file_to_download = (char *)0;
-      else{
-        arg_file_to_download = new char[strlen(valstr) + 1];
-        if( !arg_file_to_download )
-          CONSOLE.Warning(1, "error, failed to allocate memory for option");
-        else strcpy(arg_file_to_download, valstr);
+    }else if( 0==strcmp(name, "file_list") ){
+      if( !BTCONTENT.IsFull() ){
+        if( arg_file_to_download ) delete []arg_file_to_download;
+        if( 0==strlen(valstr) ) arg_file_to_download = (char *)0;
+        else{
+          arg_file_to_download = new char[strlen(valstr) + 1];
+          if( !arg_file_to_download )
+            CONSOLE.Warning(1, "error, failed to allocate memory for option");
+          else strcpy(arg_file_to_download, valstr);
+        }
+        BTCONTENT.SetFilter();
       }
-      BTCONTENT.SetFilter();
     }else if( 0==strcmp(name, "cache") ){
       cfg_cache_size = atoi(valstr);
       BTCONTENT.CacheConfigure();
@@ -469,12 +474,14 @@ int Ctcs::Set_Config(char *msgbuf)
       if( atoi(valstr) ){
         if( !WORLD.IsPaused() ) WORLD.Pause();
       }else if( WORLD.IsPaused() ) WORLD.Resume();
-    }else if( 0==strcmp(name, "user_exit") && !BTCONTENT.IsFull() ){
-      if( arg_completion_exit ) delete []arg_completion_exit;
-      arg_completion_exit = new char[strlen(valstr) + 1];
-      if( !arg_completion_exit )
-        CONSOLE.Warning(1, "error, failed to allocate memory for option");
-      else strcpy(arg_completion_exit, valstr);
+    }else if( 0==strcmp(name, "user_exit") ){
+      if( !BTCONTENT.IsFull() ){
+        if( arg_completion_exit ) delete []arg_completion_exit;
+        arg_completion_exit = new char[strlen(valstr) + 1];
+        if( !arg_completion_exit )
+          CONSOLE.Warning(1, "error, failed to allocate memory for option");
+        else strcpy(arg_completion_exit, valstr);
+      }
     }else if( 0==strcmp(name, "out_normal") ){
       CONSOLE.ChangeChannel(O_NORMAL, valstr);
     }else if( 0==strcmp(name, "out_interact") ){
