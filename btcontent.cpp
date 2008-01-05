@@ -28,6 +28,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "btconfig.h"
 #include "bencode.h"
@@ -76,11 +77,14 @@ btContent::btContent()
   global_buffer_size = 0;
   memset(m_announcelist, 0, 9*sizeof(char *));
   m_hash_table = (unsigned char *) 0;
+  m_create_date = m_seed_timestamp = (time_t) 0;
+  m_private = 0;
+  m_comment = m_created_by = (char *)0;
+
   pBF = (BitField*) 0;
   pBMasterFilter = (BitField*) 0;
   pBRefer = (BitField*) 0;
   pBChecked = (BitField*) 0;
-  m_create_date = m_seed_timestamp = (time_t) 0;
   time(&m_start_timestamp);
   m_cache_oldest = m_cache_newest = (BTCACHE *)0;
   m_cache_size = m_cache_used = 0;
@@ -114,9 +118,20 @@ int btContent::CreateMetainfoFile(const char *mifn)
   // announce
   if( bencode_str("announce", fp) != 1 ) goto err;
   if( bencode_str(m_announce, fp) != 1 ) goto err;
+
   // create date
   if( bencode_str("creation date", fp) != 1 ) goto err;
   if( bencode_int(m_create_date, fp) != 1 ) goto err;
+
+  // comment
+  if( arg_comment ){
+    if( bencode_str("comment", fp) != 1 ) goto err;
+    if( bencode_str(arg_comment, fp) != 1 ) goto err;
+  }
+
+  // created by
+  if( bencode_str("created by", fp) != 1 ) goto err;
+  if( bencode_str(cfg_user_agent, fp) != 1 ) goto err;
 
   // info dict
   if( bencode_str("info", fp) != 1 ) goto err;
@@ -127,7 +142,13 @@ int btContent::CreateMetainfoFile(const char *mifn)
   // piece length
   if( bencode_str("piece length", fp) != 1 ) goto err;
   if( bencode_int(m_piece_length, fp) != 1 ) goto err;
-  
+
+  // private
+  if( arg_flg_private ){
+    if( bencode_str("private", fp) != 1 ) goto err;
+    if( bencode_int(1, fp) != 1 ) goto err;
+  }
+
   // hash table;
   if( bencode_str("pieces", fp) != 1 ) goto err;
   if( bencode_buf((const char*) m_hash_table, m_hashtable_length, fp) != 1 )
@@ -213,6 +234,18 @@ int btContent::PrintOut()
     CONSOLE.Print("Created On: %s", s);
   }
   CONSOLE.Print("Piece length: %lu", (unsigned long)m_piece_length);
+  if( m_private ) CONSOLE.Print("Private: %s", m_private ? "Yes" : "No");
+  if( m_comment ){
+    char *s = new char[strlen(m_comment)];
+    if(s){
+      strcpy(s, m_comment);
+      for(char *t=s; *t; t++)
+        if( !isprint(*t) && !strchr("\t\r\n", *t) ) *t = '?';
+      CONSOLE.Print("Comment: %s", s);
+      delete []s;
+    }
+  }
+  if( m_created_by ) CONSOLE.Print("Created with: %s", m_created_by);
   m_btfiles.PrintOut();
   return 0;
 }
@@ -271,12 +304,27 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     }
   }
   
+  if( meta_int("creation date", &r) ) m_create_date = (time_t) r;
+  if( meta_str("comment", &s, &r) && r ){
+    if( m_comment = new char[r + 1] ){
+      memcpy(m_comment, s, r);
+      m_comment[r] = '\0';
+    }
+  }
+  if( meta_str("created by", &s, &r) && r ){
+    if( m_created_by = new char[r + 1] ){
+      memcpy(m_created_by, s, r);
+      m_created_by[r] = '\0';
+    }
+  }
+
   // infohash
   if( !(r = meta_pos("info")) ) ERR_RETURN();
   if( !(q = decode_dict(b + r, flen - r, (char *) 0)) ) ERR_RETURN();
   Sha1(b + r, q, m_shake_buffer + 28);
 
-  if( meta_int("creation date",&r) ) m_create_date = (time_t) r;
+  // private flag
+  if( meta_int("info|private", &r) ) m_private = r;
  
   // hash table
   if( !meta_str("info|pieces",&s,&m_hashtable_length) ||

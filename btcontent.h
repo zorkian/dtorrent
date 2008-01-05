@@ -50,11 +50,13 @@ class btContent
   unsigned char *m_hash_table;
   unsigned char m_shake_buffer[68];
   char *m_announcelist[9];
+  char *m_comment, *m_created_by;
 
   size_t m_hashtable_length;
   size_t m_piece_length;
   size_t m_npieces, m_check_piece;
   time_t m_create_date, m_seed_timestamp, m_start_timestamp;
+  size_t m_private;
 
   uint64_t m_left_bytes;
   btFiles m_btfiles;

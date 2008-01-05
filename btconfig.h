@@ -43,6 +43,7 @@ extern unsigned char arg_flg_force_seed_mode;
 extern unsigned char arg_flg_check_only;
 extern unsigned char arg_flg_exam_only;
 extern unsigned char arg_flg_make_torrent;
+extern unsigned char arg_flg_private;
 extern unsigned char arg_flg_convert_filenames;
 extern char *arg_file_to_download;
 extern unsigned char arg_verbose;
@@ -51,6 +52,7 @@ extern unsigned char arg_daemon;
 
 extern size_t arg_piece_length;
 extern char *arg_announce;
+extern char *arg_comment;
 
 extern char *arg_ctcs;
 extern char *arg_completion_exit;

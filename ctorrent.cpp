@@ -137,11 +137,15 @@ int main(int argc, char **argv)
 
 int param_check(int argc, char **argv)
 {
+  const char *opts;
   int c, l;
   char *s;
-  while( (c=getopt(argc,argv,
-            "aA:b:cC:dD:e:E:fi:l:M:m:n:P:p:s:S:tTu:U:vxX:z:hH"))
-           != -1 )
+
+  if( 0==strncmp(argv[1], "-t", 2) )
+    opts = "tc:l:ps:u:";
+  else opts = "aA:b:cC:dD:e:E:fi:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
+
+  while( (c=getopt(argc, argv, opts)) != -1 )
     switch( c ){
     case 'a':
       arg_allocate = 1;
@@ -160,7 +164,8 @@ int param_check(int argc, char **argv)
       break;
 
     case 'p':			// listen on Port XXXX
-      cfg_listen_port = atoi(optarg);
+      if( arg_flg_make_torrent ) arg_flg_private = 1;
+      else cfg_listen_port = atoi(optarg);
       break;
 
     case 's':			// Save as FILE/DIR NAME
@@ -181,7 +186,10 @@ int param_check(int argc, char **argv)
       break;
 
     case 'c':			// Check exist only
-      arg_flg_check_only = 1;
+      if( arg_flg_make_torrent ){
+        arg_comment = new char[strlen(optarg) + 1];
+        strcpy(arg_comment, optarg);
+      }else arg_flg_check_only = 1;
       break;
 
     case 'C':			// Max cache size
@@ -423,6 +431,8 @@ void usage()
   fprintf(stderr, "%-15s %s\n", "-l piece_len",
     "Piece length (default 262144)");
   fprintf(stderr, "%-15s %s\n", "-s filename", "Specify metainfo file name");
+  fprintf(stderr, "%-15s %s\n", "-p", "Private (disable peer exchange)");
+  fprintf(stderr, "%-15s %s\n", "-c comment", "Include a comment/description");
 
   fprintf(stderr,"\nExample:\n");
   fprintf(stderr,"ctorrent -s new_filename -e 12 -C 32 -p 6881 example.torrent\n");
