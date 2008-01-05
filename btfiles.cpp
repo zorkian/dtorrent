@@ -212,11 +212,14 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
     buf += nio;
 
     if( len ){
-      pbf = pbf->bf_next;
-      if( !pbf ){
-        CONSOLE.Warning(1, "error, data left over with no more files to write");
-        return -1;
-      }
+      do{
+        pbf = pbf->bf_next;
+        if( !pbf ){
+          CONSOLE.Warning(1,
+            "error, data left over with no more files to write");
+          return -1;
+        }
+      }while( 0==pbf->bf_length );
       pos = 0;
     }
   } // end for
