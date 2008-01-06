@@ -44,11 +44,11 @@ int TextPeerID(const unsigned char *peerid, char *txtid);
 class btBasic
 {
 protected:
+  struct sockaddr_in m_sin;
   Rate rate_dl;
   Rate rate_ul;
 
 private:
-  struct sockaddr_in m_sin;
 
 public:
   //IP地址相关函数

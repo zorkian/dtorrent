@@ -143,7 +143,7 @@ int param_check(int argc, char **argv)
 
   if( 0==strncmp(argv[1], "-t", 2) )
     opts = "tc:l:ps:u:";
-  else opts = "aA:b:cC:dD:e:E:fi:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
+  else opts = "aA:b:cC:dD:e:E:fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
 
   while( (c=getopt(argc, argv, opts)) != -1 )
     switch( c ){
@@ -161,6 +161,12 @@ int param_check(int argc, char **argv)
 
     case 'i':			// listen on ip XXXX
       cfg_listen_ip = inet_addr(optarg);
+      break;
+
+    case 'I':			// set public ip XXXX
+      cfg_public_ip = new char[strlen(optarg) + 1];
+      if( !cfg_public_ip ) return -1;
+      strcpy(cfg_public_ip, optarg);
       break;
 
     case 'p':			// listen on Port XXXX
@@ -188,6 +194,7 @@ int param_check(int argc, char **argv)
     case 'c':			// Check exist only
       if( arg_flg_make_torrent ){
         arg_comment = new char[strlen(optarg) + 1];
+        if( !arg_comment ) return -1;
         strcpy(arg_comment, optarg);
       }else arg_flg_check_only = 1;
       break;
@@ -392,6 +399,8 @@ void usage()
     "Listen for connections on specific IP address (default all/any)");
   fprintf(stderr, "%-15s %s\n", "-p port",
     "Listen port (default 2706 -> 2106)");
+  fprintf(stderr, "%-15s %s\n", "-I ip",
+    "Specify public/external IP address for peer connections");
   fprintf(stderr, "%-15s %s\n", "-u num or URL",
     "Use an alternate announce (tracker) URL");
   fprintf(stderr, "%-15s %s\n", "-s filename",

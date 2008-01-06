@@ -325,34 +325,52 @@ int btTracker::Initial()
     m_key[i] = chars[random()%36];
   m_key[8] = 0;
 
-  if( BuildBaseRequest() < 0 ) return -1;
-
   /* get local ip address */
+  struct sockaddr_in addr;
+  if( cfg_public_ip ){  // Get specified public address.
+    if( (addr.sin_addr.s_addr = inet_addr(cfg_public_ip)) == INADDR_NONE ){
+      struct hostent *h;
+      h = gethostbyname(cfg_public_ip);
+      memcpy(&addr.sin_addr, h->h_addr, sizeof(struct in_addr));
+    }
+    Self.SetIp(addr);
+    goto next_step;
+  }
+  if( cfg_listen_ip ){  // Get specified listen address.
+    addr.sin_addr.s_addr = cfg_listen_ip;
+    Self.SetIp(addr);
+    if( !IsPrivateAddress(cfg_listen_ip) ) goto next_step;
+  }
   { // Try to get address corresponding to the hostname.
-    struct sockaddr_in addr;
     struct hostent *h;
     char hostname[MAXHOSTNAMELEN];
 
-//    if(gethostname(hostname, MAXHOSTNAMELEN) == -1) return -1;
     if( gethostname(hostname, MAXHOSTNAMELEN) >= 0 ){
 //    CONSOLE.Debug("hostname: %s", hostname);
       if( h = gethostbyname(hostname) ){
 //      CONSOLE.Debug("Host name: %s", h->h_name);
 //      CONSOLE.Debug("Address: %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
-        memcpy(&addr.sin_addr,h->h_addr,sizeof(struct in_addr));
-        Self.SetIp(addr);
-        return 0;
+        if( !IsPrivateAddress(((struct in_addr *)(h->h_addr))->s_addr) ||
+            !cfg_listen_ip ){
+          memcpy(&addr.sin_addr, h->h_addr, sizeof(struct in_addr));
+          Self.SetIp(addr);
+        }
       }
     }
   }
-  { // If behind NAT, this only gets the local side address.
-    struct sockaddr_in addr;
-    socklen_t addrlen = sizeof(struct sockaddr_in);
-    if( getsockname(m_sock,(struct sockaddr*)&addr,&addrlen) == 0 )
-      Self.SetIp(addr);
-  }
+
+ next_step:
+  if( BuildBaseRequest() < 0 ) return -1;
 
   return 0;
+}
+
+int btTracker::IsPrivateAddress(uint32_t addr)
+{
+  return (addr & htonl(0xff000000)) == htonl(0x0a000000) ||  // 10.x.x.x/8
+         (addr & htonl(0xfff00000)) == htonl(0xac100000) ||  // 172.16.x.x/12
+         (addr & htonl(0xffff0000)) == htonl(0xc0a80000) ||  // 192.168.x.x/16
+         (addr & htonl(0xff000000)) == htonl(0x7f000000);    // 127.x.x.x/8
 }
 
 int btTracker::BuildBaseRequest()
@@ -365,10 +383,26 @@ int btTracker::BuildBaseRequest()
     format=REQ_URL_P1A_FMT;
   else format=REQ_URL_P1_FMT;
 
+  char *opt = (char *)0;
+  if( cfg_public_ip ){
+    opt = new char[5+strlen(cfg_public_ip)];
+    strcpy(opt, "&ip=");
+    strcat(opt, cfg_public_ip);
+  }else{
+    struct sockaddr_in addr;
+    Self.GetAddress(&addr);
+    if( !IsPrivateAddress(addr.sin_addr.s_addr) ){
+      opt = new char[20];
+      strcpy(opt, "&ip=");
+      strcat(opt, inet_ntoa(addr.sin_addr));
+    }
+  }
+
   if(MAXPATHLEN < snprintf((char*)m_path,MAXPATHLEN,format,
                      tmppath,
                      Http_url_encode(ih_buf,(char*)BTCONTENT.GetInfoHash(),20),
                      Http_url_encode(pi_buf,(char*)BTCONTENT.GetPeerId(),20),
+                     opt ? opt : "",
                      cfg_listen_port,
                      m_key)){
     return -1;

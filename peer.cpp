@@ -950,6 +950,7 @@ int btPeer::HandShake()
   if( memcmp(stream.in_buffer.BasePointer(), BTCONTENT.GetShakeBuffer(), 68)
         == 0 ){
     if(arg_verbose) CONSOLE.Debug("peer %p is myself", this);
+    if( m_connect && !cfg_public_ip ) Self.SetIp(m_sin);
     WORLD.AdjustPeersCount();
     return -1;
   }

@@ -1,8 +1,8 @@
 #ifndef HTTPENCODE_H
 #define HTTPENCODE_H
 
-#define REQ_URL_P1_FMT "GET %s?info_hash=%s&peer_id=%s&port=%d&key=%s"
-#define REQ_URL_P1A_FMT "GET %s&info_hash=%s&peer_id=%s&port=%d&key=%s"
+#define REQ_URL_P1_FMT "GET %s?info_hash=%s&peer_id=%s%s&port=%d&key=%s"
+#define REQ_URL_P1A_FMT "GET %s&info_hash=%s&peer_id=%s%s&port=%d&key=%s"
 #define REQ_URL_P2_FMT "%s%s%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d HTTP/1.0"
 
 

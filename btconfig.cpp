@@ -13,6 +13,7 @@ unsigned long cfg_listen_ip = 0;
 int cfg_listen_port = 0;
 int cfg_max_listen_port = 2706;
 int cfg_min_listen_port = 2106;
+char *cfg_public_ip = (char *) 0;
 
 int cfg_max_bandwidth_down = 0;
 int cfg_max_bandwidth_up = 0;

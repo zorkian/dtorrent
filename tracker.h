@@ -65,6 +65,7 @@ class btTracker
   int _IPsin(char *h, int p, struct sockaddr_in *psin);
   int _s2sin(char *h,int p,struct sockaddr_in *psin);
   int _UpdatePeerList(char *buf,size_t bufsiz);
+  int IsPrivateAddress(uint32_t addr);
 
   int BuildBaseRequest();
   int Connect();
