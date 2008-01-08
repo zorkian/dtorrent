@@ -422,19 +422,32 @@ char *Ctcs::ConfigMsg(const char *name, const char *type, const char *range,
   return message;
 }
 
-int Ctcs::Set_Config(char *msgbuf)
+int Ctcs::Set_Config(const char *origmsg)
 {
+  char *msgbuf = new char[strlen(origmsg)+1];
+
+  if( !msgbuf ){
+    CONSOLE.Warning(1, "error, failed to allocate memory for config");
+    return -1;
+  }
+  strcpy(msgbuf, origmsg);
+
   if( m_protocol >= 3 ){
     char *name, *valstr;
-    name = strtok(strchr(msgbuf, ' '), " ");
-    for( valstr=name+strlen(name)+1; *valstr==' '; valstr++ );
+    if( !(name = strtok(strchr(msgbuf, ' '), " ")) || 
+        strlen(name) >= strlen(origmsg) - (name - msgbuf) )
+      goto err;
+    valstr = name + strlen(name);
+    for( ++valstr; *valstr==' '; valstr++ );
 
     if( 0==strcmp(name, "verbose") ){
       int arg = atoi(valstr);
+      if( arg < 0 ) goto err;
       if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
       arg_verbose = arg;
     }else if( 0==strcmp(name, "seed_time") ){
       double value = strtod(valstr, NULL);
+      if( value < 0 ) goto err;
       time_t arg = (time_t)value + ((value - (int)value) ? 1 : 0);
       arg += BTCONTENT.GetSeedTime() ?
              ((now - BTCONTENT.GetSeedTime()) / 3600) : 0;
@@ -445,6 +458,7 @@ int Ctcs::Set_Config(char *msgbuf)
         cfg_seed_hours = arg;
     }else if( 0==strcmp(name, "seed_ratio") ){
       double arg = atof(valstr);
+      if( arg < 0 ) goto err;
       if( 0==BTCONTENT.GetSeedTime() ||
           cfg_seed_hours > (now - BTCONTENT.GetSeedTime()) / 3600 ||
           arg > (double) Self.TotalUL() /
@@ -452,9 +466,13 @@ int Ctcs::Set_Config(char *msgbuf)
              Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) )
         cfg_seed_ratio = arg;
     }else if( 0==strcmp(name, "max_peers") ){
-      cfg_max_peers = atoi(valstr);
+      int arg = atoi(valstr);
+      if( arg > 1000 || arg < 20 ) goto err;
+      cfg_max_peers = arg;
     }else if( 0==strcmp(name, "min_peers") ){
-      cfg_min_peers = atoi(valstr);
+      int arg = atoi(valstr);
+      if( arg > 1000 || arg < 1 ) goto err;
+      cfg_min_peers = arg;
     }else if( 0==strcmp(name, "file_list") ){
       if( !BTCONTENT.IsFull() ){
         if( arg_file_to_download ) delete []arg_file_to_download;
@@ -468,10 +486,14 @@ int Ctcs::Set_Config(char *msgbuf)
         BTCONTENT.SetFilter();
       }
     }else if( 0==strcmp(name, "cache") ){
-      cfg_cache_size = atoi(valstr);
+      int arg = atoi(valstr);
+      if( arg < 0 ) goto err;
+      cfg_cache_size = arg;
       BTCONTENT.CacheConfigure();
     }else if( 0==strcmp(name, "pause") ){
-      if( atoi(valstr) ){
+      int arg = atoi(valstr);
+      if( arg < 0 ) goto err;
+      if( arg ){
         if( !WORLD.IsPaused() ) WORLD.Pause();
       }else if( WORLD.IsPaused() ) WORLD.Resume();
     }else if( 0==strcmp(name, "user_exit") ){
@@ -500,15 +522,16 @@ int Ctcs::Set_Config(char *msgbuf)
       arg_verbose = arg;
     }
     if(msgbuf[11] != '.') cfg_seed_hours = atoi(msgbuf+11);
-    msgbuf = strchr(msgbuf+11, ' ') + 1;
-    if(msgbuf[0] != '.') cfg_seed_ratio = atof(msgbuf);
-    msgbuf = strchr(msgbuf, ' ') + 1;
-    if(msgbuf[0] != '.') cfg_max_peers = atoi(msgbuf);
-    msgbuf = strchr(msgbuf, ' ') + 1;
-    if(msgbuf[0] != '.') cfg_min_peers = atoi(msgbuf);
-    msgbuf = strchr(msgbuf, ' ') + 1;
-    if(msgbuf[0] != '.'){
+    if( !(msgbuf = strchr(msgbuf+11, ' ')) ) goto err;
+    if(*++msgbuf != '.') cfg_seed_ratio = atof(msgbuf);
+    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+    if(*++msgbuf != '.') cfg_max_peers = atoi(msgbuf);
+    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+    if(*++msgbuf != '.') cfg_min_peers = atoi(msgbuf);
+    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+    if(*++msgbuf != '.'){
       char *p = strchr(msgbuf, ' ');
+      if( !p ) goto err;
       if( arg_file_to_download ) delete []arg_file_to_download;
       arg_file_to_download = new char[p - msgbuf + 2 + 1];
       if( !arg_file_to_download )
@@ -521,25 +544,32 @@ int Ctcs::Set_Config(char *msgbuf)
       BTCONTENT.SetFilter();
     }
     if( m_protocol >= 2 ){
-      msgbuf = strchr(msgbuf, ' ') + 1;
-      if(msgbuf[0] != '.'){
+      if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+      if(*++msgbuf != '.'){
         cfg_cache_size = atoi(msgbuf);
         BTCONTENT.CacheConfigure();
       }
     }
     if( m_protocol == 1 ){
-      msgbuf = strchr(msgbuf, ' ') + 1;
+      if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+      ++msgbuf;
       // old cfg_exit_zero_peers option
     }
-    msgbuf = strchr(msgbuf, ' ') + 1;
-    if(msgbuf[0] != '.'){
+    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
+    if(*++msgbuf != '.'){
       if(atoi(msgbuf)){
         if( !WORLD.IsPaused() ) WORLD.Pause();
       }else if( WORLD.IsPaused() ) WORLD.Resume();
     }
   }
 
+  delete []msgbuf;
   return 0;
+
+ err:
+  CONSOLE.Warning(2, "Malformed or invalid input from CTCS: %s", origmsg);
+  delete []msgbuf;
+  return -1;
 }
 
 

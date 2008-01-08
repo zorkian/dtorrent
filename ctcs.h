@@ -77,7 +77,7 @@ class Ctcs
   int Send_Status();
   int Send_bw();
   int Send_Config();
-  int Set_Config(char *msgbuf);
+  int Set_Config(const char *msgbuf);
   int Send_Detail();
   int Send_Peers();
   int Send_Info(int sev, const char *info);
