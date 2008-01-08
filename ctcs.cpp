@@ -385,6 +385,10 @@ int Ctcs::Send_Config()
         CONSOLE.GetChannel(O_INPUT), "Console input", ""))) < 0 )
       return r;
 
+    if( (r = SendMessage(ConfigMsg("ctcs_server", "S", maxlen,
+        arg_ctcs, "CTCS server", ""))) < 0 )
+      return r;
+
     sprintf(message, "CTCONFIGDONE");
   }
   else if( m_protocol == 2 )
@@ -514,6 +518,19 @@ int Ctcs::Set_Config(const char *origmsg)
       CONSOLE.ChangeChannel(O_DEBUG, valstr);
     }else if( 0==strcmp(name, "input") ){
       CONSOLE.ChangeChannel(O_INPUT, valstr);
+    }else if( 0==strcmp(name, "ctcs_server") ){
+      if( !strchr(valstr, ':') || *valstr == ':' ||
+          atoi(strchr(valstr, ':') + 1) <= 0 ) goto err;
+      char *arg = new char[strlen(valstr) + 1];
+      if( !arg )
+        CONSOLE.Warning(1, "error, failed to allocate memory for option");
+      else{
+        strcpy(arg, valstr);
+        delete []arg_ctcs;
+        arg_ctcs = arg;
+        CTCS.Initial();
+        CTCS.Reset(1);
+      }
     }else CONSOLE.Warning(2, "Unknown config option %s from CTCS", name);
   }else{  // m_protocol <= 2
     if(msgbuf[9] != '.'){
