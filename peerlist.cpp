@@ -108,13 +108,10 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   }
 
   for( p = m_head; p; p = p->next ){
-    if(PEER_IS_FAILED(p->peer)) continue;
-    if( p->peer->IpEquiv(addr) ){  // already exist.
-      if( INVALID_SOCKET != sk ){
-        if(arg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
-          inet_ntoa(addr.sin_addr));
-        CLOSE_SOCKET(sk); 
-      }
+    if( !PEER_IS_FAILED(p->peer) && p->peer->IpEquiv(addr) ){
+      if(arg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
+        inet_ntoa(addr.sin_addr));
+      if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk); 
       return -3;
     }
   }
@@ -307,8 +304,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   int f_unchoke_check, btPeer **UNCHOKER)
 {
-  PEERNODE *p;
-  PEERNODE *pp = (PEERNODE*) 0;
+  PEERNODE *p, *pp;
   int maxfd = -1;
   SOCKET sk = INVALID_SOCKET;
 
@@ -316,6 +312,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   m_f_limitd = BandWidthLimitDown(Self.LateDL());
 
  again:
+  pp = (PEERNODE*) 0;
   m_seeds_count = 0;
   m_conn_count = 0;
   size_t interested_count = 0;
