@@ -790,11 +790,15 @@ int btPeer::PieceDeliver(size_t mlen)
       m_err_count++;
       if(arg_verbose) CONSOLE.Debug("err: %p (%d) Unrequested piece %d/%d/%d",
         this, m_err_count, (int)idx, (int)off, (int)len, this);
+      BTCONTENT.CountUnwantedBlock();
       ResetDLTimer(); // set peer rate=0 so we don't favor for upload
       f_count = 0;
       f_want = 0;
-    }else if(arg_verbose) CONSOLE.Debug("Unneeded piece %d/%d/%d from %p",
-      (int)idx, (int)off, (int)len, this);
+    }else{
+      if(arg_verbose) CONSOLE.Debug("Unneeded piece %d/%d/%d from %p",
+        (int)idx, (int)off, (int)len, this);
+      BTCONTENT.CountDupBlock();
+    }
     f_success = 0;
   }
   if( !m_want_again && f_want ) m_want_again = 1;

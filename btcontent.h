@@ -72,7 +72,8 @@ class btContent
   BFNODE *m_filters, *m_current_filter;
 
   size_t m_prevdlrate;
-  
+  size_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
+
   void _Set_InfoHash(unsigned char buf[20]);
   char* _file2mem(const char *fname, size_t *psiz);
   
@@ -169,6 +170,13 @@ class btContent
 
   time_t GetStartTime() const { return m_start_timestamp; }
   time_t GetSeedTime() const { return m_seed_timestamp; }
+
+  size_t GetHashFailures() const { return m_hash_failures; }
+  size_t GetDupBlocks() const { return m_dup_blocks; }
+  size_t GetUnwantedBlocks() const { return m_unwanted_blocks; }
+  void CountHashFailure() { m_hash_failures++; }
+  void CountDupBlock() { m_dup_blocks++; }
+  void CountUnwantedBlock() { m_unwanted_blocks++; }
 
   int IsFull() const { return pBF->IsFull(); }
   int Seeding() const;

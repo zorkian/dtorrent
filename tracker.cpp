@@ -42,6 +42,9 @@ btTracker::btTracker()
   m_connect_refuse_click = 0;
   m_last_timestamp = (time_t) 0;
   m_prevpeers = 0;
+
+  m_report_time = (time_t) 0;
+  m_report_dl = m_report_ul = 0;
 }
 
 btTracker::~btTracker()
@@ -463,6 +466,7 @@ int btTracker::SendRequest()
   char *event,*str_event[] = {"started","stopped","completed" };
   char REQ_BUFFER[2*MAXPATHLEN];
   struct sockaddr_in addr;
+  uint64_t totalul, totaldl;
 
   if( m_f_stoped )
     event = str_event[1];	/* stopped */
@@ -483,8 +487,8 @@ int btTracker::SendRequest()
                      m_path,
                      event ? strncat(opt1,event,12) : "",
                      *m_trackerid ? strncat(opt2,m_trackerid,PEER_ID_LEN) : "",
-                     (unsigned long long)(Self.TotalUL()),
-                     (unsigned long long)(Self.TotalDL()),
+                     (unsigned long long)(totalul = Self.TotalUL()),
+                     (unsigned long long)(totaldl = Self.TotalDL()),
                      (unsigned long long)(BTCONTENT.GetLeftBytes()),
                      (int)cfg_max_peers)){
     return -1;
@@ -512,6 +516,13 @@ int btTracker::SendRequest()
     if( event == str_event[2] )
       m_f_completed = 0;  // failed sending completion event
     return -1;
+  }else{
+    m_report_time = now;
+    m_report_dl = totaldl;
+    m_report_ul = totalul;
+    if(arg_verbose)
+      CONSOLE.Debug("Reported to tracker:  %llu uploaded, %llu downloaded",
+        (unsigned long long)m_report_ul, (unsigned long long)m_report_dl);
   }
 
   return 0;

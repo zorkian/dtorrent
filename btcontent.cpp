@@ -1155,6 +1155,7 @@ int btContent::APieceComplete(size_t idx)
   if( memcmp(md,(m_hash_table + idx * 20), 20) != 0 ){
     CONSOLE.Warning(3, "warn, piece %d hash check failed.", idx);
     Uncache(idx);
+    CountHashFailure();
     return 0;
   }
 

@@ -48,7 +48,6 @@ class btTracker
   unsigned char m_f_boguspeercnt:1;
   unsigned char m_reserved:1;
 
-
   time_t m_interval;		// 与Tracker通信的时间间隔
   time_t m_default_interval;		// interval that the tracker tells us to wait
   time_t m_last_timestamp;	// 最后一次成功与Tracker通信的时间
@@ -58,6 +57,8 @@ class btTracker
   size_t m_peers_count;	// total number of peers
   size_t m_seeds_count;	// total number of seeds
   size_t m_prevpeers;	// number of peers previously seen
+  time_t m_report_time;
+  uint64_t m_report_dl, m_report_ul;
 
   SOCKET m_sock;
   BufIo m_request_buffer, m_reponse_buffer;
@@ -104,6 +105,10 @@ class btTracker
   void AdjustPeersCount() {
     if(m_f_boguspeercnt && m_peers_count) m_peers_count--; }
   time_t GetInterval() const { return m_default_interval; }
+
+  time_t GetReportTime() const { return m_report_time; }
+  uint64_t GetReportDL() const { return m_report_dl; }
+  uint64_t GetReportUL() const { return m_report_ul; }
 };
 
 extern btTracker Tracker;
