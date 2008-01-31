@@ -9,6 +9,7 @@
 #include <ctype.h>      // isdigit()
 #include <signal.h>
 #include <fcntl.h>      // open()
+#include <time.h>       // clock()
 
 #if defined(HAVE_IOCTL_H)
 #include <ioctl.h>      // ioctl()
@@ -646,6 +647,7 @@ int Console::OperatorMenu(const char *param)
       oper_mode = 0;
       return OperatorMenu("");
     }else if( sel == 1 + O_NCHANNELS+1 + STATUSLINES ){  // detailed status
+      m_streams[O_INPUT]->SetInputMode(K_CHARS);
       Interact("");
       Interact("Torrent: %s", arg_metainfo_file);
       ShowFiles();
@@ -689,6 +691,7 @@ int Console::OperatorMenu(const char *param)
         (int)(BTCONTENT.CacheUsed()/1024), (int)(BTCONTENT.CacheSize()/1024),
         (int)cfg_cache_size);
       if(arg_ctcs) Interact("CTCS Server: %s", arg_ctcs);
+      if(arg_verbose) cpu();
       oper_mode = 0;
       return 1;
     }else if( sel == 2 + O_NCHANNELS+1 + STATUSLINES ){  // pause/resume
@@ -1294,6 +1297,17 @@ void Console::SyncNewlines(int master)
     if( i != master && m_streams[i]->SameDev(m_streams[master]) )
       m_streams[i]->SyncNewline(m_streams[master]);
   }
+}
+
+
+void Console::cpu()
+{
+  if(arg_verbose)
+    Debug( "%.2f CPU seconds used; %lu seconds elapsed (%.2f%% usage)",
+      clock() / (double)CLOCKS_PER_SEC,
+      (unsigned long)(time((time_t *)0) - BTCONTENT.GetStartTime()),
+      clock() / (double)CLOCKS_PER_SEC /
+        (time((time_t *)0) - BTCONTENT.GetStartTime()) * 100 );
 }
 
 

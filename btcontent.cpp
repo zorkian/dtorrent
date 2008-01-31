@@ -1223,12 +1223,7 @@ int btContent::SeedTimeout()
         CONSOLE.Print("Download complete.");
         CONSOLE.Print("Total time used: %ld minutes.",
           (long)((now - m_start_timestamp) / 60));
-        if(arg_verbose) CONSOLE.Debug(
-          "%.2f CPU seconds used; %lu seconds elapsed (%.2f%% usage)",
-          clock() / (double)CLOCKS_PER_SEC,
-          (unsigned long)(time((time_t *)0) - BTCONTENT.GetStartTime()),
-          clock() / (double)CLOCKS_PER_SEC /
-            (time((time_t *)0) - BTCONTENT.GetStartTime()) * 100 );
+        if(arg_verbose) CONSOLE.cpu();
         if( arg_completion_exit )
           CompletionCommand();
       }

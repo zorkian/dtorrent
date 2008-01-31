@@ -123,13 +123,7 @@ int main(int argc, char **argv)
   if( !arg_flg_exam_only ) BTCONTENT.SaveBitfield();
   WORLD.CloseAll();
 
-  if(arg_verbose)
-    CONSOLE.Debug( "%.2f CPU seconds used; %lu seconds elapsed (%.2f%% usage)",
-      clock() / (double)CLOCKS_PER_SEC,
-      (unsigned long)(time((time_t *)0) - BTCONTENT.GetStartTime()),
-      clock() / (double)CLOCKS_PER_SEC /
-        (time((time_t *)0) - BTCONTENT.GetStartTime()) * 100 );
-
+  if(arg_verbose) CONSOLE.cpu();
   exit(0);
 }
 

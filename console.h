@@ -130,6 +130,8 @@ class Console
   char *GetChannel(int channel) const { return m_streams[channel]->GetName(); }
   int ChangeChannel(int channel, const char *param, int notify = 1);
 
+  void cpu();
+
   RETSIGTYPE Signal(int sig_no);
   void Daemonize();
 };
