@@ -211,7 +211,7 @@ int ConStream::Output_n(const char *message, va_list ap)
   if( m_suspend ) return 0;
 
   int old_newline = m_newline;
-  if( !*message ) _newline();
+  if( !message || !*message ) _newline();
   else _convprintf(message, ap);
   fflush(m_stream);
   return (old_newline==m_newline) ? 0 : 1;
@@ -1079,7 +1079,7 @@ void Console::Print_n(const char *message, ...)
 {
   va_list ap;
 
-  if( m_status_last && *message ) Print_n("");
+  if( m_status_last && message && *message ) Print_n("");
   m_status_last = 0;
 
   if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
@@ -1202,10 +1202,10 @@ void Console::Debug_n(const char *message, ...)
       (!m_streams[O_DEBUG]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_DEBUG]->SameDev(m_streams[O_INPUT])) ){
     if( m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
-      if( m_status_last && *message ) Debug_n("");
+      if( m_status_last && message && *message ) Debug_n("");
       m_status_last = 0;
     }
-    if( f_new_line && *message ){
+    if( f_new_line && message && *message ){
       char *format = (char *)0;
       size_t buflen;
       size_t need = strlen(message)+1 + 10*sizeof(unsigned long)/4;
@@ -1226,7 +1226,7 @@ void Console::Debug_n(const char *message, ...)
       va_end(ap);
     }
 
-    if( *message ) f_new_line = 0;
+    if( message && *message ) f_new_line = 0;
     else f_new_line = 1;
   }
 }
@@ -1251,7 +1251,7 @@ void Console::Interact_n(const char *message, ...)
   va_list ap;
 
   if( m_streams[O_INTERACT]->SameDev(m_streams[O_NORMAL]) ){
-    if( m_status_last && *message ) Interact_n("");
+    if( m_status_last && message && *message ) Interact_n("");
     m_status_last = 0;
   }
   va_start(ap, message);
@@ -1282,9 +1282,9 @@ void Console::InteractU(const char *message, ...)
 char *Console::Input(const char *prompt, char *field, size_t length)
 {
   char *retval;
+  Interact_n("");
+  Interact_n("%s", prompt);
   m_streams[O_INPUT]->SetInputMode(K_LINES);
-  Interact_n(0, "");
-  Interact_n(0, "%s", prompt);
   retval = m_streams[O_INPUT]->Input(field, length);
   m_streams[O_INPUT]->SetInputMode(K_CHARS);
   return retval;
