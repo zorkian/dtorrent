@@ -28,7 +28,7 @@ size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps
 size_t decode_list2path(const char *b, size_t n, char *pathname);
 size_t bencode_buf(const char *str,size_t len,FILE *fp);
 size_t bencode_str(const char *str, FILE *fp);
-size_t bencode_int(const int integer, FILE *fp);
+size_t bencode_int(const uint64_t integer, FILE *fp);
 size_t bencode_begin_dict(FILE *fp);
 size_t bencode_begin_list(FILE *fp);
 size_t bencode_end_dict_list(FILE *fp);

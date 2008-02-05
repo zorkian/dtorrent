@@ -191,11 +191,12 @@ size_t bencode_str(const char *str, FILE *fp)
   return bencode_buf(str, strlen(str), fp);
 }
 
-size_t bencode_int(const int integer, FILE *fp)
+size_t bencode_int(const uint64_t integer, FILE *fp)
 {
   char buf[MAX_INT_SIZ];
   if( EOF == fputc('i', fp)) return 0;
-  if( MAX_INT_SIZ <= snprintf(buf, MAX_INT_SIZ, "%lu", (unsigned long)integer) )
+  if( MAX_INT_SIZ <=
+      snprintf(buf, MAX_INT_SIZ, "%llu", (unsigned long long)integer) )
     return 0;
   if( fwrite(buf, strlen(buf), 1, fp) != 1 ) return 0;
   return (EOF == fputc('e', fp)) ? 0: 1;
