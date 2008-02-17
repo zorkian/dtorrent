@@ -714,7 +714,7 @@ int btPeer::ReportComplete(size_t idx)
   }else if( 0 == r ){  // hash check failed
     // Don't count an error against the peer in initial or endgame mode, since
     // some slices may have come from other peers.
-    if( BTCONTENT.pBF->Count() < 2 || WORLD.Endgame() ){
+    if( !(BTCONTENT.pBF->Count() < 2 || WORLD.Endgame()) ){
       m_err_count++;
       if(arg_verbose) CONSOLE.Debug("err: %p (%d) Bad complete",
         this, m_err_count);
