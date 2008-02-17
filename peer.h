@@ -147,6 +147,7 @@ class btPeer:public btBasic
   int MsgDeliver();
   int CouldReponseSlice();
   int RequestSlice(size_t idx,size_t off,size_t len);
+  int PeerError(int weight, const char *message);
 
  public:
   unsigned char id[PEER_ID_LEN];

@@ -342,9 +342,7 @@ int btPeer::MsgDeliver()
       if(H_BASE_LEN != r) return -1;
       if(arg_verbose) CONSOLE.Debug("%p choked me", this);
       if( m_lastmsg == M_UNCHOKE && m_last_timestamp <= m_choketime+1 ){
-        m_err_count+=2;
-        if(arg_verbose) CONSOLE.Debug("err: %p (%d) Choke oscillation",
-          this, m_err_count);
+        if( PeerError(2, "Choke oscillation") < 0 ) return -1;
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 1;
@@ -360,9 +358,7 @@ int btPeer::MsgDeliver()
       if(H_BASE_LEN != r) return -1;
       if(arg_verbose) CONSOLE.Debug("%p unchoked me", this);
       if( m_lastmsg == M_CHOKE && m_last_timestamp <= m_choketime+1 ){
-        m_err_count+=2;
-        if(arg_verbose) CONSOLE.Debug("err: %p (%d) Choke oscillation",
-          this, m_err_count);
+        if( PeerError(2, "Choke oscillation") < 0 ) return -1;
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 0;
@@ -435,9 +431,7 @@ int btPeer::MsgDeliver()
       if( m_state.local_choked ){
         if( m_last_timestamp - m_unchoke_timestamp >
               (m_latency ? (m_latency*2) : 60) ){
-          m_err_count++;
-          if(arg_verbose) CONSOLE.Debug("err: %p (%d) choked request",
-            this, m_err_count);
+          if( PeerError(1, "choked request") < 0 ) return -1;
           if( stream.Send_State(M_CHOKE) < 0 ) return -1;
           // This will mess with the unchoke rotation (to this peer's
           // disadvantage), but otherwise we may spam them with choke msgs.
@@ -495,9 +489,7 @@ int btPeer::MsgDeliver()
         if( m_state.local_choked &&
             m_last_timestamp - m_unchoke_timestamp >
               (m_latency ? (m_latency*2) : 60) ){
-          m_err_count++;
-          if(arg_verbose) CONSOLE.Debug("err: %p (%d) Bad cancel",
-            this, m_err_count);
+          if( PeerError(1, "Bad cancel") < 0 ) return -1;
         }
       }else if( reponse_q.IsEmpty() && g_next_up == this )
         g_next_up = (btPeer *)0;
@@ -715,10 +707,8 @@ int btPeer::ReportComplete(size_t idx)
     // Don't count an error against the peer in initial or endgame mode, since
     // some slices may have come from other peers.
     if( !(BTCONTENT.pBF->Count() < 2 || WORLD.Endgame()) ){
-      m_err_count++;
-      if(arg_verbose) CONSOLE.Debug("err: %p (%d) Bad complete",
-        this, m_err_count);
-      ResetDLTimer(); // set peer rate=0 so we don't favor for upload
+      if( PeerError(1, "Bad complete") < 0 ) CloseConnection();
+      else ResetDLTimer(); // set peer rate=0 so we don't favor for upload
     }
   }
   // Need to re-download entire piece if check failed, so cleanup in any case.
@@ -787,10 +777,10 @@ int btPeer::PieceDeliver(size_t mlen)
     }
   }else{  // not requested--not saved
     if( m_last_timestamp - m_cancel_time > (m_latency ? (m_latency*2) : 60) ){
-      m_err_count++;
-      if(arg_verbose) CONSOLE.Debug("err: %p (%d) Unrequested piece %d/%d/%d",
-        this, m_err_count, (int)idx, (int)off, (int)len, this);
+      char msg[40];
       BTCONTENT.CountUnwantedBlock();
+      sprintf(msg, "Unrequested piece %d/%d/%d", (int)idx, (int)off, (int)len);
+      if( PeerError(1, msg) < 0 ) return -1;
       ResetDLTimer(); // set peer rate=0 so we don't favor for upload
       f_count = 0;
       f_want = 0;
@@ -1087,11 +1077,6 @@ int btPeer::RecvModule()
 {
   ssize_t r = 0;
   
-  if ( 32 <= m_err_count ){
-    m_want_again = 0;
-    return -1;
-  }
-
   if( stream.PeekMessage(M_PIECE) ){
     if( !g_next_dn || g_next_dn==this ){
       int limited = WORLD.BandWidthLimitDown(Self.LateDL());
@@ -1299,6 +1284,17 @@ void btPeer::Prefetch(time_t deadline)
       }
     }
   }
+}
+
+int btPeer::PeerError(int weight, const char *message)
+{
+  m_err_count += weight;
+  if(arg_verbose) CONSOLE.Debug("err: %p (%d) %s", this, m_err_count, message);
+
+  if ( m_err_count >= 16 ){
+    m_want_again = 0;
+    return -1;
+  }else return 0;
 }
 
 void btPeer::dump()
