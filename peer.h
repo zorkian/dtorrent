@@ -141,7 +141,6 @@ class btPeer:public btBasic
   int RequestCheck();
   int SendRequest();
   int CancelPiece();
-  int CancelRequest(PSLICE ps);
   int ReponseSlice();
   int RequestPiece();
   int MsgDeliver();
@@ -178,6 +177,7 @@ class btPeer:public btBasic
 
   int IsEmpty() const;
 
+  int CancelRequest();
   int CancelSliceRequest(size_t idx, size_t off, size_t len);
   int CancelPiece(size_t idx);
   
@@ -204,7 +204,7 @@ class btPeer:public btBasic
   int Need_Remote_Data() const;
   int Need_Local_Data() const;
 
-  int PutPending();
+  void PutPending();
 
   int NeedPrefetch() const;
   void Prefetch(time_t deadline);

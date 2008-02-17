@@ -1179,8 +1179,10 @@ void PeerList::StopDownload()
 
   for( ; p; p = p->next ){
     if( p->peer->Is_Local_Interested() ){
-      if(p->peer->PutPending() < 0 || p->peer->SetLocal(M_NOT_INTERESTED) < 0)
+      if( p->peer->CancelRequest() < 0 ||
+          p->peer->SetLocal(M_NOT_INTERESTED) < 0 ){
         p->peer->CloseConnection();
+      }else p->peer->PutPending();
     }
   }
 }

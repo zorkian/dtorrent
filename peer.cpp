@@ -179,7 +179,7 @@ int btPeer::SetLocal(unsigned char s)
     if(arg_verbose) CONSOLE.Debug("Not interested in %p", this);
     m_state.local_interested = 0; 
     if( !request_q.IsEmpty() ){
-      if( CancelRequest(request_q.GetHead()) < 0 ) return -1;
+      if( CancelRequest() < 0 ) return -1;
       request_q.Empty();
     }
     break;
@@ -348,10 +348,7 @@ int btPeer::MsgDeliver()
       m_state.remote_choked = 1;
       StopDLTimer();
       if( g_next_dn == this ) g_next_dn = (btPeer *)0;
-      if( !request_q.IsEmpty() ){
-        m_req_out = 0;
-        PENDINGQUEUE.Pending(&request_q);
-      }
+      PutPending();
       break;
 
     case M_UNCHOKE:
@@ -637,10 +634,12 @@ int btPeer::CancelPiece(size_t idx)
   return 0;
 }
 
-int btPeer::CancelRequest(PSLICE ps)
+int btPeer::CancelRequest()
 {
+  PSLICE ps;
   int retval;
 
+  ps = request_q.GetHead();
   for( ; ps; ps = ps->next){
     if( ps == request_q.NextSend() ) break;
     if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
@@ -891,8 +890,7 @@ void btPeer::CloseConnection()
     StopDLTimer();
     StopULTimer();
     stream.Close();
-    if( !request_q.IsEmpty() )
-      PENDINGQUEUE.Pending(&request_q);
+    PutPending();
   }
   if( g_next_up == this ) g_next_up = (btPeer *)0;
   if( g_next_dn == this ) g_next_dn = (btPeer *)0;
@@ -1187,9 +1185,8 @@ int btPeer::HealthCheck()
       m_bad_health = 1;
       if(arg_verbose)
         CONSOLE.Debug("%p unresponsive; resetting request queue", this);
-      int retval = CancelRequest(request_q.GetHead());
-      PENDINGQUEUE.Pending(&request_q);
-      m_req_out = 0;
+      int retval = CancelRequest();
+      PutPending();
       return (retval < 0) ? -1 : RequestCheck();
     } else m_bad_health = 0;
   }
@@ -1205,16 +1202,12 @@ int btPeer::IsEmpty() const
     1:0;
 }
 
-int btPeer::PutPending()
+void btPeer::PutPending()
 {
-  int retval = 0;
-
   if( !request_q.IsEmpty() ){
-    retval = CancelRequest(request_q.GetHead());
     PENDINGQUEUE.Pending(&request_q);
   }
   m_req_out = 0;
-  return retval;
 }
 
 int btPeer::NeedPrefetch() const
