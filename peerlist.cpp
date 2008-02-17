@@ -860,21 +860,25 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     peer = p->peer;
     sk = peer->stream.GetSocket();
 
-    if( P_SUCCESS == peer->GetStatus() && FD_ISSET(sk,rfdp) ){
-      (*nready)--;
-      if( !Self.OntimeUL() ){
-        FD_CLR(sk,rfdnextp);
-        if( peer->RecvModule() < 0 ){
-          if(arg_verbose) CONSOLE.Debug("close: receive");
-          peer->CloseConnection();
-        }else if( !Self.OntimeDL() && peer->HealthCheck() < 0 ){
-          if(arg_verbose) CONSOLE.Debug("close: unhealthy");
-          peer->CloseConnection();
+    if( P_SUCCESS == peer->GetStatus() ){
+      if( FD_ISSET(sk,rfdp) ){
+        (*nready)--;
+        if( !Self.OntimeUL() ){
+          FD_CLR(sk,rfdnextp);
+          if( peer->RecvModule() < 0 ){
+            if(arg_verbose) CONSOLE.Debug("close: receive");
+            peer->CloseConnection();
+          }
         }
-        if( PEER_IS_FAILED(peer) ){
-          if( FD_ISSET(sk,wfdp) ) (*nready)--;
-          FD_CLR(sk,wfdnextp);
-        }
+      }
+      if( !Self.OntimeDL() && !Self.OntimeUL() &&
+          P_SUCCESS == peer->GetStatus() && peer->HealthCheck() < 0 ){
+        if(arg_verbose) CONSOLE.Debug("close: unhealthy");
+        peer->CloseConnection();
+      }
+      if( PEER_IS_FAILED(peer) ){
+        if( FD_ISSET(sk,wfdp) ) (*nready)--;
+        FD_CLR(sk,wfdnextp);
       }
     }
     if( P_SUCCESS == peer->GetStatus() ){
