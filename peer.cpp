@@ -467,12 +467,16 @@ int btPeer::MsgDeliver()
         return -1;
       bitfield.SetReferBuffer(msgbuf + H_LEN + H_BASE_LEN);
       if(bitfield.IsFull()){
-        if(arg_verbose) CONSOLE.Debug("%p is a seed", this);
+        if(arg_verbose) CONSOLE.Debug("%p is a seed (bitfield is full)", this);
         if(BTCONTENT.IsFull()) return -2;
         else{
           stream.out_buffer.SetSize(BUF_DEF_SIZ);
           if( !m_want_again ) m_want_again = 1;
         }
+      }else if(arg_verbose){
+        if( bitfield.IsEmpty() ) CONSOLE.Debug("%p bitfield is empty", this);
+        else CONSOLE.Debug("%p bitfield has %d%%", this,
+                           100 * bitfield.Count() / BTCONTENT.GetNPieces());
       }
 
       // This is needed in order to set our Interested state.
