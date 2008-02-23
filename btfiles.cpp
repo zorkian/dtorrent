@@ -620,7 +620,8 @@ int btFiles::CreateFiles()
           CONSOLE.Interact_n("Creating %s", fn);
         }
         if( !_btf_creat_by_path(fn,pbt->bf_length)){
-          CONSOLE.Warning(1, "error, create file \"%s\" failed.",fn);
+          CONSOLE.Warning(1, "error, create file \"%s\" failed:  %s", fn,
+            strerror(errno));
           return -1;
         }
       }else{
