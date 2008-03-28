@@ -611,19 +611,16 @@ int btPeer::SendRequest()
   return ( m_req_out < m_req_send && !m_standby ) ? RequestPiece() : 0;
 }
 
-int btPeer::CancelPiece()
-{
-  return CancelPiece(request_q.GetHead()->index);
-}
-
 int btPeer::CancelPiece(size_t idx)
 {
   PSLICE ps = request_q.GetHead();
   PSLICE next;
   int cancel = 1;
-  int retval;
 
-  for( ; ps && ps->index != idx; ps=ps->next );  // find the piece
+  for( ; ps && ps->index != idx; ps=ps->next ){  // find the piece
+    if( ps == request_q.NextSend() ) cancel = 0;
+  }
+  if( !ps ) return 0;
 
   for( ; ps; ps = next ){
     if( ps->index != idx ) break;
@@ -650,7 +647,7 @@ int btPeer::CancelPiece(size_t idx)
   }
   if( !m_req_out && g_next_dn == this ) g_next_dn = (btPeer *)0;
 
-  return 0;
+  return 1;
 }
 
 int btPeer::CancelRequest()
@@ -683,12 +680,15 @@ int btPeer::CancelSliceRequest(size_t idx, size_t off, size_t len)
   PSLICE ps;
   int cancel = 1;
   int idxfound = 0;
-  int retval;
+  int retval = 0;
+
+  if( request_q.IsEmpty() ) return 0;
 
   for(ps = request_q.GetHead(); ps; ps = ps->next){
     if( ps == request_q.NextSend() ) cancel = 0;
     if( idx == ps->index ){
       if( off == ps->offset && len == ps->length ){
+        retval = 1;
         request_q.Remove(idx,off,len);
         if(cancel){
           if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
@@ -717,7 +717,7 @@ int btPeer::CancelSliceRequest(size_t idx, size_t off, size_t len)
     m_standby = 0;
   }
 
-  return 0;
+  return retval;
 }
 
 size_t btPeer::FindLastCommonRequest(BitField &proposerbf)
@@ -762,9 +762,10 @@ int btPeer::ReportComplete(size_t idx, size_t len)
   }
   // Need to re-download entire piece if check failed, so cleanup in any case.
   m_prefetch_completion = 0;
-  // We don't track request duplication accurately, so clean up just in case.
-  WORLD.CancelPiece(idx);
-  PENDINGQUEUE.Delete(idx);
+  if( WORLD.GetDupReqs() && BTCONTENT.pBMultPeer->IsSet(idx) ){
+    if( WORLD.CancelPiece(idx) )
+      CONSOLE.Warning(2, "Duplicate request cancelled in piece completion");
+  }
   BTCONTENT.pBMultPeer->UnSet(idx);
   return r;
 }
@@ -775,7 +776,7 @@ int btPeer::PieceDeliver(size_t mlen)
   char *msgbuf = stream.in_buffer.BasePointer();
   time_t t = (time_t)0;
   int f_accept = 0, f_requested = 0, f_success = 1, f_count = 1, f_want = 1;
-  int dup = 0;
+  int f_complete = 0, dup = 0;
 
   idx = get_nl(msgbuf + H_LEN + H_BASE_LEN);
   off = get_nl(msgbuf + H_LEN + H_BASE_LEN + H_INT_LEN);
@@ -827,10 +828,10 @@ int btPeer::PieceDeliver(size_t mlen)
       if( f_requested ) m_req_out--;
       // Check for & cancel requests for this slice from other peers in initial
       // and endgame modes.
-      if( BTCONTENT.pBF->Count() < 2 || WORLD.Endgame() ) dup = 1;
-      if( dup ) WORLD.CancelSlice(idx, off, len);
-      if( dup || BTCONTENT.FlushFailed() )
-        PENDINGQUEUE.DeleteSlice(idx, off, len);
+      if( dup || (WORLD.GetDupReqs() && BTCONTENT.pBMultPeer->IsSet(idx)) )
+        dup = WORLD.CancelSlice(idx, off, len);
+      if( WORLD.GetDupReqs() || BTCONTENT.FlushFailed() )
+        dup += PENDINGQUEUE.DeleteSlice(idx, off, len);
     }
   }else{  // not requested--not saved
     if( m_last_timestamp - m_cancel_time > (m_latency ? (m_latency*2) : 60) ){
@@ -884,13 +885,15 @@ int btPeer::PieceDeliver(size_t mlen)
     // Above WriteSlice may have triggered flush failure.  If data was saved,
     // slice was deleted from Pending.  If piece is incomplete, it's in Pending.
     if( !(BTCONTENT.FlushFailed() && PENDINGQUEUE.Exist(idx)) &&
-        !ReportComplete(idx, len) )
+        !(f_complete = ReportComplete(idx, len)) )
       f_count = 0;
   }
 
   // Don't count the slice in our DL total if it was unsolicited or bad.
   // (We don't owe the swarm any UL for such data.)
   if( f_count ) DataRecved(len);
+
+  if( !f_complete && dup ) WORLD.CancelOneRequest(idx);
 
   if( request_q.IsEmpty() ){ 
     StopDLTimer();
@@ -1264,7 +1267,9 @@ int btPeer::IsEmpty() const
 void btPeer::PutPending()
 {
   if( !request_q.IsEmpty() ){
-    PENDINGQUEUE.Pending(&request_q);
+    if( PENDINGQUEUE.Pending(&request_q) != 0 )
+      WORLD.RecalcDupReqs();
+    WORLD.UnStandby();
   }
   m_req_out = 0;
 }

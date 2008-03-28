@@ -18,12 +18,13 @@ class PeerList
  private:
   SOCKET m_listen_sock;
   PEERNODE *m_head, *m_dead;
-  size_t m_peers_count, m_seeds_count, m_conn_count;
+  size_t m_peers_count, m_seeds_count, m_conn_count, m_downloads;
   size_t m_max_unchoke;
   time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp,
          m_last_progress_timestamp, m_opt_timestamp, m_interval_timestamp;
   time_t m_unchoke_interval, m_opt_interval;
   size_t m_defer_count, m_missed_count, m_upload_count, m_up_opt_count;
+  size_t m_dup_req_pieces;
   int m_prev_limit_up;
   char m_listen[22];
 
@@ -33,7 +34,8 @@ class PeerList
   unsigned char m_f_limitu:1;
   unsigned char m_f_dlate:1;
   unsigned char m_f_ulate:1;
-  unsigned char m_reserved:2;
+  unsigned char m_endgame:1;
+  unsigned char m_reserved:1;
   
   int Accepter();
   int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
@@ -73,20 +75,27 @@ class PeerList
 
   void Tell_World_I_Have(size_t idx);
   btPeer* Who_Can_Abandon(btPeer *proposer);
-  size_t What_Can_Duplicate(BitField &bf, btPeer *proposer, size_t idx) const;
-  void FindValuedPieces(BitField &bf, btPeer *proposer, int initial) const;
+  size_t What_Can_Duplicate(BitField &bf, const btPeer *proposer, size_t idx);
+  void FindValuedPieces(BitField &bf, const btPeer *proposer, int initial)
+    const;
   btPeer *WhoHas(size_t idx) const;
   int HasSlice(size_t idx, size_t off, size_t len) const;
   void CompareRequest(btPeer *proposer, size_t idx);
-  void CancelSlice(size_t idx, size_t off, size_t len);
-  void CancelPiece(size_t idx);
+  int CancelSlice(size_t idx, size_t off, size_t len);
+  int CancelPiece(size_t idx);
+  void CancelOneRequest(size_t idx);
+
   void CheckBitField(BitField &bf);
   int AlreadyRequested(size_t idx) const;
   size_t Pieces_I_Can_Get() const;
   size_t Pieces_I_Can_Get(BitField *ptmpBitField) const;
   void CheckInterest();
   btPeer* GetNextPeer(btPeer *peer) const;
-  int Endgame() const;
+  int Endgame();
+  void UnStandby();
+
+  size_t GetDupReqs() const { return m_dup_req_pieces; }
+  void RecalcDupReqs();
 
   size_t GetSeedsCount() const { return m_seeds_count; }
   size_t GetPeersCount() const { return m_peers_count; }
@@ -95,7 +104,7 @@ class PeerList
 
   size_t GetUnchoked() const;
   size_t GetSlowestUp(size_t minimum) const;
-  size_t GetDownloads() const;
+  size_t GetDownloads() const { return m_downloads; }
   size_t GetUnchokeInterval() const { return m_unchoke_interval; }
 
   void Defer() { m_defer_count++; }

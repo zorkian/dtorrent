@@ -514,10 +514,16 @@ int PendingQueue::HasSlice(size_t idx, size_t off, size_t len)
   return 0;
 }
 
-// Sending an empty queue to this function WILL cause a crash.  This exposure
-// is left open in order to help track down bugs that cause this condition.
+/* Sending an empty queue to this function WILL cause a crash.  This exposure
+   is left open in order to help track down bugs that cause this condition.
+   Returns:
+      0 if all pieces were added to Pending
+     -1 if Pending is full (at least one piece not added)
+      1 if at least one piece was already in Pending
+*/
 int PendingQueue::Pending(RequestQueue *prq)
 {
+  int retval = 0;
   int i = 0, j = -1;
   PSLICE n, u = (PSLICE) 0;
   size_t idx, off, len;
@@ -544,7 +550,8 @@ int PendingQueue::Pending(RequestQueue *prq)
       while( !prq->IsEmpty() &&
           prq->GetRequestIdx() == pending_array[i]->index )
         prq->Pop(&idx,&off,&len);
-      if( prq->IsEmpty() ) return 0;
+      retval = 1;
+      if( prq->IsEmpty() ) return retval;
       i = 0;
     }
   }
@@ -562,11 +569,13 @@ int PendingQueue::Pending(RequestQueue *prq)
   if(n){
     u->next = (PSLICE) 0;
     tmprq.SetHead(n);
-    Pending(&tmprq);
+    i = Pending(&tmprq);
+    if( i < 0 ) retval = i;
+    else if( i > 0 && retval == 0 ) retval = i;
     tmprq.Release();
   }
 
-  return 0;
+  return retval;
 }
 
 size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
@@ -593,7 +602,6 @@ size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
   return idx;
 }
 
-// This routine should no longer be necessary, but keeping it as a failsafe.
 int PendingQueue::Delete(size_t idx)
 {
   int i = 0;
@@ -610,7 +618,7 @@ int PendingQueue::Delete(size_t idx)
 
 int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
 {
-  int i = 0;
+  int i, r = 0;
   RequestQueue rq;
   for( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
     if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index ){
@@ -618,6 +626,7 @@ int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
       //remove the slice if so
       rq.SetHead(pending_array[i]);
       if( rq.Remove(idx, off, len) == 0 ){
+        r = 1;
         pending_array[i] = rq.GetHead();
         if( (PSLICE) 0 == pending_array[i] ) pq_count--;
         i = PENDING_QUEUE_SIZE;   // exit loop
@@ -625,6 +634,6 @@ int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
       rq.Release();
     }
   }
-  return 0;
+  return r;
 }
 

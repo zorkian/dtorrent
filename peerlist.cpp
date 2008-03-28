@@ -52,12 +52,13 @@ PeerList::PeerList()
 
   m_head = m_dead = (PEERNODE*) 0;
   m_listen_sock = INVALID_SOCKET;
-  m_peers_count = m_seeds_count = m_conn_count = 0;
-  m_f_pause = m_f_dlate = m_f_ulate = 0;
+  m_peers_count = m_seeds_count = m_conn_count = m_downloads = 0;
+  m_f_pause = m_f_dlate = m_f_ulate = m_endgame = 0;
   m_max_unchoke = MIN_UNCHOKES;
   m_defer_count = m_missed_count = 0;
   m_upload_count = m_up_opt_count = 0;
   m_prev_limit_up = cfg_max_bandwidth_up;
+  m_dup_req_pieces = 0;
 }
 
 PeerList::~PeerList()
@@ -313,8 +314,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
  again:
   pp = (PEERNODE*) 0;
-  m_seeds_count = 0;
-  m_conn_count = 0;
+  m_seeds_count = m_conn_count = m_downloads = 0;
   size_t interested_count = 0;
   for( p = m_head; p; ){
     sk = p->peer->stream.GetSocket();
@@ -346,7 +346,10 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       if( !PEER_IS_SUCCESS(p->peer) ) m_conn_count++;
       else{
         if( p->peer->bitfield.IsFull() ) m_seeds_count++;
-        if( p->peer->Is_Local_Interested() ) interested_count++;
+        if( p->peer->Is_Local_Interested() ){
+          interested_count++;
+          if( p->peer->Is_Remote_UnChoked() ) m_downloads++;
+        }
       }
       if( f_keepalive_check ){
         if( 3 * KEEPALIVE_INTERVAL <= now - p->peer->GetLastTimestamp() ){
@@ -519,21 +522,27 @@ btPeer* PeerList::Who_Can_Abandon(btPeer *proposer)
 // This takes an index parameter to facilitate modification of the function to
 // allow targeting of a specific piece.  It's currently only used as a flag to
 // specify endgame or initial-piece mode though.
-size_t PeerList::What_Can_Duplicate(BitField &bf, btPeer *proposer, size_t idx)
-const
+size_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
+  size_t idx)
 {
+  struct qdata {
+    size_t idx, qlen, count;
+  };
+  struct qdata *data;
+  int endgame, pass, i, mark;
   PEERNODE *p;
-  btPeer *peer = (btPeer*) 0;
-  int endgame;
   PSLICE ps;
-  size_t piece, piece1, qsize, mark, bench;
-  unsigned long rndbits;
-  int r=0;
+  size_t slots, piece, qsize;
+  double work, best;
 
-  endgame = idx < BTCONTENT.GetNPieces();	// else initial-piece mode
-  if(endgame) mark = 0;
-  else mark = cfg_req_queue_length;
-  bench = BTCONTENT.GetNPieces();
+  endgame = idx < BTCONTENT.GetNPieces();  // else initial-piece mode
+  slots = endgame ? BTCONTENT.GetNPieces() - BTCONTENT.pBF->Count() :
+                    m_downloads * 2;
+  if( slots < m_dup_req_pieces + 2 ) slots = m_dup_req_pieces + 2;
+  data = new struct qdata[slots];
+#ifndef WINDOWS
+  if( !data ) return BTCONTENT.GetNPieces();
+#endif
 
   // In initial mode, only dup a piece with trade value.
   // In endgame mode, dup any if there are no pieces with trade value.
@@ -543,47 +552,70 @@ const
     else return BTCONTENT.GetNPieces();
   }
 
-  /* In endgame mode, select from peers with the longest request queue.
-     In initial mode, select from peers with the shortest non-empty request
-     queue.  */
-  piece1 = BTCONTENT.GetNPieces();
-  for( p = m_head; p; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ) continue;
+  // initialize
+  data[0].idx = BTCONTENT.GetNPieces();
+  data[0].qlen = 0;
+  data[0].count = 0;
+  for( i = 1; i < slots; i++ )
+    memcpy(data + i, data, sizeof(struct qdata));
 
-    if( p->peer->request_q.IsEmpty() ) continue;
+  // measure applicable piece request queues
+  for( p = m_head; p; p = p->next ){
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
+        p->peer->request_q.IsEmpty() )
+      continue;
 
     piece = BTCONTENT.GetNPieces();
     ps = p->peer->request_q.GetHead();
     for( ; ps; ps = ps->next ){
-      if( piece == ps->index || bench == ps->index || piece1 == ps->index ||
+      if( piece == ps->index ||
           !bf.IsSet(ps->index) || proposer->request_q.HasIdx(ps->index) )
         continue;
       piece = ps->index;
-
       qsize = p->peer->request_q.Qlen(piece);
-      if( (endgame && qsize > mark) ||
-          (!endgame && (qsize < mark || !peer)) ){
-        mark = qsize;
-        peer = p->peer;
-        piece1 = piece;
-      }else if( qsize == mark ){
-        if( !r-- ){
-          rndbits = random();
-          r = 30;
-        }
-        if( bench != piece && (rndbits>>=1)&01 ){
-          bench = piece1;
-          peer = p->peer;
-          piece1 = piece;
+
+      // insert queue data into array at (idx % slots)
+      pass = 0;
+      i = piece % slots;
+      while( data[i].idx < BTCONTENT.GetNPieces() && pass < 2 ){
+        if( piece == data[i].idx ) break;
+        i++;
+        if( i >= slots ){
+          i = 0;
+          pass++;
         }
       }
+      if( pass < 2 ){
+        if( data[i].idx == BTCONTENT.GetNPieces() ){
+          data[i].idx = piece;
+          data[i].qlen = qsize;
+        }
+        data[i].count++;
+      }
+    }
+  } // end of measurement loop
+
+  /* Find the best workload for initial/endgame.
+     In endgame mode, request the piece that should take the longest.
+     In initial mode, request the piece that should complete the fastest. */
+  best = endgame ? 0 : BTCONTENT.GetPieceLength() / cfg_req_slice_size + 2;
+  mark = slots;
+  for( i = 0; i < slots; i++ ){
+    if( data[i].idx == BTCONTENT.GetNPieces() ) continue;
+    work = data[i].qlen / (double)(data[i].count);
+    if( work > 1 && (endgame ? work > best : work < best) ){
+      best = work;
+      mark = i;
     }
   }
-  return peer ? piece1 : BTCONTENT.GetNPieces();
+  if( mark < slots && data[mark].count == 1 ) m_dup_req_pieces++;
+  CONSOLE.Debug("%d dup req pieces", (int)m_dup_req_pieces);
+  delete []data;
+  return (mark < slots) ? data[mark].idx : BTCONTENT.GetNPieces();
 }
 
-void PeerList::FindValuedPieces(BitField &bf, btPeer *proposer, int initial)
-const
+void PeerList::FindValuedPieces(BitField &bf, const btPeer *proposer,
+  int initial) const
 {
   PEERNODE *p;
   BitField bf_all_have = bf, bf_int_have = bf,
@@ -677,34 +709,116 @@ void PeerList::CompareRequest(btPeer *proposer, size_t idx)
   }while( p && ++count < qlen );
 }
 
-void PeerList::CancelSlice(size_t idx, size_t off, size_t len)
+int PeerList::CancelSlice(size_t idx, size_t off, size_t len)
 {
   PEERNODE *p;
-  PSLICE ps;
+  int t, r=0;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) ) continue;
 
-    if( p->peer->CancelSliceRequest(idx,off,len) < 0 ){
-      if(arg_verbose) CONSOLE.Debug("close: CancelSlice");
-      p->peer->CloseConnection();
+    t = p->peer->CancelSliceRequest(idx, off, len);
+    if( t ){
+      r = 1;
+      if( t < 0 ){
+        if(arg_verbose) CONSOLE.Debug("close: CancelSlice");
+        p->peer->CloseConnection();
+      }
+    }
+  }
+  return r;
+}
+
+int PeerList::CancelPiece(size_t idx)
+{
+  PEERNODE *p;
+  int t, r=0;
+
+  for( p = m_head; p; p = p->next ){
+    if( !PEER_IS_SUCCESS(p->peer) ) continue;
+
+    t = p->peer->CancelPiece(idx);
+    if( t ){
+      r = 1;
+      if( t < 0 ){
+        if(arg_verbose) CONSOLE.Debug("close: CancelPiece");
+        p->peer->CloseConnection();
+      }
+    }
+  }
+  return r;
+}
+
+// Cancel one peer's request for a specific piece.
+void PeerList::CancelOneRequest(size_t idx)
+{
+  PEERNODE *p;
+  PSLICE ps;
+  btPeer *peer = (btPeer *)0;
+  int count, max=0, dupcount=0, pending = 0;
+
+  if( PENDINGQUEUE.Exist(idx) ){
+    pending = 1;
+    dupcount++;
+  }
+  for( p = m_head; p; p = p->next ){
+    if( !PEER_IS_SUCCESS(p->peer) ) continue;
+
+    // select the peer with the most requests ahead of the target piece
+    count = 0;
+    ps = p->peer->request_q.GetHead();
+    for( ; ps; ps = ps->next ){
+      if( ps->index == idx ) break;
+      else count++;
+    }
+    if( ps ){
+      dupcount++;
+      // in a tie, select the slower peer
+      if( count > max || !peer ||
+          (!pending && count == max &&
+            p->peer->NominalDL() < peer->NominalDL()) ){
+        peer = p->peer;
+        max = count;
+      }
+    }
+  }
+  if( peer && dupcount > peer->request_q.Qlen(idx) ){
+    if( pending ) PENDINGQUEUE.Delete(idx);
+    else{
+      CONSOLE.Debug("Cancel #%d on %p (%d B/s)", (int)idx, peer,
+        (int)(peer->NominalDL()));
+      peer->CancelPiece(idx);
+    }
+    if( dupcount == 2 ){  // was 2, now only 1
+      m_dup_req_pieces--;
+      CONSOLE.Debug("%d dup req pieces", (int)m_dup_req_pieces);
     }
   }
 }
 
-void PeerList::CancelPiece(size_t idx)
+void PeerList::RecalcDupReqs()
 {
   PEERNODE *p;
   PSLICE ps;
+  size_t idx;
+  BitField rqbf, dupbf;
 
   for( p = m_head; p; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) ) continue;
-
-    if( p->peer->CancelPiece(idx) < 0 ){
-      if(arg_verbose) CONSOLE.Debug("close: CancelPiece");
-      p->peer->CloseConnection();
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
+    ps = p->peer->request_q.GetHead();
+    idx = BTCONTENT.GetNPieces();
+    for( ; ps; ps = ps->next ){
+      if( idx == ps->index ) continue;
+      idx = ps->index;
+      if( rqbf.IsSet(idx) ) dupbf.Set(idx);
+      else{
+        rqbf.Set(idx);
+        if( PENDINGQUEUE.Exist(idx) ) dupbf.Set(idx);
+      }
     }
   }
+  m_dup_req_pieces = dupbf.Count();
+  CONSOLE.Debug("recalc: %d dup req pieces", (int)m_dup_req_pieces);
 }
 
 void PeerList::Tell_World_I_Have(size_t idx)
@@ -1196,21 +1310,44 @@ btPeer* PeerList::GetNextPeer(btPeer *peer) const
   else return (btPeer*) 0;
 }
 
-int PeerList::Endgame() const
+int PeerList::Endgame()
 {
   BitField tmpBitfield;
+  int endgame = 0;
 
   tmpBitfield = *BTCONTENT.pBF;
   tmpBitfield.Invert();                       // what I don't have...
   tmpBitfield.Except(BTCONTENT.GetFilter());  // ...that I want
-  if( tmpBitfield.Count() < m_peers_count ) return 1;
+  if( tmpBitfield.Count() > 0 &&
+      tmpBitfield.Count() < m_peers_count - m_conn_count )
+    endgame = 1;
+  else{
+    Pieces_I_Can_Get(&tmpBitfield);             // what's available...
+    tmpBitfield.Except(BTCONTENT.GetFilter());  // ...that I want...
+    tmpBitfield.Except(*BTCONTENT.pBF);         // ...that I don't have
+    if( tmpBitfield.Count() > 0 &&
+        tmpBitfield.Count() < m_peers_count - m_conn_count)
+      endgame = 1;
+  }
 
-  Pieces_I_Can_Get(&tmpBitfield);             // what's available...
-  tmpBitfield.Except(BTCONTENT.GetFilter());  // ...that I want...
-  tmpBitfield.Except(*BTCONTENT.pBF);         // ...that I don't have
-  if( tmpBitfield.Count() < m_peers_count ) return 1;
+  if( endgame && !m_endgame ){
+    if(arg_verbose) CONSOLE.Debug("Endgame (dup request) mode");
+    UnStandby();
+  }else if( !endgame && m_endgame ){
+    if(arg_verbose) CONSOLE.Debug("Normal (non dup request) mode");
+    RecalcDupReqs();  // failsafe
+  }
 
-  return 0;
+  m_endgame = endgame;
+  return endgame;
+}
+
+void PeerList::UnStandby()
+{
+  PEERNODE *p = m_head;
+  for( ; p; p = p->next ){
+    if( PEER_IS_SUCCESS(p->peer) ) p->peer->UnStandby();
+  }
 }
 
 void PeerList::Pause()
@@ -1287,17 +1424,6 @@ size_t PeerList::GetSlowestUp(size_t minimum) const
                              ((rate = Self.RateUL()) ? rate / unchoked : 1);
     else return 0;
   }
-}
-
-size_t PeerList::GetDownloads() const
-{
-  PEERNODE *p;
-  size_t count = 0;
-
-  for( p = m_head; p; p = p->next ){
-    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Remote_UnChoked() ) count++;
-  }
-  return count;
 }
 
 int PeerList::BandWidthLimitUp(double when)

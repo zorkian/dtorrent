@@ -144,7 +144,6 @@ class btPeer:public btBasic
   int ReportComplete(size_t idx, size_t len);
   int RequestCheck();
   int SendRequest();
-  int CancelPiece();
   int ReponseSlice();
   int RequestPiece();
   int MsgDeliver();
