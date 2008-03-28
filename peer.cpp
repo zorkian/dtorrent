@@ -768,11 +768,11 @@ int btPeer::ReportComplete(size_t idx, size_t len)
   // Need to re-download entire piece if check failed, so cleanup in any case.
   m_prefetch_completion = 0;
   if( WORLD.GetDupReqs() && BTCONTENT.pBMultPeer->IsSet(idx) ){
-    if( WORLD.CancelPiece(idx) )
-      CONSOLE.Warning(2, "Duplicate request cancelled in piece completion");
+    if( WORLD.CancelPiece(idx) && arg_verbose )
+      CONSOLE.Debug("Duplicate request cancelled in piece completion");
   }
-  if( PENDINGQUEUE.Delete(idx) )
-    CONSOLE.Warning(2, "Duplicate found in Pending, shouldn't be there");
+  if( PENDINGQUEUE.Delete(idx) && arg_verbose )
+    CONSOLE.Debug("Duplicate found in Pending, shouldn't be there");
   BTCONTENT.pBMultPeer->UnSet(idx);
   return r;
 }
