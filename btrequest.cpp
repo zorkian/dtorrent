@@ -492,10 +492,12 @@ void PendingQueue::Empty()
 
 int PendingQueue::Exist(size_t idx) const
 {
-  int i = 0;
-  for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
-    if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index )
-      return 1;
+  int i, j = 0;
+  for ( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
+    if( pending_array[i] ){
+      j++;
+      if( idx == pending_array[i]->index ) return 1;
+    }
   }
   return 0;
 }
@@ -604,13 +606,16 @@ size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
 
 int PendingQueue::Delete(size_t idx)
 {
-  int i, r = 0;
-  for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
-    if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index ){
-      r = 1;
-      _empty_slice_list(&(pending_array[i])); 
-      pq_count--;
-      break;
+  int i, j = 0, r = 0;
+  for ( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
+    if( pending_array[i] ){
+      j++;
+      if( idx == pending_array[i]->index ){
+        r = 1;
+        _empty_slice_list(&(pending_array[i])); 
+        pq_count--;
+        break;
+      }
     }
   }
   return r;
@@ -618,20 +623,23 @@ int PendingQueue::Delete(size_t idx)
 
 int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
 {
-  int i, r = 0;
+  int i, j = 0, r = 0;
   RequestQueue rq;
-  for( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
-    if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index ){
-      //check if off & len match any slice
-      //remove the slice if so
-      rq.SetHead(pending_array[i]);
-      if( rq.Remove(idx, off, len) == 0 ){
-        r = 1;
-        pending_array[i] = rq.GetHead();
-        if( (PSLICE) 0 == pending_array[i] ) pq_count--;
-        i = PENDING_QUEUE_SIZE;   // exit loop
+  for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
+    if( pending_array[i] ){
+      j++;
+      if( idx == pending_array[i]->index ){
+        //check if off & len match any slice
+        //remove the slice if so
+        rq.SetHead(pending_array[i]);
+        if( rq.Remove(idx, off, len) == 0 ){
+          r = 1;
+          pending_array[i] = rq.GetHead();
+          if( (PSLICE) 0 == pending_array[i] ) pq_count--;
+          i = PENDING_QUEUE_SIZE;   // exit loop
+        }
+        rq.Release();
       }
-      rq.Release();
     }
   }
   return r;
