@@ -78,7 +78,7 @@ class PendingQueue
   ~PendingQueue();
   void Empty();
   int Pending(RequestQueue *prq);
-  int ReAssign(RequestQueue *prq, BitField &bf);
+  size_t ReAssign(RequestQueue *prq, BitField &bf);
   int Exist(size_t idx) const;
   int Delete(size_t idx);
   int DeleteSlice(size_t idx, size_t off, size_t len);

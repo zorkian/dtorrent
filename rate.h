@@ -50,6 +50,7 @@ class Rate{
   void ClearHistory();
   void Cleanup();
   void CountAdd(size_t nbytes);
+  void UnCount(size_t nbytes);
   void RateAdd(size_t nbytes, size_t bwlimit);
   void RateAdd(size_t nbytes, size_t bwlimit, double timestamp);
   void operator=(const Rate &ra);

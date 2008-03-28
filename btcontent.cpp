@@ -85,6 +85,7 @@ btContent::btContent()
   pBMasterFilter = (BitField*) 0;
   pBRefer = (BitField*) 0;
   pBChecked = (BitField*) 0;
+  pBMultPeer = (BitField*) 0;
   time(&m_start_timestamp);
   m_cache_oldest = m_cache_newest = (BTCACHE *)0;
   m_cache_size = m_cache_used = 0;
@@ -383,6 +384,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     pBChecked = new BitField(m_npieces);
 #ifndef WINDOWS
     if( !pBChecked ) ERR_RETURN();
+#endif
+
+    pBMultPeer = new BitField(m_npieces);
+#ifndef WINDOWS
+    if( !pBMultPeer ) ERR_RETURN();
 #endif
 
     //create the file filter
@@ -1161,6 +1167,7 @@ int btContent::APieceComplete(size_t idx)
 
   pBF->Set(idx);
   m_left_bytes -= GetPieceLength(idx);
+  Tracker.CountDL(GetPieceLength(idx));
 
   // Add the completed piece to the flush queue.
   if( cfg_cache_size ){
@@ -1546,6 +1553,13 @@ void btContent::SaveBitfield()
     }
     if( !pBF->IsFull() ) pBF->WriteToFile(arg_bitfield_file);
   }
+}
+
+
+void btContent::CountDupBlock(size_t len)
+{
+  m_dup_blocks++;
+  Tracker.CountDL(len);
 }
 
 

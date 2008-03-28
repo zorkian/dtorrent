@@ -97,6 +97,7 @@ class btContent
   BitField *pBMasterFilter;
   BitField *pBRefer;
   BitField *pBChecked;
+  BitField *pBMultPeer;
   char *global_piece_buffer;
   size_t global_buffer_size;
   
@@ -175,7 +176,7 @@ class btContent
   size_t GetDupBlocks() const { return m_dup_blocks; }
   size_t GetUnwantedBlocks() const { return m_unwanted_blocks; }
   void CountHashFailure() { m_hash_failures++; }
-  void CountDupBlock() { m_dup_blocks++; }
+  void CountDupBlock(size_t len);
   void CountUnwantedBlock() { m_unwanted_blocks++; }
 
   int IsFull() const { return pBF->IsFull(); }

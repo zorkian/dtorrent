@@ -133,6 +133,12 @@ void Rate::CountAdd(size_t nbytes)
   if( m_selfrate ) m_selfrate->CountAdd(nbytes);
 }
 
+void Rate::UnCount(size_t nbytes)
+{
+  m_count_bytes -= nbytes;
+  if( m_selfrate ) m_selfrate->UnCount(nbytes);
+}
+
 void Rate::RateAdd(size_t nbytes, size_t bwlimit)
 {
   struct timespec nowspec;

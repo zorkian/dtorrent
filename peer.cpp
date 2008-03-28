@@ -207,8 +207,11 @@ int btPeer::RequestPiece()
 
   tmpBitfield = bitfield;
   tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
-  if( PENDINGQUEUE.ReAssign(&request_q, tmpBitfield) ){
-    if(arg_verbose) CONSOLE.Debug("Assigning to %p from Pending", this);
+  if( (idx = PENDINGQUEUE.ReAssign(&request_q, tmpBitfield)) <
+      BTCONTENT.GetNPieces() ){
+    if(arg_verbose)
+      CONSOLE.Debug("Assigning #%d to %p from Pending", (int)idx, this);
+    BTCONTENT.pBMultPeer->Set(idx);
     return SendRequest();
   }
 
@@ -246,7 +249,8 @@ int btPeer::RequestPiece()
         if(arg_verbose) CONSOLE.Debug("Duping: %p to %p (#%d)",
           peer, this, (int)idx);
         if(request_q.CopyShuffle(&peer->request_q, idx) < 0) return -1;
-        else return SendRequest();
+        BTCONTENT.pBMultPeer->Set(idx);
+        return SendRequest();
       }
     }else if(arg_verbose) CONSOLE.Debug("Nothing to dup to %p", this);
   }
@@ -289,7 +293,8 @@ int btPeer::RequestPiece()
           if(arg_verbose) CONSOLE.Debug("Duping: %p to %p (#%d)",
             peer, this, (int)idx);
           if(request_q.CopyShuffle(&peer->request_q, idx) < 0) return -1;
-          else return SendRequest();
+          BTCONTENT.pBMultPeer->Set(idx);
+          return SendRequest();
         }
       }
     }
@@ -301,6 +306,7 @@ int btPeer::RequestPiece()
         (int)idx, peer, this);
       // RequestQueue class "moves" rather than "copies" in assignment!
       if( request_q.Copy(&peer->request_q, idx) < 0 ) return -1;
+      BTCONTENT.pBMultPeer->Set(idx);
       if( endgame ) peer->UnStandby();
       if( peer->CancelPiece(idx) < 0 ) peer->CloseConnection();
       return SendRequest();
@@ -723,7 +729,7 @@ size_t btPeer::FindLastCommonRequest(BitField &proposerbf)
   return piece;
 }
 
-int btPeer::ReportComplete(size_t idx)
+int btPeer::ReportComplete(size_t idx, size_t len)
 {
   int r;
 
@@ -736,9 +742,14 @@ int btPeer::ReportComplete(size_t idx)
   }else if( 0 == r ){  // hash check failed
     // Don't count an error against the peer in initial or endgame mode, since
     // some slices may have come from other peers.
-    if( !(BTCONTENT.pBF->Count() < 2 || WORLD.Endgame()) ){
-      if( PeerError(1, "Bad complete") < 0 ) CloseConnection();
-      else ResetDLTimer(); // set peer rate=0 so we don't favor for upload
+    if( !BTCONTENT.pBMultPeer->IsSet(idx) ){
+      // The entire piece came from this peer.
+      DataUnRec(BTCONTENT.GetPieceLength(idx) - len);
+      if( PeerError(4, "Bad complete") < 0 ) CloseConnection();
+      else{
+        ResetDLTimer();  // set peer rate=0 so we don't favor for upload
+        bitfield.UnSet(idx);  // don't request this piece from this peer again
+      }
     }
   }
   // Need to re-download entire piece if check failed, so cleanup in any case.
@@ -746,6 +757,7 @@ int btPeer::ReportComplete(size_t idx)
   // We don't track request duplication accurately, so clean up just in case.
   WORLD.CancelPiece(idx);
   PENDINGQUEUE.Delete(idx);
+  BTCONTENT.pBMultPeer->UnSet(idx);
   return r;
 }
 
@@ -812,12 +824,11 @@ int btPeer::PieceDeliver(size_t mlen)
       sprintf(msg, "Unrequested piece %d/%d/%d", (int)idx, (int)off, (int)len);
       if( PeerError(1, msg) < 0 ) return -1;
       ResetDLTimer(); // set peer rate=0 so we don't favor for upload
-      f_count = 0;
-      f_want = 0;
+      f_count = f_want = 0;
     }else{
       if(arg_verbose) CONSOLE.Debug("Unneeded piece %d/%d/%d from %p",
         (int)idx, (int)off, (int)len, this);
-      BTCONTENT.CountDupBlock();
+      BTCONTENT.CountDupBlock(len);
     }
     f_success = 0;
   }
@@ -855,7 +866,7 @@ int btPeer::PieceDeliver(size_t mlen)
     // Above WriteSlice may have triggered flush failure.  If data was saved,
     // slice was deleted from Pending.  If piece is incomplete, it's in Pending.
     if( !(BTCONTENT.FlushFailed() && PENDINGQUEUE.Exist(idx)) &&
-        !ReportComplete(idx) )
+        !ReportComplete(idx, len) )
       f_count = 0;
   }
 

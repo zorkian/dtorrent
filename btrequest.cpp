@@ -492,11 +492,12 @@ int PendingQueue::Pending(RequestQueue *prq)
   return 0;
 }
 
-int PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
+size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
 {
   int i = 0;
   size_t sc = pq_count;
-  size_t idx;
+  size_t idx = BTCONTENT.GetNPieces();
+
   for( ; i < PENDING_QUEUE_SIZE && sc; i++ ){
     if( pending_array[i] != (PSLICE) 0){
       if( bf.IsSet(pending_array[i]->index) &&
@@ -511,8 +512,8 @@ int PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
       sc--;
     }
   }
-  // Return value now indicates whether a piece was assigned.
-  return sc;
+  // Return value now indicates the assigned piece or GetNPieces
+  return idx;
 }
 
 // This routine should no longer be necessary, but keeping it as a failsafe.

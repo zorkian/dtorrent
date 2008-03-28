@@ -58,7 +58,7 @@ class btTracker
   size_t m_seeds_count;	// total number of seeds
   size_t m_prevpeers;	// number of peers previously seen
   time_t m_report_time;
-  uint64_t m_report_dl, m_report_ul;
+  uint64_t m_totaldl, m_totalul, m_report_dl, m_report_ul;
 
   SOCKET m_sock;
   BufIo m_request_buffer, m_reponse_buffer;
@@ -109,6 +109,8 @@ class btTracker
   time_t GetReportTime() const { return m_report_time; }
   uint64_t GetReportDL() const { return m_report_dl; }
   uint64_t GetReportUL() const { return m_report_ul; }
+  void CountDL(size_t nbytes) { m_totaldl += nbytes; }
+  void CountUL(size_t nbytes) { m_totalul += nbytes; }
 };
 
 extern btTracker Tracker;

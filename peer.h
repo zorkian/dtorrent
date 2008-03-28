@@ -69,6 +69,7 @@ public:
   uint64_t TotalUL() const { return rate_ul.Count(); }
 
   void DataRecved(size_t nby) { rate_dl.CountAdd(nby); }
+  void DataUnRec(size_t nby) { rate_dl.UnCount(nby); }
   void DataSended(size_t nby, double timestamp) { rate_ul.CountAdd(nby);
     rate_ul.RateAdd(nby, (size_t)cfg_max_bandwidth_up, timestamp); }
 
@@ -140,7 +141,7 @@ class btPeer:public btBasic
   static unsigned char g_defer_up;
   
   int PieceDeliver(size_t mlen);
-  int ReportComplete(size_t idx);
+  int ReportComplete(size_t idx, size_t len);
   int RequestCheck();
   int SendRequest();
   int CancelPiece();
