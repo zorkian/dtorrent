@@ -125,7 +125,7 @@ class btPeer:public btBasic
   BTSTATUS m_state;
 
   size_t m_cached_idx;
-  size_t m_err_count;
+  int m_err_count;
   size_t m_req_send;  // target number of outstanding requests
   size_t m_req_out;   // actual number of outstanding requests
   size_t m_latency;
