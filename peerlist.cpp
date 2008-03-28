@@ -484,18 +484,35 @@ btPeer* PeerList::Who_Can_Abandon(btPeer *proposer)
 {
   PEERNODE *p;
   btPeer *peer = (btPeer*) 0;
+  PSLICE ps;
+  size_t idx;
+
   for( p = m_head; p; p = p->next ){
     if(!PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
        p->peer->request_q.IsEmpty() ) continue;
 
-    if(proposer->bitfield.IsSet(p->peer->request_q.GetRequestIdx())){
-      if(!peer){
-        if( p->peer->RateDL() < proposer->RateDL() ) peer = p->peer;
-      }else{
-        if( p->peer->RateDL() < peer->RateDL() ) peer = p->peer;
+    if( (peer && p->peer->NominalDL() < peer->NominalDL()) ||
+        (!peer && p->peer->NominalDL() * 1.5 < proposer->NominalDL()) ){
+      idx = p->peer->request_q.GetRequestIdx();
+      if( proposer->bitfield.IsSet(idx) && !proposer->request_q.HasIdx(idx) )
+        peer = p->peer;
+      else{
+        ps = p->peer->request_q.GetHead();
+        for( ; ps; ps = ps->next ){
+          if( idx == ps->index ) continue;
+          idx = ps->index;
+          if( proposer->bitfield.IsSet(idx) &&
+              !proposer->request_q.HasIdx(idx) ){
+            peer = p->peer;
+            break;
+          }
+        }
       }
     }
-  }//end for
+  } //end for
+  if( peer && arg_verbose )
+    CONSOLE.Debug("Abandoning %p (%d B/s) for %p (%d B/s)",
+      peer, peer->NominalDL(), proposer, proposer->NominalDL());
   return peer;
 }
 

@@ -68,18 +68,32 @@ void RequestQueue::operator=(RequestQueue &rq)
   }
 }
 
-int RequestQueue::Copy(RequestQueue *prq)
+int RequestQueue::Copy(const RequestQueue *prq, size_t idx)
 {
-  PSLICE n, u=(PSLICE)0, ps;
-  size_t idx;
+  PSLICE n, u, ps;
+  int found = 0;
 
   if( prq->IsEmpty() ) return 0;
 
+  n = rq_head;
+  u = (PSLICE)0;
+  for( ; n ; u = n, n = u->next );  // move to end
+
   ps = prq->GetHead();
-  idx = ps->index;
   for( ; ps; ps = ps->next ){
-    if( ps->index != idx ) break;
-    if( Add(ps->index, ps->offset, ps->length) < 0 ) return -1;
+    if( ps->index != idx ){
+      if( found ) break;
+      else continue;
+    }else found = 1;
+    if( Add(ps->index, ps->offset, ps->length) < 0 ){
+      PSLICE temp;
+      for( n = u ? u->next : rq_head; n; n=temp ){
+        temp = n->next;
+        delete n;
+      }
+      if( u ) u->next = (PSLICE)0;
+      return -1;
+    }
   }
   return 0;
 }

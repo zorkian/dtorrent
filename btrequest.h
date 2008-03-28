@@ -39,7 +39,7 @@ class RequestQueue
   int IsValidRequest(size_t idx,size_t off,size_t len) const;
 
   void operator=(RequestQueue &rq);
-  int Copy(RequestQueue *prq);
+  int Copy(const RequestQueue *prq, size_t idx);
   int CopyShuffle(RequestQueue *prq, size_t piece);
   size_t Qsize() const;
   size_t Qlen(size_t piece) const;
