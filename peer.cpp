@@ -361,9 +361,11 @@ int btPeer::MsgDeliver()
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 1;
-      StopDLTimer();
-      if( g_next_dn == this ) g_next_dn = (btPeer *)0;
-      PutPending();
+      if( !stream.PeekNextMessage(M_UNCHOKE) ){
+        StopDLTimer();
+        if( g_next_dn == this ) g_next_dn = (btPeer *)0;
+        PutPending();
+      }
       break;
 
     case M_UNCHOKE:
@@ -374,8 +376,11 @@ int btPeer::MsgDeliver()
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 0;
-      m_prefetch_completion = 0;
-      retval = RequestCheck();
+      m_standby = 0;
+      if( !stream.PeekNextMessage(M_CHOKE) ){
+        m_prefetch_completion = 0;
+        retval = RequestCheck();
+      }
       break;
 
     case M_INTERESTED:

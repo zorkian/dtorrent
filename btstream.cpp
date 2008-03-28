@@ -183,3 +183,13 @@ int btStream::PeekMessage(char m)
            get_nl(in_buffer.BasePointer()) ) ? 1 : 0;
 }
 
+// Is the next next message known to match m?
+int btStream::PeekNextMessage(char m)
+{
+  char *base;
+
+  base = in_buffer.BasePointer() + H_LEN + get_nl(in_buffer.BasePointer());
+  return ( H_LEN < in_buffer.Count() - (base - in_buffer.BasePointer()) &&
+    m == base[H_LEN] && get_nl(base) ) ? 1 : 0;
+}
+

@@ -49,6 +49,7 @@ public:
   int HaveMessage();  // 返回值 1: 缓存中有消息 0: 暂无消息 -1: 失败
   char PeekMessage();
   int PeekMessage(char m);
+  int PeekNextMessage(char m);
 
   ssize_t Send_Keepalive();
   ssize_t Send_State(unsigned char state);
