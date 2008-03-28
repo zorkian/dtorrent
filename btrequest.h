@@ -52,6 +52,7 @@ class RequestQueue
   int Append(PSLICE ps);
   int Remove(size_t idx,size_t off,size_t len);
   int Requeue(size_t idx,size_t off,size_t len);
+  void MoveLast(PSLICE ps);
   int HasIdx(size_t idx) const;
   time_t GetReqTime(size_t idx,size_t off,size_t len) const;
   void SetReqTime(PSLICE n,time_t t);

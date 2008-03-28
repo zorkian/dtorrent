@@ -211,6 +211,7 @@ int btPeer::RequestPiece()
       BTCONTENT.GetNPieces() ){
     if(arg_verbose)
       CONSOLE.Debug("Assigning #%d to %p from Pending", (int)idx, this);
+    if( BTCONTENT.pBMultPeer->IsSet(idx) ) WORLD.CompareRequest(this, idx);
     BTCONTENT.pBMultPeer->Set(idx);
     return SendRequest();
   }
@@ -241,18 +242,22 @@ int btPeer::RequestPiece()
         pfilter = BTCONTENT.GetNextFilter(pfilter);
       }
     }while( pfilter && tmpBitfield.IsEmpty() );
-    idx = WORLD.What_Can_Duplicate(tmpBitfield, this, BTCONTENT.GetNPieces());
-    if( idx < BTCONTENT.GetNPieces() ){
-      if(arg_verbose) CONSOLE.Debug("Want to dup #%d to %p", (int)idx, this);
-      btPeer *peer = WORLD.WhoHas(idx);
-      if(peer){
-        if(arg_verbose) CONSOLE.Debug("Duping: %p to %p (#%d)",
-          peer, this, (int)idx);
-        if(request_q.CopyShuffle(&peer->request_q, idx) < 0) return -1;
-        BTCONTENT.pBMultPeer->Set(idx);
-        return SendRequest();
-      }
-    }else if(arg_verbose) CONSOLE.Debug("Nothing to dup to %p", this);
+    if( m_latency < 60 ){
+      // Don't dup to very slow/high latency peers.
+      idx = WORLD.What_Can_Duplicate(tmpBitfield, this, BTCONTENT.GetNPieces());
+      if( idx < BTCONTENT.GetNPieces() ){
+        if(arg_verbose) CONSOLE.Debug("Want to dup #%d to %p", (int)idx, this);
+        btPeer *peer = WORLD.WhoHas(idx);
+        if(peer){
+          if(arg_verbose) CONSOLE.Debug("Duping #%d from %p to %p",
+            (int)idx, peer, this);
+          if( request_q.CopyShuffle(&peer->request_q, idx) < 0 ) return -1;
+          WORLD.CompareRequest(this, idx);
+          BTCONTENT.pBMultPeer->Set(idx);
+          return SendRequest();
+        }
+      }else if(arg_verbose) CONSOLE.Debug("Nothing to dup to %p", this);
+    }
   }
 
   // Doesn't have a piece that's already in progress--choose another.
@@ -280,7 +285,8 @@ int btPeer::RequestPiece()
   if( tmpBitfield2.IsEmpty() ){
     // Everything this peer has that I want, I've already requested.
     int endgame = WORLD.Endgame();
-    if( endgame ){  // OK to duplicate a request.
+    if( endgame && m_latency < 60 ){
+      // OK to duplicate a request, but not to very slow/high latency peers.
 //    idx = tmpBitfield.Random();
       idx = 0;  // flag for Who_Can_Duplicate()
       BitField tmpBitfield3 = tmpBitfield2;
@@ -289,10 +295,11 @@ int btPeer::RequestPiece()
         if(arg_verbose) CONSOLE.Debug("Want to dup #%d to %p",
           (int)idx, this);
         btPeer *peer = WORLD.WhoHas(idx);
-        if(peer){
-          if(arg_verbose) CONSOLE.Debug("Duping: %p to %p (#%d)",
-            peer, this, (int)idx);
-          if(request_q.CopyShuffle(&peer->request_q, idx) < 0) return -1;
+        if(peer){  // failsafe
+          if(arg_verbose) CONSOLE.Debug("Duping #%d from %p to %p",
+            (int)idx, peer, this);
+          if( request_q.CopyShuffle(&peer->request_q, idx) < 0 ) return -1;
+          WORLD.CompareRequest(this, idx);
           BTCONTENT.pBMultPeer->Set(idx);
           return SendRequest();
         }
@@ -306,6 +313,7 @@ int btPeer::RequestPiece()
         (int)idx, peer, this);
       // RequestQueue class "moves" rather than "copies" in assignment!
       if( request_q.Copy(&peer->request_q, idx) < 0 ) return -1;
+      WORLD.CompareRequest(this, idx);
       BTCONTENT.pBMultPeer->Set(idx);
       if( endgame ) peer->UnStandby();
       if( peer->CancelPiece(idx) < 0 ) peer->CloseConnection();

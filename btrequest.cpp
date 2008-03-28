@@ -335,6 +335,23 @@ int RequestQueue::Requeue(size_t idx,size_t off,size_t len)
   return retval;
 }
 
+// Move the slice to the end of its piece sequence.
+void RequestQueue::MoveLast(PSLICE ps)
+{
+  PSLICE n, u;
+
+  for( n = rq_head; n && n->next != ps; n = n->next );
+  if( !n || !ps ) return;
+  for( u = ps; u->next && u->next->index == ps->index; u = u->next );
+  if( u == ps ) return;
+
+  if( rq_send == ps ) rq_send = ps->next;
+  else if( rq_send == u->next ) rq_send = ps;
+  n->next = ps->next;
+  ps->next = u->next;
+  u->next = ps;
+}
+
 int RequestQueue::HasIdx(size_t idx) const
 {
   PSLICE n = rq_head;

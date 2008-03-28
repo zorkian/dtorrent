@@ -636,6 +636,36 @@ btPeer *PeerList::WhoHas(size_t idx) const
   return peer;
 }
 
+/* If another peer has the same slice requested first, move the proposer's
+   slice to the last position for the piece. */
+void PeerList::CompareRequest(btPeer *proposer, size_t idx)
+{
+  PSLICE ps, qs;
+  PEERNODE *p;
+  size_t qlen, count=0;
+
+  ps = proposer->request_q.GetHead();
+  for( ; ps && idx != ps->index; ps = ps->next );
+  if( !ps ) return;
+
+  qlen = proposer->request_q.Qlen(idx);
+
+  do{
+    for( p = m_head; p; p = p->next ){
+      if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
+      qs = p->peer->request_q.GetHead();
+      for( ; qs && idx != qs->index; qs = qs->next );
+      if( qs && ps->index == qs->index && ps->offset == qs->offset &&
+          ps->length == qs->length ){
+        qs = ps->next;
+        proposer->request_q.MoveLast(ps);
+        ps = qs;
+        break;
+      }
+    }
+  }while( p && ++count < qlen );
+}
+
 void PeerList::CancelSlice(size_t idx, size_t off, size_t len)
 {
   PEERNODE *p;
