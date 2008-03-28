@@ -1246,18 +1246,22 @@ int btPeer::HealthCheck()
     }
   }else if( m_health_time <= now - 60 ){
     m_health_time = now;
-    if( !m_state.remote_choked && m_req_out &&
-        m_receive_time < now - (!m_latency ? 300 :
-                               ((m_latency < 30) ? 60 : (2*m_latency))) ){
-      // if a repeat occurrence, get rid of the peer
-      if( m_bad_health ) return -1;
-      m_bad_health = 1;
-      if(arg_verbose)
-        CONSOLE.Debug("%p unresponsive; resetting request queue", this);
-      int retval = CancelRequest();
-      PutPending();
-      return (retval < 0) ? -1 : RequestCheck();
-    } else m_bad_health = 0;
+    if( !m_state.remote_choked && m_req_out ){
+      size_t allowance = !m_latency ? 150 : ((m_latency < 60) ? 60 : m_latency);
+      if( m_receive_time < now - 2*allowance ){
+        // if a repeat occurrence, get rid of the peer
+        if( m_bad_health || PeerError(2, "unresponsive") < 0 ) return -1;
+        m_bad_health = 1;
+        if(arg_verbose)
+          CONSOLE.Debug("%p unresponsive; resetting request queue", this);
+        int retval = CancelRequest();
+        PutPending();
+        return (retval < 0) ? -1 : 0;
+      }else if( m_receive_time < now - allowance ){
+        CONSOLE.Debug("%p unresponsive; sending keepalive", this);
+        AreYouOK();  // keepalive--may stimulate the connection
+      }else m_bad_health = 0;
+    }else m_bad_health = 0;
   }
   return 0;
 }
