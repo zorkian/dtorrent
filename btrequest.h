@@ -40,7 +40,7 @@ class RequestQueue
 
   void operator=(RequestQueue &rq);
   int Copy(const RequestQueue *prq, size_t idx);
-  int CopyShuffle(RequestQueue *prq, size_t piece);
+  int CopyShuffle(const RequestQueue *prq, size_t idx);
   size_t Qsize() const;
   size_t Qlen(size_t piece) const;
   int LastSlice() const;

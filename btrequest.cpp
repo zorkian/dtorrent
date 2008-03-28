@@ -98,56 +98,91 @@ int RequestQueue::Copy(const RequestQueue *prq, size_t idx)
   return 0;
 }
 
-int RequestQueue::CopyShuffle(RequestQueue *prq, size_t piece)
+int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
 {
-  PSLICE n, u=(PSLICE)0, ps, start;
-  size_t idx;
+  PSLICE n, u, ps, prev, end, psnext, temp;
+  SLICE dummy;
   unsigned long rndbits;
-  int i=0;
+  int len, shuffle, i=0, setsend=0;
+  size_t firstoff;
 
   if( prq->IsEmpty() ) return 0;
 
   n = rq_head;
-  for( ; n ; u = n,n = u->next ); // move to end
+  u = (PSLICE)0;
+  for( ; n ; u = n, n = u->next );  // move to end
+
+  if( !rq_send ) setsend = 1;
 
   ps = prq->GetHead();
-  for( ; ps && ps->index != piece; ps = ps->next );
-  start = ps;
+  for( ; ps && ps->index != idx; ps = ps->next );
+  if( !ps ) return -1;
+  firstoff = ps->offset;
+  for( len=0; ps && ps->index == idx; ps = ps->next ){
+    if( Add(ps->index, ps->offset, ps->length) < 0 ){
+      for( n = u ? u->next : rq_head; n; n=temp ){
+        temp = n->next;
+        delete n;
+      }
+      if( u ) u->next = (PSLICE)0;
+      return -1;
+    }
+    len++;
+  }
+  if( !u ){
+    u = &dummy;
+    u->next = rq_head;
+  }
 
-  idx = ps->index;
-
-  // First, skip to the slices that haven't been sent to the original peer.
-  if( prq->rq_send && prq->rq_send->index == idx ){
-    ps = prq->rq_send;
-    for( ; ps; ps = ps->next ){
-      if( ps->index != idx ) break;
+  shuffle = (random()&0x07)+2;
+  if( shuffle > len/2 ) shuffle = len/2;
+  for( ; shuffle; shuffle-- ){
+    prev = u;
+    ps = u->next->next;
+    u->next->next = (PSLICE)0;
+    end = u->next;
+    for( ; ps; ps = psnext ){
+      psnext = ps->next;
       if( !i-- ){
         rndbits = random();
-        i = 30;
+        i = sizeof(rndbits) - 3;  // insure an extra bit
       }
-      if( (rndbits>>=1)&01 ){
-        if( Add(ps->index, ps->offset, ps->length) < 0 ) return -1;
+      if( (rndbits>>=1)&01 ){  // beginning or end of list
+        if( (rndbits>>=1)&01 ){
+          prev = end;
+          ps->next = (PSLICE)0;
+          end->next = ps;
+          end = ps;
+        }else{
+          ps->next = u->next;
+          u->next = ps;
+          prev = u;
+        }
+      }else{  // before or after previous insertion
+        if( (rndbits>>=1)&01 ){  // put after prev->next
+          if( end == prev->next ) end = ps;
+          temp = prev->next;
+          ps->next = prev->next->next;
+          prev->next->next = ps;
+          prev = temp;
+        }else{  // put after prev (before prev->next)
+          ps->next = prev->next;
+          prev->next = ps;
+        }
       }
-      else if( Insert(u, ps->index, ps->offset, ps->length) < 0 ) return -1;
     }
-    if(u) n = u->next;
-    else n = rq_head;
-    for( ; n ; u = n,n = u->next ); // move to end
-  }
+  }  // shuffle loop
 
-  // Now put the already-requested slices at the end.
-  ps = start;
-  for( ; ps && ps != prq->rq_send; ps = ps->next ){
-    if( ps->index != idx ) break;
-    if( !i-- ){
-      rndbits = random();
-      i = 30;
-    }
-    if( (rndbits>>=1)&01 ){
-      if( Add(ps->index, ps->offset, ps->length) < 0 ) return -1;
-    }
-    else if( Insert(u, ps->index, ps->offset, ps->length) < 0 ) return -1;
+  // If first slice is the same as in the original, move it to the end.
+  if( u->next->offset == firstoff ){
+    end->next = u->next;
+    u->next = u->next->next;
+    end = end->next;
+    end->next = (PSLICE)0;
   }
+  if( u == &dummy ) rq_head = u->next;
+  if( setsend ) rq_send = u->next;
+
   return 0;
 }
 
