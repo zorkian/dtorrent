@@ -771,10 +771,11 @@ int btPeer::ReportComplete(size_t idx, size_t len)
 
 int btPeer::PieceDeliver(size_t mlen)
 {
-  size_t idx,off,len;
+  size_t idx, off, len;
   char *msgbuf = stream.in_buffer.BasePointer();
   time_t t = (time_t)0;
-  int f_requested = 0, f_success = 1, f_count = 1, f_want = 1;
+  int f_accept = 0, f_requested = 0, f_success = 1, f_count = 1, f_want = 1;
+  int dup = 0;
 
   idx = get_nl(msgbuf + H_LEN + H_BASE_LEN);
   off = get_nl(msgbuf + H_LEN + H_BASE_LEN + H_INT_LEN);
@@ -793,9 +794,16 @@ int btPeer::PieceDeliver(size_t mlen)
     }
   }
 
+  // If the slice is outstanding and was cancelled from this peer, accept.
+  if( !f_requested && BTCONTENT.pBMultPeer->IsSet(idx) &&
+      m_last_timestamp - m_cancel_time <= (m_latency ? (m_latency*2) : 60) &&
+      (WORLD.HasSlice(idx, off, len) || PENDINGQUEUE.HasSlice(idx, off, len)) ){
+    f_accept = dup = 1;
+  }
+
   Self.StartDLTimer();
 
-  if( f_requested ){
+  if( f_requested || f_accept ){
     if(arg_verbose) CONSOLE.Debug("Receiving piece %d/%d/%d from %p",
       (int)idx, (int)off, (int)len, this);
     if( !BTCONTENT.pBF->IsSet(idx) &&
@@ -804,7 +812,7 @@ int btPeer::PieceDeliver(size_t mlen)
       f_success = 0;
       // Re-queue the request, unless WriteSlice triggered flush failure
       // (then the request is already in Pending).
-      if( !BTCONTENT.FlushFailed() ){
+      if( f_requested && !BTCONTENT.FlushFailed() ){
         // This removes only the first instance; re-queued request is safe.
         request_q.Remove(idx,off,len);
         m_req_out--;
@@ -816,10 +824,9 @@ int btPeer::PieceDeliver(size_t mlen)
       }
     }else{  // saved or had the data
       request_q.Remove(idx,off,len);
-      m_req_out--;
+      if( f_requested ) m_req_out--;
       // Check for & cancel requests for this slice from other peers in initial
       // and endgame modes.
-      int dup = 0;
       if( BTCONTENT.pBF->Count() < 2 || WORLD.Endgame() ) dup = 1;
       if( dup ) WORLD.CancelSlice(idx, off, len);
       if( dup || BTCONTENT.FlushFailed() )
@@ -844,33 +851,36 @@ int btPeer::PieceDeliver(size_t mlen)
 
   // Determine how many outstanding requests we should maintain, roughly:
   // (request turnaround latency) / (time to transmit one slice)
-  if(t){
-    m_latency = (m_last_timestamp <= t) ? 1 : (m_last_timestamp - t);
-    if(arg_verbose) CONSOLE.Debug("%p latency is %d sec (receive)",
-      this, (int)m_latency);
-    m_latency_timestamp = m_last_timestamp;
-  }
-  size_t rate;
-  if( (rate = RateDL()) > len/20 && m_latency_timestamp ){
-    // 20==RATE_INTERVAL from rate.cpp.  This is really just a check to see if
-    // rate is measurable/usable.
-    m_req_send = (size_t)( m_latency / (len / (double)rate) + 1 );
-    if( m_req_send < 2 ) m_req_send = 2;
-
-    // If latency increases, we will see this as a dlrate decrease.
-    if( rate < m_prev_dlrate ) m_req_send++;
-    else if( m_last_timestamp - m_latency_timestamp >= 30 &&
-        m_req_out == m_req_send - 1 ){
-      // Try to force latency measurement every 30 seconds.
-      m_req_send--;
+  if( f_requested ){
+    if(t){
+      m_latency = (m_last_timestamp <= t) ? 1 : (m_last_timestamp - t);
+      if(arg_verbose) CONSOLE.Debug("%p latency is %d sec (receive)",
+        this, (int)m_latency);
       m_latency_timestamp = m_last_timestamp;
     }
-    m_prev_dlrate = rate;
-  }else if (m_req_send < 5) m_req_send = 5;
+    size_t rate;
+    if( (rate = RateDL()) > len/20 && m_latency_timestamp ){
+      // 20==RATE_INTERVAL from rate.cpp.  This is really just a check to see
+      // if rate is measurable/usable.
+      m_req_send = (size_t)( m_latency / (len / (double)rate) + 1 );
+      if( m_req_send < 2 ) m_req_send = 2;
+  
+      // If latency increases, we will see this as a dlrate decrease.
+      if( rate < m_prev_dlrate ) m_req_send++;
+      else if( m_last_timestamp - m_latency_timestamp >= 30 &&
+          m_req_out == m_req_send - 1 ){
+        // Try to force latency measurement every 30 seconds.
+        m_req_send--;
+        m_latency_timestamp = m_last_timestamp;
+      }
+      m_prev_dlrate = rate;
+    }else if (m_req_send < 5) m_req_send = 5;
+  }
 
   /* if piece download complete. */
-  if( f_success && (request_q.IsEmpty() || !request_q.HasIdx(idx)) &&
-      !BTCONTENT.pBF->IsSet(idx) ){
+  if( f_success && !BTCONTENT.pBF->IsSet(idx) &&
+      ( (f_requested && (request_q.IsEmpty() || !request_q.HasIdx(idx))) ||
+        (f_accept && !WORLD.WhoHas(idx) && !PENDINGQUEUE.Exist(idx)) ) ){
     // Above WriteSlice may have triggered flush failure.  If data was saved,
     // slice was deleted from Pending.  If piece is incomplete, it's in Pending.
     if( !(BTCONTENT.FlushFailed() && PENDINGQUEUE.Exist(idx)) &&

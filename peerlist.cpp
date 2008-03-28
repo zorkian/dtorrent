@@ -636,6 +636,17 @@ btPeer *PeerList::WhoHas(size_t idx) const
   return peer;
 }
 
+int PeerList::HasSlice(size_t idx, size_t off, size_t len) const
+{
+  PEERNODE *p;
+
+  for( p = m_head; p; p = p->next ){
+    if( p->peer->request_q.HasSlice(idx, off, len) )
+      break;
+  }
+  return p ? 1 : 0;
+}
+
 /* If another peer has the same slice requested first, move the proposer's
    slice to the last position for the piece. */
 void PeerList::CompareRequest(btPeer *proposer, size_t idx)

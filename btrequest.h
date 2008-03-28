@@ -54,6 +54,7 @@ class RequestQueue
   int Requeue(size_t idx,size_t off,size_t len);
   void MoveLast(PSLICE ps);
   int HasIdx(size_t idx) const;
+  int HasSlice(size_t idx, size_t off, size_t len) const;
   time_t GetReqTime(size_t idx,size_t off,size_t len) const;
   void SetReqTime(PSLICE n,time_t t);
 
@@ -81,6 +82,7 @@ class PendingQueue
   int Pending(RequestQueue *prq);
   size_t ReAssign(RequestQueue *prq, BitField &bf);
   int Exist(size_t idx) const;
+  int HasSlice(size_t idx, size_t off, size_t len);
   int Delete(size_t idx);
   int DeleteSlice(size_t idx, size_t off, size_t len);
 };

@@ -76,6 +76,7 @@ class PeerList
   size_t What_Can_Duplicate(BitField &bf, btPeer *proposer, size_t idx) const;
   void FindValuedPieces(BitField &bf, btPeer *proposer, int initial) const;
   btPeer *WhoHas(size_t idx) const;
+  int HasSlice(size_t idx, size_t off, size_t len) const;
   void CompareRequest(btPeer *proposer, size_t idx);
   void CancelSlice(size_t idx, size_t off, size_t len);
   void CancelPiece(size_t idx);

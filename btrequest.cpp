@@ -363,6 +363,17 @@ int RequestQueue::HasIdx(size_t idx) const
   return n ? 1 : 0;
 }
 
+int RequestQueue::HasSlice(size_t idx, size_t off, size_t len) const
+{
+  PSLICE n = rq_head;
+
+  for( ; n ; n = n->next ){
+    if( n->index == idx && n->offset == off && n->length == len ) break;
+  }
+
+  return n ? 1 : 0;
+}
+
 time_t RequestQueue::GetReqTime(size_t idx,size_t off,size_t len) const
 {
   PSLICE n = rq_head;
@@ -485,6 +496,20 @@ int PendingQueue::Exist(size_t idx) const
   for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
     if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index )
       return 1;
+  }
+  return 0;
+}
+
+int PendingQueue::HasSlice(size_t idx, size_t off, size_t len)
+{
+  int i, j = 0;
+  for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
+    if( pending_array[i] ){
+      j++;
+      if( idx == pending_array[i]->index &&
+          off == pending_array[i]->offset && len == pending_array[i]->length )
+        return 1;
+    }
   }
   return 0;
 }
