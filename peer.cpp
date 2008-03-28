@@ -766,6 +766,8 @@ int btPeer::ReportComplete(size_t idx, size_t len)
     if( WORLD.CancelPiece(idx) )
       CONSOLE.Warning(2, "Duplicate request cancelled in piece completion");
   }
+  if( PENDINGQUEUE.Delete(idx) )
+    CONSOLE.Warning(2, "Duplicate found in Pending, shouldn't be there");
   BTCONTENT.pBMultPeer->UnSet(idx);
   return r;
 }

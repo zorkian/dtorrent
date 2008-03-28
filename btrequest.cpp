@@ -604,16 +604,16 @@ size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
 
 int PendingQueue::Delete(size_t idx)
 {
-  int i = 0;
+  int i, r = 0;
   for ( ; i < PENDING_QUEUE_SIZE && pq_count; i++ ){
     if( (PSLICE) 0 != pending_array[i] && idx == pending_array[i]->index ){
-      if(arg_verbose) CONSOLE.Debug("PQD found %d", (int)idx);
+      r = 1;
       _empty_slice_list(&(pending_array[i])); 
       pq_count--;
       break;
     }
   }
-  return 0;
+  return r;
 }
 
 int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
