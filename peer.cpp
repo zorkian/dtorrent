@@ -748,6 +748,7 @@ int btPeer::ReportComplete(size_t idx, size_t len)
 
   if( (r = BTCONTENT.APieceComplete(idx)) > 0 ){
     if(arg_verbose) CONSOLE.Debug("Piece #%d completed", (int)idx);
+    PeerError(-1, "Piece completed");
     WORLD.Tell_World_I_Have(idx);
     BTCONTENT.CheckFilter();
     if( BTCONTENT.IsFull() )
@@ -1360,10 +1361,14 @@ void btPeer::Prefetch(time_t deadline)
 
 int btPeer::PeerError(int weight, const char *message)
 {
-  m_err_count += weight;
-  if(arg_verbose) CONSOLE.Debug("err: %p (%d) %s", this, m_err_count, message);
+  int old_count = m_err_count;
 
-  if ( m_err_count >= 16 ){
+  m_err_count += weight;
+  if( m_err_count < 0 ) m_err_count = 0;
+  if( arg_verbose && (weight > 0 || old_count > 0) )
+    CONSOLE.Debug("%p error %+d (%d) %s", this, weight, m_err_count, message);
+
+  if( m_err_count >= 16 ){
     m_want_again = 0;
     return -1;
   }else return 0;
