@@ -1307,6 +1307,7 @@ void btPeer::Prefetch(time_t deadline)
       m_prefetch_completion < 2 && request_q.LastSlice() && (rd=RateDL()) > 0 &&
       request_q.Peek(&idx, &off, &len)==0 &&
       m_last_timestamp + len / rd < now + WORLD.GetUnchokeInterval() &&
+      Self.RateDL() > 0 &&
       m_last_timestamp + len / rd <
         now + (cfg_cache_size*1024*1024 - BTCONTENT.GetPieceLength(idx)) /
               Self.RateDL() ){
