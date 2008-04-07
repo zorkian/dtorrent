@@ -6,6 +6,10 @@
 #include "btconfig.h"
 #include "console.h"
 
+#ifndef HAVE_RANDOM
+#include "compat.h"
+#endif
+
 
 static void _empty_slice_list(PSLICE *ps_head)
 {

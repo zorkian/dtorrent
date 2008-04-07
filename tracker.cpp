@@ -19,7 +19,7 @@
 #include "console.h"
 #include "bttime.h"
 
-#ifndef HAVE_SNPRINTF
+#if !defined(HAVE_SNPRINTF) || !defined(HAVE_RANDOM)
 #include "compat.h"
 #endif
 

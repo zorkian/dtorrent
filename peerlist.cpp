@@ -23,7 +23,8 @@
 #include "bttime.h"
 #include "console.h"
 
-#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF)
+#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF) || \
+    !defined(HAVE_RANDOM)
 #include "compat.h"
 #endif
 

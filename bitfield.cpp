@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#ifndef HAVE_RANDOM
+#include "compat.h"
+#endif
+
 const unsigned char BIT_HEX[] = {0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01};
 
 #define _isset(idx)		(b[(idx) / 8 ] & BIT_HEX[(idx) % 8])

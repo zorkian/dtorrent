@@ -120,3 +120,39 @@ int strcasecmp(const char *s1, const char *s2)
 }
 #endif
 
+
+#ifndef HAVE_RANDOM
+long random(void)
+{
+  long result;
+  unsigned long maxlong = 0, i = RAND_MAX;
+
+  maxlong--;
+  maxlong /= 2;
+
+  result = (long)rand();
+  while( i < maxlong ){
+    result = (result * 2UL*(RAND_MAX+1UL)) | rand();
+    i *= 2UL*(RAND_MAX+1UL);
+  }
+  return (result < 0) ? -result : result;
+}
+
+void srandom(unsigned long seed)
+{
+  unsigned useed;
+
+  if( sizeof(seed) > sizeof(useed) ){
+    unsigned long mask = 0xffff;
+    int i = 2;
+    while( i < sizeof(useed) ){
+      mask = (mask << 16) | 0xffff;
+      i += 2;
+    }
+    useed = (unsigned)(seed & mask);
+  }else useed = seed;
+
+  srand(useed);
+}
+#endif
+

@@ -40,6 +40,10 @@
 #include "console.h"
 #include "bttime.h"
 
+#ifndef HAVE_RANDOM
+#include "compat.h"
+#endif
+
 #define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),(int64_t*) 0,QUERY_STR)
 #define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),(int64_t*) 0,QUERY_INT)
 #define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,QUERY_POS)

@@ -52,6 +52,12 @@ int strcasecmp(const char *s1, const char *s2);
 #endif
 
 
+#ifndef HAVE_RANDOM
+long random(void);
+void srandom(unsigned long seed);
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif

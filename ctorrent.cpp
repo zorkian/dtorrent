@@ -24,6 +24,10 @@
 
 #include "./config.h"
 
+#ifndef HAVE_RANDOM
+#include "compat.h"
+#endif
+
 #ifndef WINDOWS
 #include "sigint.h"
 #endif
