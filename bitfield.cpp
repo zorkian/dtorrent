@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "config.h"
+
 #ifndef HAVE_RANDOM
 #include "compat.h"
 #endif
