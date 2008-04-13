@@ -2,8 +2,12 @@
 
 #include <sys/types.h>
 
-#include <sys/time.h>
+#if !defined(HAVE_SYS_TIME_H) || defined(TIME_WITH_SYS_TIME)
 #include <time.h>
+#endif
+#ifdef HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +33,6 @@ void Downloader()
   fd_set rfd, rfdnext;
   fd_set wfd, wfdnext;
   int stopped = 0, f_idleused = 0, f_poll = 0;
-  struct timespec nowspec;
   double maxsleep;
   time_t then, concheck = (time_t)0;
 

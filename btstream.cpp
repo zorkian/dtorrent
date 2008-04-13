@@ -2,7 +2,6 @@
 
 #include <arpa/inet.h>
 #include <inttypes.h>
-#include <sys/time.h>
 #include <string.h>	// memcpy
 
 #include "msgencode.h"

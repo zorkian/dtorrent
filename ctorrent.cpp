@@ -8,7 +8,6 @@
 #include <signal.h>
 #endif
 
-#include <sys/time.h>
 #include <time.h>
 #include <string.h>
 #include <stdio.h>

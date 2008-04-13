@@ -9,8 +9,6 @@
 
 #include <string.h>
 
-#include <sys/time.h>
-
 #include "btconfig.h"
 #include "connect_nonb.h"
 #include "setnonblock.h"

@@ -1,7 +1,5 @@
 #include "rate.h"  // def.h
 
-#include <sys/time.h>
-
 #include "btconfig.h"
 #include "bufio.h" // for BUF_DEF_SIZ
 #include "bttime.h"
