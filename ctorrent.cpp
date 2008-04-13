@@ -23,10 +23,7 @@
 #include "console.h"
 
 #include "./config.h"
-
-#ifndef HAVE_RANDOM
-#include "compat.h"
-#endif
+#include "util.h"
 
 #ifndef WINDOWS
 #include "sigint.h"
@@ -46,24 +43,11 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
 #else
 
-void Random_init()
-{
-  unsigned long seed;
-#ifdef HAVE_GETTIMEOFDAY
-  struct timeval tv; 
-  gettimeofday(&tv,(struct timezone*) 0);
-  seed = tv.tv_usec + tv.tv_sec + getpid();
-#else
-  seed = (unsigned long)time((time_t *)0);
-#endif
-  srandom(seed);
-}
-
 int main(int argc, char **argv)
 {
   char *s;
 
-  Random_init();
+  RandomInit();
   arg_user_agent = new char[MAX_PF_LEN+1];
   strcpy(arg_user_agent,PEER_PFX);
 

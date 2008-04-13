@@ -22,9 +22,9 @@
 #include "ctcs.h"
 #include "bttime.h"
 #include "console.h"
+#include "util.h"
 
-#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF) || \
-    !defined(HAVE_RANDOM)
+#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF)
 #include "compat.h"
 #endif
 
@@ -1145,8 +1145,6 @@ int PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
   btPeer *loster = (btPeer*) 0;
   int f_seed = BTCONTENT.Seeding();
   int no_opt = 0;
-  unsigned long rndbits;
-  int r=0;
   int retval = 0;
 
   if(m_opt_timestamp) no_opt = 1;
@@ -1229,13 +1227,9 @@ int PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
         PEER_IS_FAILED(peer_array[m_max_unchoke]) )
       peer_array[m_max_unchoke] = loster;
     else {
-      if( !r-- ){
-        rndbits = random();
-        r = 15;
-      }
       // if loser is empty and current is not, loser gets 75% chance.
       if( loster->IsEmpty() && !peer_array[m_max_unchoke]->IsEmpty()
-            && (rndbits>>=2)&3 ){
+            && RandBits(2) ){
         btPeer* tmp = peer_array[m_max_unchoke];
         peer_array[m_max_unchoke] = loster;
         loster = tmp;
@@ -1257,7 +1251,7 @@ int PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
         // transformed to: if loser is empty or current isn't, or 25% chance,
         //    then loser wins.
         if( !peer_array[m_max_unchoke]->IsEmpty() || loster->IsEmpty()
-            || !((rndbits>>=2)&3) ){
+            || !RandBits(2) ){
           btPeer* tmp = peer_array[m_max_unchoke];
           peer_array[m_max_unchoke] = loster;
           loster = tmp;

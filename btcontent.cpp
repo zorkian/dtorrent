@@ -39,10 +39,7 @@
 #include "ctcs.h"
 #include "console.h"
 #include "bttime.h"
-
-#ifndef HAVE_RANDOM
-#include "compat.h"
-#endif
+#include "util.h"
 
 #define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),(int64_t*) 0,QUERY_STR)
 #define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),(int64_t*) 0,QUERY_INT)
@@ -480,7 +477,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
         char *dptr = (char *)m_shake_buffer + 48;
         char *eptr = dptr + PEER_ID_LEN;
         while (*sptr) *dptr++ = *sptr++;
-        while (dptr < eptr) *dptr++ = (unsigned char)random();
+        while (dptr < eptr)
+          *dptr++ = (unsigned char)RandBits(sizeof(unsigned char) * 8);
   }
 
   if( arg_announce ){

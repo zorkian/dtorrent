@@ -5,11 +5,7 @@
 #include "btcontent.h"
 #include "btconfig.h"
 #include "console.h"
-
-#ifndef HAVE_RANDOM
-#include "compat.h"
-#endif
-
+#include "util.h"
 
 static void _empty_slice_list(PSLICE *ps_head)
 {
@@ -106,8 +102,7 @@ int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
 {
   PSLICE n, u, ps, prev, end, psnext, temp;
   SLICE dummy;
-  unsigned long rndbits;
-  int len, shuffle, i=0, setsend=0;
+  int len, shuffle, setsend=0;
   size_t firstoff;
 
   if( prq->IsEmpty() ) return 0;
@@ -138,7 +133,7 @@ int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
     u->next = rq_head;
   }
 
-  shuffle = (random()&0x07)+2;
+  shuffle = RandBits(3) + 2;
   if( shuffle > len/2 ) shuffle = len/2;
   for( ; shuffle; shuffle-- ){
     prev = u;
@@ -147,12 +142,8 @@ int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
     end = u->next;
     for( ; ps; ps = psnext ){
       psnext = ps->next;
-      if( !i-- ){
-        rndbits = random();
-        i = sizeof(rndbits) - 3;  // insure an extra bit
-      }
-      if( (rndbits>>=1)&01 ){  // beginning or end of list
-        if( (rndbits>>=1)&01 ){
+      if( RandBits(1) ){  // beginning or end of list
+        if( RandBits(1) ){
           prev = end;
           ps->next = (PSLICE)0;
           end->next = ps;
@@ -163,7 +154,7 @@ int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
           prev = u;
         }
       }else{  // before or after previous insertion
-        if( (rndbits>>=1)&01 ){  // put after prev->next
+        if( RandBits(1) ){  // put after prev->next
           if( end == prev->next ) end = ps;
           temp = prev->next;
           ps->next = prev->next->next;

@@ -18,8 +18,9 @@
 #include "ctcs.h"
 #include "console.h"
 #include "bttime.h"
+#include "util.h"
 
-#if !defined(HAVE_SNPRINTF) || !defined(HAVE_RANDOM)
+#if !defined(HAVE_SNPRINTF)
 #include "compat.h"
 #endif
 
@@ -325,7 +326,7 @@ int btTracker::Initial()
 
   char chars[37] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   for(int i=0; i<8; i++)
-    m_key[i] = chars[random()%36];
+    m_key[i] = chars[RandBits(6) % 36];
   m_key[8] = 0;
 
   /* get local ip address */
