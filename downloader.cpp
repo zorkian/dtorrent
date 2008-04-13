@@ -19,7 +19,6 @@
 #include "btcontent.h"
 #include "ctcs.h"
 #include "btconfig.h"
-#include "bttime.h"
 #include "console.h"
 
 #define MAX_SLEEP 1
