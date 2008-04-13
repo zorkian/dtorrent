@@ -6,10 +6,7 @@
 #include "bufio.h" // for BUF_DEF_SIZ
 #include "bttime.h"
 #include "console.h"
-
-#ifndef HAVE_CLOCK_GETTIME
-#include "compat.h"
-#endif
+#include "util.h"
 
 #define RATE_INTERVAL 20
 #define SHORT_INTERVAL 5
@@ -141,12 +138,7 @@ void Rate::UnCount(size_t nbytes)
 
 void Rate::RateAdd(size_t nbytes, size_t bwlimit)
 {
-  struct timespec nowspec;
-
-  clock_gettime(CLOCK_REALTIME, &nowspec);
-
-  RateAdd(nbytes, bwlimit,
-    nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000);
+  RateAdd(nbytes, bwlimit, PreciseTime());
 }
 
 void Rate::RateAdd(size_t nbytes, size_t bwlimit, double timestamp)
@@ -232,11 +224,7 @@ size_t Rate::CurrentRate()
   // Look at only the most recent data sent/received.
   if( !m_last_timestamp || !m_history ) return 0; // no current rate
 
-  struct timespec timestamp;
-  clock_gettime(CLOCK_REALTIME, &timestamp);
-
-  double timeused = timestamp.tv_sec + (double)(timestamp.tv_nsec)/1000000000 -
-    m_last_realtime;
+  double timeused = PreciseTime() - m_last_realtime;
   if( timeused <= 0 ) return 0;
 
   return (size_t)( m_last_size / timeused );

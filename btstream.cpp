@@ -7,10 +7,7 @@
 
 #include "msgencode.h"
 #include "btconfig.h"
-
-#ifndef HAVE_CLOCK_GETTIME
-#include "compat.h"
-#endif
+#include "util.h"
 
 size_t get_nl(char *from)
 {
@@ -134,9 +131,9 @@ ssize_t btStream::Feed(Rate *rate)
 ssize_t btStream::Feed(size_t limit, Rate *rate)
 {
   ssize_t retval;
-  struct timespec nowspec;
+  double rightnow;
 
-  clock_gettime(CLOCK_REALTIME, &nowspec);
+  rightnow = PreciseTime();
   retval = in_buffer.FeedIn(sock, limit);
 
   if( H_LEN + H_PIECE_LEN < in_buffer.Count() &&
@@ -152,8 +149,7 @@ ssize_t btStream::Feed(size_t limit, Rate *rate)
         change = nbytes - m_oldbytes;
         m_oldbytes = nbytes;
       }
-      rate->RateAdd(change, (size_t)cfg_max_bandwidth_down,
-        nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000);
+      rate->RateAdd(change, (size_t)cfg_max_bandwidth_down, rightnow);
     }
   }
   return retval;

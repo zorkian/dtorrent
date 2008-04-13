@@ -13,8 +13,9 @@
 #include "./btconfig.h"
 #include "bttime.h"
 #include "console.h"
+#include "util.h"
 
-#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF)
+#if !defined(HAVE_SNPRINTF)
 #include "compat.h"
 #endif
 
@@ -529,7 +530,7 @@ int btPeer::MsgDeliver()
 int btPeer::ReponseSlice()
 {
   size_t len = 0;
-  struct timespec nowspec;
+  double rightnow;
 
   ssize_t retval;
   size_t idx,off;
@@ -570,11 +571,11 @@ int btPeer::ReponseSlice()
 
   m_prefetch_time = (time_t)0;
 
-  clock_gettime(CLOCK_REALTIME, &nowspec);
+  rightnow = PreciseTime();
   retval = stream.Send_Piece(idx,off,BTCONTENT.global_piece_buffer,len);
   if( retval >= 0 ){
     WORLD.Upload();
-    DataSended(len, nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000);
+    DataSended(len, rightnow);
     if( !m_want_again && BTCONTENT.Seeding() )
       m_want_again = 1;
   }

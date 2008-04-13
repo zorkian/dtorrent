@@ -24,7 +24,7 @@
 #include "console.h"
 #include "util.h"
 
-#if !defined(HAVE_CLOCK_GETTIME) || !defined(HAVE_SNPRINTF)
+#if !defined(HAVE_SNPRINTF)
 #include "compat.h"
 #endif
 
@@ -1432,16 +1432,9 @@ int PeerList::BandWidthLimitUp(double when)
              (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
-  else{
-    struct timespec nowspec;
-    double rightnow;
+  else if( nexttime <= PreciseTime() + when ) limited = 0;
+  else limited = 1;
 
-    clock_gettime(CLOCK_REALTIME, &nowspec);
-    rightnow = nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000;
-
-    if( nexttime <= rightnow + when ) limited = 0;
-    else limited = 1;
-  }
   if( limited ) m_f_ulate = 1;
   return limited;
 }
@@ -1458,16 +1451,9 @@ int PeerList::BandWidthLimitDown(double when)
              (double)(Self.LastSizeRecv()) / cfg_max_bandwidth_down;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
-  else{
-    struct timespec nowspec;
-    double rightnow;
+  else if( nexttime <= PreciseTime() + when ) limited = 0;
+  else limited = 1;
 
-    clock_gettime(CLOCK_REALTIME, &nowspec);
-    rightnow = nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000;
-
-    if( nexttime <= rightnow + when ) limited = 0;
-    else limited = 1;
-  }
   if( limited ) m_f_dlate = 1;
   return limited;
 }
@@ -1502,7 +1488,6 @@ int PeerList::IsIdle()
 // How long must we wait for bandwidth to become available in either direction?
 double PeerList::WaitBW() const
 {
-  struct timespec nowspec;
   double rightnow, late;
   double maxwait = 0, nextwake = 0;
   double nextup = 0, nextdn = 0;
@@ -1518,10 +1503,9 @@ double PeerList::WaitBW() const
   }
 
   // could optimize away the clock call when maxwait will be > MAX_SLEEP
-  if( now <= (time_t)nextup || now <= (time_t)nextdn ){
-    clock_gettime(CLOCK_REALTIME, &nowspec);
-    rightnow = nowspec.tv_sec + (double)(nowspec.tv_nsec)/1000000000;
-  }else rightnow = (double)now;
+  if( now <= (time_t)nextup || now <= (time_t)nextdn )
+    rightnow = PreciseTime();
+  else rightnow = (double)now;
 
   if( nextup >= rightnow ){
     if( nextdn < rightnow ) use_up = 1;
