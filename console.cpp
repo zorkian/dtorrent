@@ -287,9 +287,11 @@ void ConStream::Error(int sev, const char *message, ...)
   va_list ap;
 
   va_start(ap, message);
+  /* Note the call to Warning sends only the literal message--a limitation to
+     deal with later. */
   if( g_console_ready ) CONSOLE.Warning(sev, message);
   else{
-    fprintf(stderr, "%s\n", message);
+    vfprintf(stderr, message, ap);
     fflush(stderr);
   }
   va_end(ap);
