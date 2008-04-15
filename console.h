@@ -34,7 +34,8 @@ class ConStream
   unsigned char m_suspend:1;
   unsigned char m_inputmode:1;
   unsigned char m_filemode:1;
-  unsigned char m_reserved:4;
+  unsigned char m_restore:1;
+  unsigned char m_reserved:3;
 
 #if defined(USE_TERMIOS)
   struct termios m_original;
@@ -46,6 +47,7 @@ class ConStream
 
   void _newline();
   int _convprintf(const char *format, va_list ap);
+  void Error(int sev, const char *message, ...);
 
  public:
   ConStream();

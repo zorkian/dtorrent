@@ -32,7 +32,7 @@
 #include "compat.h"
 #endif
 
-// console.cpp:  Copyright 2007 Dennis Holmes  (dholmes@rahul.net)
+// console.cpp:  Copyright 2007-2008 Dennis Holmes  (dholmes@rahul.net)
 
 // input mode definitions
 #define K_CHARS 0
@@ -41,6 +41,7 @@
 const char LIVE_CHAR[4] = {'-', '\\','|','/'};
 
 Console CONSOLE;
+static int g_console_ready = 0;
 
 
 //===========================================================================
@@ -51,6 +52,7 @@ ConStream::ConStream()
 {
   m_stream = (FILE *)0;
   m_name = (char *)0;
+  m_restore = 0;
   m_newline = 1;
   m_suspend = 0;
   m_inputmode = K_LINES;
@@ -59,6 +61,7 @@ ConStream::ConStream()
 
 ConStream::~ConStream()
 {
+  if( m_restore ) RestoreMode();
   if( !m_suspend ) _newline();
   if( m_stream ) fclose(m_stream);
   if( m_name ) delete []m_name;
@@ -81,7 +84,7 @@ void ConStream::Associate(FILE *stream, const char *name, int mode)
   m_filemode = mode;
   if( m_name = new char[strlen(name)+1] )
     strcpy(m_name, name);
-  else CONSOLE.Warning(1, "Failed to allocate memory for output filename.");
+  else Error(1, "Failed to allocate memory for output filename.");
 }
 
 
@@ -106,29 +109,41 @@ int ConStream::IsTTY() const
 
 void ConStream::PreserveMode()
 {
+  int r;
+
   if( !IsTTY() ) return;
 
 #if defined(USE_TERMIOS)
-  tcgetattr(Fileno(), &m_original);
+  r = tcgetattr(Fileno(), &m_original);
 #elif defined(USE_TERMIO)
-  ioctl(Fileno(), TCGETA, &m_original);
+  r = ioctl(Fileno(), TCGETA, &m_original);
 #elif defined(USE_SGTTY)
-  gtty(Fileno(), &m_original);
+  r = gtty(Fileno(), &m_original);
 #endif
+  if( r < 0 ){
+    Error(1, "Error preserving terminal mode on fd %d:  %s", Fileno(),
+      strerror(errno));
+  }else m_restore = 1;
 }
 
 
 void ConStream::RestoreMode()
 {
+  int r;
+
   if( !IsTTY() ) return;
 
 #if defined(USE_TERMIOS)
-  tcsetattr(Fileno(), TCSANOW, &m_original);
+  r = tcsetattr(Fileno(), TCSANOW, &m_original);
 #elif defined(USE_TERMIO)
-  ioctl(Fileno(), TCSETA, &m_original);
+  r = ioctl(Fileno(), TCSETA, &m_original);
 #elif defined(USE_SGTTY)
-  stty(Fileno(), &m_original);
+  r = stty(Fileno(), &m_original);
 #endif
+  if( r < 0 ){
+    Error(1, "Error restoring terminal mode on fd %d:  %s", Fileno(),
+      strerror(errno));
+  }
 }
 
 
@@ -264,6 +279,23 @@ inline int ConStream::_convprintf(const char *format, va_list ap)
 }
 
 
+/* ConStream functions need to call Error instead of CONSOLE.Warning, because
+   CONSOLE may not be initialized yet (or may have been destroyed already).
+*/
+void ConStream::Error(int sev, const char *message, ...)
+{
+  va_list ap;
+
+  va_start(ap, message);
+  if( g_console_ready ) CONSOLE.Warning(sev, message);
+  else{
+    fprintf(stderr, "%s\n", message);
+    fflush(stderr);
+  }
+  va_end(ap);
+}
+
+
 
 //===========================================================================
 // Console class functions
@@ -303,12 +335,14 @@ Console::Console()
   m_streams[O_INPUT]->PreserveMode();
   m_streams[O_INPUT]->SetInputMode(K_CHARS);
   m_conmode = K_CHARS;
+
+  if( this == &CONSOLE ) g_console_ready = 1;
 }
 
 
 Console::~Console()
 {
-  m_streams[O_INPUT]->RestoreMode();
+  if( this == &CONSOLE ) g_console_ready = 0;
 }
 
 
@@ -356,7 +390,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
             if( arg_file_to_download ) delete []arg_file_to_download;
             arg_file_to_download = new char[strlen(param) + 1];
             if( !arg_file_to_download )
-              CONSOLE.Warning(1, "error, failed to allocate memory for option");
+              Warning(1, "error, failed to allocate memory for option");
             else strcpy(arg_file_to_download, param);
             BTCONTENT.SetFilter();
             break;
@@ -371,8 +405,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
               }else{
                 arg_ctcs = new char[strlen(param) + 1];
                 if( !arg_ctcs )
-                  CONSOLE.Warning(1,
-                    "error, failed to allocate memory for option");
+                  Warning(1, "error, failed to allocate memory for option");
                 else{
                   strcpy(arg_ctcs, param);
                   CTCS.Initial();
@@ -385,7 +418,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
             if( arg_completion_exit ) delete []arg_completion_exit;
             arg_completion_exit = new char[strlen(param) + 1];
             if( !arg_completion_exit )
-              CONSOLE.Warning(1, "error, failed to allocate memory for option");
+              Warning(1, "error, failed to allocate memory for option");
             else strcpy(arg_completion_exit, param);
             break;
           case 'Q':				// quit
@@ -460,7 +493,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case 'n':				// get1file
         if( BTCONTENT.IsFull() )
-          CONSOLE.Interact("Download is already complete.");
+          Interact("Download is already complete.");
         else{
           m_streams[O_INPUT]->SetInputMode(K_LINES);
           ShowFiles();
@@ -482,7 +515,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case 'X':				// completion command (user exit)
         if( BTCONTENT.IsFull() )
-          CONSOLE.Interact("Download is already complete.");
+          Interact("Download is already complete.");
         else{
           m_streams[O_INPUT]->SetInputMode(K_LINES);
           Interact("Enter a command to run upon download completion.");
@@ -607,7 +640,7 @@ int Console::OperatorMenu(const char *param)
     char buffer[80];
     Interact(" Status Line Formats:");
     for( int i=0; i < STATUSLINES; i++ ){
-      (CONSOLE.*m_statusline[i])(buffer, sizeof(buffer));
+      (this->*m_statusline[i])(buffer, sizeof(buffer));
       Interact(" %c%d) %s", (i==m_status_format) ? '*' : ' ', ++n_opt, buffer);
     }
     Interact(" Other options:");
@@ -705,7 +738,7 @@ int Console::OperatorMenu(const char *param)
       return 1;
     }else if( sel == 4 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
       if( Tracker.GetStatus() == T_FREE ) Tracker.Reset(15);
-      else CONSOLE.Interact("Already connecting, please be patient...");
+      else Interact("Already connecting, please be patient...");
       oper_mode = 0;
       return 1;
     }else if( sel == 5 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
@@ -830,7 +863,7 @@ void Console::Status(int immediate)
     else if( !m_streams[O_NORMAL]->IsSuspended() ||
              (arg_verbose && !m_streams[O_DEBUG]->IsSuspended()) ){
       // optimized to generate the status line only if it will be output
-      (CONSOLE.*m_statusline[m_status_format])(buffer, sizeof(buffer));
+      (this->*m_statusline[m_status_format])(buffer, sizeof(buffer));
 
       if( !m_status_last ) Print_n("");
       int tmplen = 0;
@@ -1357,7 +1390,7 @@ void Console::Daemonize()
   }
 
   if( (r = fork()) < 0 ){
-    CONSOLE.Warning(2, "warn, fork to background failed:  %s", strerror(errno));
+    Warning(2, "warn, fork to background failed:  %s", strerror(errno));
     arg_daemon = 0;
     goto restorecache;
   }else if(r) exit(EXIT_SUCCESS);
@@ -1372,14 +1405,14 @@ void Console::Daemonize()
   nullfd = OpenNull(nullfd, &m_stderr, 2);
 
   if( setsid() < 0 ){
-    CONSOLE.Warning(2,
+    Warning(2,
       "warn, failed to create new session (continuing in background):  %s",
       strerror(errno));
     goto restorecache;
   }
 
   if( (r = fork()) < 0 ){
-    CONSOLE.Warning(2,
+    Warning(2,
       "warn, final fork failed (continuing in background):  %s",
       strerror(errno));
     goto restorecache;
