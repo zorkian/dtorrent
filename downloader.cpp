@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "peerlist.h"
 #include "tracker.h"
@@ -106,6 +107,11 @@ void Downloader()
 
     WORLD.UnLate();
     nfds = select(maxfd + 1,&rfd,&wfd,(fd_set*) 0,&timeout);
+    if( nfds < 0 ){
+      CONSOLE.Debug("Error from select:  %s", strerror(errno));
+      FD_ZERO(&rfdnext); FD_ZERO(&wfdnext);
+      nfds = 0;
+    }
 
     if( f_poll ) f_poll = 0;
     else if( nfds > 0 ) WORLD.DontWaitBW();
