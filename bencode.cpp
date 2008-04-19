@@ -174,15 +174,10 @@ size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps
 size_t bencode_buf(const char *buf,size_t len,FILE *fp)
 {
   char slen[MAX_INT_SIZ];
-  char *b;
+
   if( MAX_INT_SIZ <= snprintf(slen, MAX_INT_SIZ, "%d:", (int)len) ) return 0;
   if( fwrite( slen, strlen(slen), 1, fp) != 1) return 0;
-  b = new char[len + strlen(slen)];
-#ifndef WINDOWS
-  if( !b ) return 0;
-#endif
-  if( fwrite(buf, len, 1, fp) != 1 ){ delete []b; return 0;}
-  delete []b;
+  if( fwrite(buf, len, 1, fp) != 1 ) return 0;
   return 1;
 }
 
