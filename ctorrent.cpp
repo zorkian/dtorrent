@@ -50,7 +50,7 @@ int main(int argc, char **argv)
   arg_user_agent = new char[MAX_PF_LEN+1];
   strcpy(arg_user_agent,PEER_PFX);
 
-  cfg_user_agent = new char[strlen(PACKAGE_NAME)+strlen(PACKAGE_VERSION)+1];
+  cfg_user_agent = new char[strlen(PACKAGE_NAME)+strlen(PACKAGE_VERSION)+2];
 #ifndef WINDOWS
   if( !cfg_user_agent ) return -1;
 #endif

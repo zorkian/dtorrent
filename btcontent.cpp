@@ -238,7 +238,7 @@ int btContent::PrintOut()
   CONSOLE.Print("Piece length: %lu", (unsigned long)m_piece_length);
   if( m_private ) CONSOLE.Print("Private: %s", m_private ? "Yes" : "No");
   if( m_comment ){
-    char *s = new char[strlen(m_comment)];
+    char *s = new char[strlen(m_comment)+1];
     if(s){
       strcpy(s, m_comment);
       for(char *t=s; *t; t++)
