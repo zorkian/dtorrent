@@ -95,8 +95,10 @@ int btFiles::_btf_close(BTFILE *pbf)
       pbf->bf_filename, strerror(errno));
   pbf->bf_flag_opened = 0;
   pbf->bf_fp = (FILE *)0;
-  delete []pbf->bf_buffer;
-  pbf->bf_buffer = (char *)0;
+  if( pbf->bf_buffer ){
+    delete []pbf->bf_buffer;
+    pbf->bf_buffer = (char *)0;
+  }
   m_total_opened--;
   return 0;
 }
@@ -233,6 +235,7 @@ int btFiles::_btf_destroy()
     pbf_next = pbf->bf_next;
     if( pbf->bf_fp && pbf->bf_flag_opened ) fclose( pbf->bf_fp );
     if( pbf->bf_filename ) delete []pbf->bf_filename;
+    if( pbf->bf_buffer ) delete []pbf->bf_buffer;
     delete pbf;
     pbf = pbf_next;
   }
