@@ -1,3 +1,4 @@
+#include "config.h"
 #include "bitfield.h"
 
 #ifdef WINDOWS
@@ -12,8 +13,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#include "config.h"
 
 #ifndef HAVE_RANDOM
 #include "compat.h"
