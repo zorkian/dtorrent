@@ -117,13 +117,11 @@ int btContent::CreateMetainfoFile(const char *mifn)
   }
   if( bencode_begin_dict(fp) != 1 ) goto err;
 
+  // Entries in dictionary must be sorted by key!
+
   // announce
   if( bencode_str("announce", fp) != 1 ) goto err;
   if( bencode_str(m_announce, fp) != 1 ) goto err;
-
-  // create date
-  if( bencode_str("creation date", fp) != 1 ) goto err;
-  if( bencode_int(m_create_date, fp) != 1 ) goto err;
 
   // comment
   if( arg_comment ){
@@ -135,29 +133,37 @@ int btContent::CreateMetainfoFile(const char *mifn)
   if( bencode_str("created by", fp) != 1 ) goto err;
   if( bencode_str(cfg_user_agent, fp) != 1 ) goto err;
 
+  // creation date
+  if( bencode_str("creation date", fp) != 1 ) goto err;
+  if( bencode_int(m_create_date, fp) != 1 ) goto err;
+
   // info dict
   if( bencode_str("info", fp) != 1 ) goto err;
   if( bencode_begin_dict(fp) != 1 ) goto err;
 
-  if( m_btfiles.FillMetaInfo(fp) != 1 ) goto err;
+  { // Entries in dictionary must be sorted by key!
+    // files & name, or length & name
+    if( m_btfiles.FillMetaInfo(fp) != 1 ) goto err;
 
-  // piece length
-  if( bencode_str("piece length", fp) != 1 ) goto err;
-  if( bencode_int(m_piece_length, fp) != 1 ) goto err;
+    // piece length
+    if( bencode_str("piece length", fp) != 1 ) goto err;
+    if( bencode_int(m_piece_length, fp) != 1 ) goto err;
 
-  // private
-  if( arg_flg_private ){
-    if( bencode_str("private", fp) != 1 ) goto err;
-    if( bencode_int(1, fp) != 1 ) goto err;
+    // pieces (hash table)
+    if( bencode_str("pieces", fp) != 1 ) goto err;
+    if( bencode_buf((const char*) m_hash_table, m_hashtable_length, fp) != 1 )
+      goto err;
+
+    // private
+    if( arg_flg_private ){
+      if( bencode_str("private", fp) != 1 ) goto err;
+      if( bencode_int(1, fp) != 1 ) goto err;
+    }
+
+    if( bencode_end_dict_list(fp) != 1 ) goto err;  // end info
   }
 
-  // hash table;
-  if( bencode_str("pieces", fp) != 1 ) goto err;
-  if( bencode_buf((const char*) m_hash_table, m_hashtable_length, fp) != 1 )
-    goto err;
-
-  if( bencode_end_dict_list(fp) != 1 ) goto err; // end info
-  if( bencode_end_dict_list(fp) != 1 ) goto err; // end torrent
+  if( bencode_end_dict_list(fp) != 1 ) goto err;  // end torrent
 
   fclose(fp);
   return 0;
