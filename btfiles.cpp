@@ -124,6 +124,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
     strcpy(fn, pbf->bf_filename);
   }
 
+  pbf->bf_last_timestamp = now + 1;
   if( !(pbf->bf_fp = fopen(fn, iotype ? "r+b" : "rb")) ){
     if( EMFILE == errno || ENFILE == errno ){
       if( _btf_close_oldest() < 0 ||
@@ -174,7 +175,7 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
       return -1;
     }
 
-    if( m_flag_automanage ) pbf->bf_last_timestamp = now;
+    pbf->bf_last_timestamp = now;
 
 #ifdef HAVE_FSEEKO
     if( fseeko(pbf->bf_fp,pos,SEEK_SET) < 0 ){
