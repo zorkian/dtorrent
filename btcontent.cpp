@@ -434,7 +434,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     }else{
       CONSOLE.Interact("Found bit field file; %s previous state.",
         arg_flg_force_seed_mode ? "resuming download from" : "verifying");
-      if( unlink(arg_bitfield_file) < 0 ){
+      if( remove(arg_bitfield_file) < 0 ){
         CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
           arg_bitfield_file, strerror(errno));
       }
