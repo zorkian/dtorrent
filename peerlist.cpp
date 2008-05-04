@@ -1366,12 +1366,9 @@ void PeerList::StopDownload()
   PEERNODE *p = m_head;
 
   for( ; p; p = p->next ){
-    if( p->peer->Is_Local_Interested() ){
-      if( p->peer->CancelRequest() < 0 ||
-          p->peer->SetLocal(M_NOT_INTERESTED) < 0 ){
-        p->peer->CloseConnection();
-      }else p->peer->PutPending();
-    }
+    if( p->peer->SetLocal(M_NOT_INTERESTED) < 0 ){
+      p->peer->CloseConnection();
+    }else p->peer->PutPending();
   }
 }
 
