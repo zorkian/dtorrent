@@ -43,7 +43,7 @@ unsigned long RandBits(int nbits)
       tmpbits = rndbits >> maxbits;
       while( tmpbits ){
         maxbits++;
-        tmpbits >> 1;
+        tmpbits >>= 1;
       }
     }
     remain = maxbits;
