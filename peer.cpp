@@ -275,8 +275,14 @@ int btPeer::RequestPiece()
   }while( pfilter && tmpBitfield.IsEmpty() );
 
   if( tmpBitfield.IsEmpty() ){
-    // We don't need anything from the peer.  How'd we get here?
-    return SetLocal(M_NOT_INTERESTED);
+    // We don't need to request anything from the peer.
+    if( !Need_Remote_Data() )
+      return SetLocal(M_NOT_INTERESTED);
+    else{
+      if(arg_verbose) CONSOLE.Debug("%p standby", this);
+      m_standby = 1;  // nothing to do at the moment
+      return 0;
+    }
   }
 
   BitField tmpBitfield2 = tmpBitfield;
