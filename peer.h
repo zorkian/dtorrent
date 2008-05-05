@@ -136,6 +136,7 @@ class btPeer:public btBasic
   time_t m_choketime;
   time_t m_prefetch_time;
   time_t m_cancel_time;
+  size_t m_last_req_piece;
 
   static btPeer *g_next_up, *g_next_dn;
   static unsigned char g_defer_up;

@@ -109,7 +109,7 @@ btPeer::btPeer()
   m_state.remote_interested = m_state.local_interested = 0;
 
   m_err_count = 0;
-  m_cached_idx = BTCONTENT.GetNPieces();
+  m_cached_idx = m_last_req_piece = BTCONTENT.GetNPieces();
   m_standby = 0;
   m_req_send = 5;
   m_req_out = 0;
@@ -207,6 +207,8 @@ int btPeer::RequestPiece()
 
   tmpBitfield = bitfield;
   tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
+  if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
+    tmpBitfield.UnSet(m_last_req_piece);
   if( (idx = PENDINGQUEUE.ReAssign(&request_q, tmpBitfield)) <
       BTCONTENT.GetNPieces() ){
     if(arg_verbose)
@@ -244,6 +246,8 @@ int btPeer::RequestPiece()
     }while( pfilter && tmpBitfield.IsEmpty() );
     if( m_latency < 60 ){
       // Don't dup to very slow/high latency peers.
+      if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
+        tmpBitfield.UnSet(m_last_req_piece);
       idx = WORLD.What_Can_Duplicate(tmpBitfield, this, BTCONTENT.GetNPieces());
       if( idx < BTCONTENT.GetNPieces() ){
         if(arg_verbose) CONSOLE.Debug("Want to dup #%d to %p", (int)idx, this);
@@ -273,12 +277,19 @@ int btPeer::RequestPiece()
     tmpBitfield.And(*BTCONTENT.pBChecked);
     // tmpBitfield tells what we need from this peer...
   }while( pfilter && tmpBitfield.IsEmpty() );
+  if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
+    tmpBitfield.UnSet(m_last_req_piece);
 
   if( tmpBitfield.IsEmpty() ){
     // We don't need to request anything from the peer.
     if( !Need_Remote_Data() )
       return SetLocal(M_NOT_INTERESTED);
-    else{
+    else if( m_last_req_piece < BTCONTENT.GetNPieces() &&
+             !BTCONTENT.pBF->IsSet(m_last_req_piece) ){
+      // May have excluded the only viable request; allow a retry.
+      m_last_req_piece = BTCONTENT.GetNPieces();
+      return 0;  // Allow another peer a shot at it first.
+    }else{
       if(arg_verbose) CONSOLE.Debug("%p standby", this);
       m_standby = 1;  // nothing to do at the moment
       return 0;
@@ -367,11 +378,10 @@ int btPeer::MsgDeliver()
       }
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 1;
-      if( !stream.PeekNextMessage(M_UNCHOKE) ){
-        StopDLTimer();
-        if( g_next_dn == this ) g_next_dn = (btPeer *)0;
-        PutPending();
-      }
+      StopDLTimer();
+      if( g_next_dn == this ) g_next_dn = (btPeer *)0;
+      PutPending();
+      m_cancel_time = now;
       break;
 
     case M_UNCHOKE:
@@ -613,6 +623,7 @@ int btPeer::SendRequest()
       } else request_q.SetReqTime(ps, (time_t)0);
       if(arg_verbose) CONSOLE.Debug_n(".");
       if(stream.Send_Request(ps->index,ps->offset,ps->length) < 0){ return -1; }
+      m_last_req_piece = ps->index;
       request_q.SetNextSend(ps->next);
       m_req_out++;
     }
