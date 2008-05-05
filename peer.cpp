@@ -380,7 +380,10 @@ int btPeer::MsgDeliver()
       m_state.remote_choked = 1;
       StopDLTimer();
       if( g_next_dn == this ) g_next_dn = (btPeer *)0;
-      PutPending();
+      if( !request_q.IsEmpty() ){
+        BTCONTENT.pBMultPeer->Set(request_q.GetRequestIdx());
+        PutPending();
+      }
       m_cancel_time = now;
       break;
 
