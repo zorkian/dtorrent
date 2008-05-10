@@ -250,7 +250,7 @@ int btFiles::_btf_ftruncate(int fd,int64_t length)
 {
   if( arg_allocate ){
     char *c = new char[256*1024];
-    if( !c ) return -1;
+    if( !c ){ errno = ENOMEM; return -1; }
     memset(c, 0, 256*1024);
     int r, wlen;
     int64_t len = 0;
