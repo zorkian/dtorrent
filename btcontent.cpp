@@ -413,8 +413,10 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   m_left_bytes = m_btfiles.GetTotalLength();
 
   if( arg_flg_check_only ){
-    if( r && CheckExist() < 0 ) ERR_RETURN();
-    m_btfiles.PrintOut(); // show file completion
+    if( r ){
+      if( CheckExist() < 0 ) ERR_RETURN();
+      m_btfiles.PrintOut(); // show file completion
+    }
     CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)(pBF->Count()),
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
     if( !arg_flg_force_seed_mode ){
