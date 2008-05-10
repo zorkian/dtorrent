@@ -39,7 +39,7 @@ unsigned long RandBits(int nbits)
 
   if( remain < nbits ){
     rndbits = random();
-    if( rndbits & ~((1 << maxbits) - 1) ){
+    if( rndbits & ~((1UL << maxbits) - 1) ){
       tmpbits = rndbits >> maxbits;
       while( tmpbits ){
         maxbits++;
