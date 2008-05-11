@@ -175,7 +175,7 @@ int Ctcs::SendMessage(const char *message)
     if( r<0 ) Reset(5);
     else m_last_timestamp = now;
   }
-  return r;
+  return (r < 0) ? r : 0;
 }
 
 
@@ -753,7 +753,7 @@ int Ctcs::Connect()
         strerror(errno));
       return -1;
     }
-    if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) != 0 &&
+    if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) < 0 &&
         errno != EINPROGRESS ){
       CONSOLE.Warning(2, "warn, send torrent to CTCS failed:  %s",
         strerror(errno));
@@ -824,8 +824,8 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
           strerror(errno));
         return -1;
       }
-      if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) == 0
-          && errno != EINPROGRESS ){
+      if( Send_Torrent(BTCONTENT.GetPeerId(), arg_metainfo_file) < 0 &&
+          errno != EINPROGRESS ){
         CONSOLE.Warning(2, "warn, send torrent to CTCS failed:  %s",
           strerror(errno));
         return -1;
