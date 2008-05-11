@@ -118,8 +118,10 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
 
   if( m_directory ){
     if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s", m_directory, PATH_SP,
-                               pbf->bf_filename) )
+                               pbf->bf_filename) ){
+      errno = ENAMETOOLONG;
       return -1;
+    }
   }else{
     strcpy(fn, pbf->bf_filename);
   }
@@ -293,8 +295,10 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
   if( cur_path ){
     strcpy(fn, full_cur);
     if( MAXPATHLEN <= snprintf(full_cur, MAXPATHLEN, "%s%c%s", fn, PATH_SP,
-                               cur_path))
+                               cur_path) ){
+      errno = ENAMETOOLONG;
       return -1;
+    }
   }
       
   if( (DIR*) 0 == (dp = opendir(full_cur)) ){
@@ -312,6 +316,7 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
       if(MAXPATHLEN < snprintf(fn, MAXPATHLEN, "%s%c%s", cur_path, PATH_SP,
                                dirp->d_name)){
         CONSOLE.Warning(1, "error, pathname too long");
+        errno = ENAMETOOLONG;
         return -1;
       }
     }else{
@@ -327,11 +332,11 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
       
       pbf = _new_bfnode();
 #ifndef WINDOWS
-      if( !pbf ) return -1;
+      if( !pbf ){ errno = ENOMEM; return -1; }
 #endif
       pbf->bf_filename = new char[strlen(fn) + 1];
 #ifndef WINDOWS
-      if( !pbf->bf_filename ){ closedir(dp); return -1; }
+      if( !pbf->bf_filename ){ closedir(dp); errno = ENOMEM; return -1; }
 #endif
       strcpy(pbf->bf_filename, fn);
       
@@ -611,8 +616,10 @@ int btFiles::CreateFiles()
 
     if( m_directory ){
       if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
-          m_directory, PATH_SP, pbt->bf_filename) )
+          m_directory, PATH_SP, pbt->bf_filename) ){
+        errno = ENAMETOOLONG;
         return -1;
+      }
     }else{
       strcpy(fn, pbt->bf_filename);
     }
