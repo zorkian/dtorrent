@@ -765,6 +765,10 @@ void btContent::FlushCache()
     if( m_cache[i] ) FlushPiece(i);
     if( m_flush_failed ) break;
   }
+  if( Seeding() ){
+    for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
+      m_btfiles.CloseFile(n);  // files will reopen read-only
+  }
 }
 
 void btContent::FlushPiece(size_t idx)
@@ -815,10 +819,6 @@ void btContent::FlushEntry(BTCACHE *p)
       }
     }else{
       p->bc_f_flush = 0;
-      if( Seeding() ){
-        for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
-          m_btfiles.CloseFile(n);  // files will reopen read-only
-      }
       if(m_flush_failed){
         m_flush_failed = 0;
         CONSOLE.Warning(3, "Flushing cache succeeded%s.",
@@ -866,6 +866,10 @@ void btContent::FlushQueue()
       (int)(m_cache_oldest->bc_off % m_piece_length),
       (int)(m_cache_oldest->bc_len));
     FlushEntry(m_cache_oldest);
+  }
+  if( Seeding() && !m_flushq ){
+    for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
+      m_btfiles.CloseFile(n);  // files will reopen read-only
   }
 }
 
@@ -1188,11 +1192,7 @@ int btContent::APieceComplete(size_t idx)
 
   // Add the completed piece to the flush queue.
   if( cfg_cache_size ){
-    if( IsFull() ){
-      FlushCache();
-      for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
-        m_btfiles.CloseFile(n);  // files will reopen read-only
-    }
+    if( IsFull() ) FlushCache();
     if( !IsFull() || m_flush_failed ){
       BTFLUSH *last = m_flushq;
       BTFLUSH *node = new BTFLUSH;
@@ -1238,8 +1238,6 @@ int btContent::SeedTimeout()
       Self.ResetDLTimer();  // set/report dl rate = 0
       m_prevdlrate = 0;
       m_seed_timestamp = now;
-      for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
-        m_btfiles.CloseFile(n);  // files will reopen read-only
       // Free global buffer prior to CompletionCommand fork (reallocate after).
       delete []global_piece_buffer;
       global_piece_buffer = (char *)0;
