@@ -218,20 +218,6 @@ int btPeer::RequestPiece()
     return SendRequest();
   }
 
-  if( m_cached_idx < BTCONTENT.CheckedPieces() && !BTCONTENT.pBF->IsEmpty() ){
-    // A HAVE msg already selected what we want from this peer
-    // but ignore it in initial-piece mode.
-    idx = m_cached_idx;
-    m_cached_idx = BTCONTENT.GetNPieces();
-    if( !BTCONTENT.pBF->IsSet(idx) &&
-        (!BTCONTENT.GetFilter() || !BTCONTENT.GetFilter()->IsSet(idx)) &&
-        !PENDINGQUEUE.Exist(idx) &&
-        !WORLD.AlreadyRequested(idx) ){
-      if(arg_verbose) CONSOLE.Debug("Assigning #%d to %p", (int)idx, this);
-      return (request_q.CreateWithIdx(idx) < 0) ? -1 : SendRequest();
-    }
-  }
-
   // If we didn't want the cached piece, select another.
   if( BTCONTENT.pBF->IsEmpty() ){
     // If we don't have a complete piece yet, try to get one that's already
@@ -345,7 +331,11 @@ int btPeer::RequestPiece()
     BitField tmpBitfield3 = tmpBitfield2;
     WORLD.FindValuedPieces(tmpBitfield3, this, BTCONTENT.pBF->IsEmpty());
     if( tmpBitfield3.IsEmpty() ) tmpBitfield3 = tmpBitfield2;
-    idx = tmpBitfield3.Random();
+    if( m_cached_idx < BTCONTENT.CheckedPieces() &&
+        tmpBitfield3.IsSet(m_cached_idx) ){
+      // A HAVE msg already selected what we want from this peer.
+      idx = m_cached_idx;
+    }else idx = tmpBitfield3.Random();
     if(arg_verbose) CONSOLE.Debug("Assigning #%d to %p", (int)idx, this);
     return (request_q.CreateWithIdx(idx) < 0) ? -1 : SendRequest();
   }
