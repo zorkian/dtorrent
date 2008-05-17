@@ -190,6 +190,8 @@ class btContent
   size_t CacheSize() const { return m_cache_size; }
   size_t CacheUsed() const { return m_cache_used; }
 
+  void CloseAllFiles();
+
   void DumpCache();
 };
 

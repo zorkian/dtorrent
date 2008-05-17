@@ -765,10 +765,7 @@ void btContent::FlushCache()
     if( m_cache[i] ) FlushPiece(i);
     if( m_flush_failed ) break;
   }
-  if( Seeding() ){
-    for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
-      m_btfiles.CloseFile(n);  // files will reopen read-only
-  }
+  if( Seeding() ) CloseAllFiles();
 }
 
 void btContent::FlushPiece(size_t idx)
@@ -867,10 +864,7 @@ void btContent::FlushQueue()
       (int)(m_cache_oldest->bc_len));
     FlushEntry(m_cache_oldest);
   }
-  if( Seeding() && !m_flushq ){
-    for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
-      m_btfiles.CloseFile(n);  // files will reopen read-only
-  }
+  if( Seeding() && !m_flushq ) CloseAllFiles();
 }
 
 /* Prepare for prefetching a whole piece.
@@ -1575,6 +1569,13 @@ void btContent::CountDupBlock(size_t len)
 {
   m_dup_blocks++;
   Tracker.CountDL(len);
+}
+
+
+void btContent::CloseAllFiles()
+{
+  for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
+    m_btfiles.CloseFile(n);  // files will reopen read-only
 }
 
 
