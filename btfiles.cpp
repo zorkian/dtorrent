@@ -19,7 +19,6 @@
 
 #include "bencode.h"
 #include "btcontent.h"
-#include "bitfield.h"
 #include "console.h"
 #include "bttime.h"
 
@@ -37,34 +36,41 @@ btFiles::btFiles()
   m_total_files_length = 0;
   m_total_opened = 0;
   m_flag_automanage = 1;
+  m_need_merge = 0;
   m_directory = (char*)0;
+  m_staging_path = m_stagedir = (char *)0;
+  m_stagecount = 0;
 }
 
 btFiles::~btFiles()
 {
+  struct stat sb;
+  DIR *dp;
+  struct dirent *dirp;
+  int f_remove = 1;
+
   _btf_destroy();
+
+  if( 0==stat(m_staging_path, &sb) && S_ISDIR(sb.st_mode) &&
+      (dp = opendir(m_staging_path)) ){
+    while( dirp = readdir(dp) ){
+      if( 0!=strcmp(dirp->d_name, ".") && 0!=strcmp(dirp->d_name, "..") ){
+        f_remove = 0;
+        break;
+      }
+    }
+    closedir(dp);
+    if( f_remove ){
+      if(arg_verbose) CONSOLE.Debug("Remove dir \"%s\"", m_staging_path);
+      if( remove(m_staging_path) < 0 )
+        CONSOLE.Warning(2, "warn, remove directory \"%s\" failed:  %s",
+          m_staging_path, strerror(errno));
+    }
+  }
   if( m_directory ) delete []m_directory;
-}
-
-BTFILE* btFiles::_new_bfnode()
-{
-  BTFILE *pnew = new BTFILE;
-
-#ifndef WINDOWS
-  if( !pnew ) return (BTFILE*) 0;
-#endif
-
-  pnew->bf_flag_opened = 0;
-  pnew->bf_flag_readonly = 0;
-
-  pnew->bf_filename = (char*) 0;
-  pnew->bf_fp = (FILE*) 0;
-  pnew->bf_length = 0;
-  pnew->bf_buffer = (char *) 0;
-
-  pnew->bf_last_timestamp = (time_t) 0;
-  pnew->bf_next = (BTFILE*) 0;
-  return pnew;
+  if( m_file ) delete []m_file;
+  if( m_staging_path ) delete []m_staging_path;
+  if( m_stagedir ) delete []m_stagedir;
 }
 
 void btFiles::CloseFile(size_t nfile)
@@ -90,6 +96,8 @@ int btFiles::_btf_close(BTFILE *pbf)
 {
   if( !pbf->bf_flag_opened ) return 0;
 
+  if(arg_verbose) CONSOLE.Debug("Close file \"%s\"", pbf->bf_filename);
+
   if( fclose(pbf->bf_fp) == EOF )
     CONSOLE.Warning(2, "warn, error closing file \"%s\":  %s",
       pbf->bf_filename, strerror(errno));
@@ -106,17 +114,28 @@ int btFiles::_btf_close(BTFILE *pbf)
 int btFiles::_btf_open(BTFILE *pbf, const int iotype)
 {
   char fn[MAXPATHLEN];
+  const char *mode = iotype ? (pbf->bf_size ? "r+b" : "w+b") : "rb";
+  struct stat sb;
 
   if( pbf->bf_flag_opened ){
     if( pbf->bf_flag_readonly && iotype ) _btf_close(pbf);
     else return 0;  // already open in a usable mode
   }
-  
+
   if(m_flag_automanage && (m_total_opened >= MAX_OPEN_FILES)){  // close a file
     if( _btf_close_oldest() < 0 ) return -1;
   }
 
-  if( m_directory ){
+  if(arg_verbose) CONSOLE.Debug("Open mode=%s %sfile \"%s\"", mode,
+    pbf->bf_flag_staging ? "staging " : "", pbf->bf_filename);
+
+  if( pbf->bf_flag_staging ){
+    if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s", m_staging_path,
+                      PATH_SP, pbf->bf_filename) ){
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+  }else if( m_directory ){
     if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s", m_directory, PATH_SP,
                                pbf->bf_filename) ){
       errno = ENAMETOOLONG;
@@ -126,13 +145,27 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
     strcpy(fn, pbf->bf_filename);
   }
 
+  if( iotype && stat(fn, &sb) < 0 && MkPath(fn) < 0 ){
+    CONSOLE.Warning(1,
+      "error, create directory path for file \"%s\" failed:  %s",
+      strerror(errno));
+    return -1;
+  }
+
   pbf->bf_last_timestamp = now + 1;
-  if( !(pbf->bf_fp = fopen(fn, iotype ? "r+b" : "rb")) ){
-    if( EMFILE == errno || ENFILE == errno ){
-      if( _btf_close_oldest() < 0 ||
-          !(pbf->bf_fp = fopen(fn, iotype ? "r+b" : "rb")) )
-        return -1;  // caller prints error
-    }else return -1;  // caller prints error
+  if( !(pbf->bf_fp = fopen(fn, mode)) ){
+    switch( errno ){
+    case EMFILE:
+    case ENFILE:
+      _btf_close_oldest();
+      break;
+    case ENOSPC:
+      if( !MergeNext() ) MergeAny();  // directory could be full
+      break;
+    default:
+      return -1;
+    }
+    if( !(pbf->bf_fp = fopen(fn, mode)) ) return -1;  // caller prints error
   }
   pbf->bf_buffer = new char[DEFAULT_SLICE_SIZE];
   if(pbf->bf_buffer)
@@ -146,9 +179,9 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
 
 ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 {
-  uint64_t n = 0;
-  off_t pos,nio;
-  BTFILE *pbf = m_btfhead;
+  off_t pos;
+  size_t nio;
+  BTFILE *pbf = m_btfhead, *pbfref, *pbfnext = (BTFILE *)0;
 
   if( (off + (uint64_t)len) > m_total_files_length ){
     CONSOLE.Warning(1, "error, data offset %llu length %lu out of range",
@@ -156,20 +189,64 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
     return -1;
   }
 
-  for(; pbf; pbf = pbf->bf_next){
-    n += (uint64_t) pbf->bf_length;
-    if(n > off) break;
+  // Find the first file to read/write
+  while( pbf ){
+    pbfnext = pbf->bf_next;
+    if( (off >= pbf->bf_offset && off < pbf->bf_offset + pbf->bf_size) ||
+        (iotype && off == pbf->bf_offset + pbf->bf_size) )
+      break;
+    if( off < pbf->bf_offset ){
+      pbf = (BTFILE *)0;
+      break;
+    }
+    pbfref = pbf;
+    pbf = (!pbf->bf_flag_staging && off >= pbf->bf_offset + pbf->bf_length) ?
+          pbf->bf_nextreal : pbf->bf_next;
   }
 
-  if( !pbf ){
-    CONSOLE.Warning(1, "error, failed to find file for offset %llu",
-      (unsigned long long)off);
-    return -1;
-  }
+  // Read/write the data (all applicable files)
+  while( len ){
+    if( !pbf ){
+      if( iotype ){  // write
+        // Create new staging file
+        if( m_stagecount >= 200 || !m_stagedir[0] ){
+          char fn[MAXPATHLEN], tmpdir[m_fsizelen+1];
+          sprintf(tmpdir, "%.*llu", m_fsizelen, off);
+          snprintf(fn, MAXPATHLEN, "%s%c%s", m_staging_path, PATH_SP, tmpdir);
+          if(arg_verbose) CONSOLE.Debug("Create dir \"%s\"", fn);
+          if( mkdir(fn, 0755) < 0 ){
+            CONSOLE.Warning(1, "error, create directory \"%s\" failed:  %s",
+              fn, strerror(errno));
+          }else{
+            strcpy(m_stagedir, tmpdir);
+            m_stagecount = 0;
+          }
+        }
+        if( !(pbf = new BTFILE) ||
+            !(pbf->bf_filename = new char[strlen(m_stagedir) +
+              strlen(m_torrent_id) + m_fsizelen + 3]) ){
+          CONSOLE.Warning(1,
+            "error, failed to allocate memory for staging file");
+          if( pbf ) delete pbf;
+          return -1;
+        }
+        sprintf(pbf->bf_filename, "%s%c%s-%.*llu", m_stagedir, PATH_SP,
+          m_torrent_id, m_fsizelen, off);
+        pbf->bf_offset = off;
+        pbf->bf_flag_staging = 1;
+        pbf->bf_next = pbfref->bf_next;
+        pbf->bf_nextreal = pbfref->bf_nextreal;
+        pbfref->bf_next = pbf;
+        m_stagecount++;
+      }else{  // read
+        CONSOLE.Warning(1, "error, failed to find file for offset %llu",
+          (unsigned long long)off);
+        return -1;
+      }
+    }
 
-  pos = off - (n - pbf->bf_length);
+    pos = off - pbf->bf_offset;
 
-  for(; len ;){
     if( (!pbf->bf_flag_opened || (iotype && pbf->bf_flag_readonly)) &&
         _btf_open(pbf, iotype) < 0 ){
       CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
@@ -185,45 +262,186 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
       return -1;
     }
 
-    nio = (len < pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
-
+    // Read or write current file
     if(0 == iotype){
+      nio = (len <= pbf->bf_size - pos) ? len : (pbf->bf_size - pos);
       errno = 0;
-      if( 1 != fread(buf,nio,1,pbf->bf_fp) && ferror(pbf->bf_fp) ){
+      if( nio && 1 != fread(buf,nio,1,pbf->bf_fp) && ferror(pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
       }
     }else{
+      if( pbf->bf_flag_staging ){
+        if( !pbf->bf_next ||
+            len <= pbf->bf_next->bf_offset - pbf->bf_offset - pos ){
+          nio = len;
+        }else nio = pbf->bf_next->bf_offset - pbf->bf_offset - pos;
+      }else{
+        nio = (len <= pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
+      }
       errno = 0;
-      if( 1 != fwrite(buf,nio,1,pbf->bf_fp) ){
+      if( nio && 1 != fwrite(buf,nio,1,pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
       }
-      if( fflush(pbf->bf_fp) == EOF ){
+      if( nio && fflush(pbf->bf_fp) == EOF ){
         CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
       }
+      if( pos + nio > pbf->bf_size )
+        pbf->bf_size = pos + nio;
+      if( !pbf->bf_flag_staging && pbf->bf_size < pbf->bf_length &&
+          pbf->bf_next && pbf->bf_next->bf_flag_staging &&
+          pbf->bf_offset + pbf->bf_size >= pbf->bf_next->bf_offset ){
+          m_need_merge = 1;
+      }
+      if( pbf->bf_size == 0 ) _btf_close(pbf);
     }
 
+    // Proceed to next file
     len -= nio;
-    buf += nio;
-
     if( len ){
-      do{
-        pbf = pbf->bf_next;
-        if( !pbf ){
-          CONSOLE.Warning(1,
-            "error, data left over with no more files to write");
-          return -1;
-        }
-      }while( 0==pbf->bf_length );
-      pos = 0;
+      off += nio;
+      buf += nio;
+      pbfref = pbf;
+      pbf = pbf->bf_next;
+      if( off < pbf->bf_offset ){
+        pbfnext = pbf;
+        pbf = (BTFILE *)0;
+      }
     }
-  } // end for
+  }
   return 0;
+}
+
+int btFiles::MergeStaging(BTFILE *dst)
+{
+  BTFILE *src = dst->bf_next;
+  char buf[256*1024];
+  size_t nio = 256*1024;
+  off_t pos;
+  uint64_t remain;
+  int f_remove = 0;
+
+  if(arg_verbose) CONSOLE.Debug("Merge file %s to \"%s\"", src->bf_filename,
+    dst->bf_filename);
+
+  if( !src->bf_flag_opened && _btf_open(src, 0) < 0 ){
+    CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
+      src->bf_filename, strerror(errno));
+    return -1;
+  }
+  pos = dst->bf_offset + dst->bf_size - src->bf_offset;
+  remain = src->bf_size - pos;
+  if( fseeko(src->bf_fp, pos, SEEK_SET) < 0 ){
+    CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
+      (unsigned long long)pos, src->bf_filename, strerror(errno));
+    return -1;
+  }
+
+  if( (!dst->bf_flag_opened || dst->bf_flag_readonly) &&
+      _btf_open(dst, 1) < 0 ){
+    CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
+      dst->bf_filename, strerror(errno));
+    return -1;
+  }
+  pos = dst->bf_size;
+  if( fseeko(dst->bf_fp, pos, SEEK_SET) < 0 ){
+    CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
+      (unsigned long long)pos, dst->bf_filename, strerror(errno));
+    return -1;
+  }
+
+  while( remain && dst->bf_size < dst->bf_length ){
+    if( remain < nio ) nio = remain;
+    errno = 0;
+    if( 1 != fread(buf, nio, 1, src->bf_fp) && ferror(src->bf_fp) ){
+      CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
+        (unsigned long long)(src->bf_size - remain), src->bf_filename,
+        strerror(errno));
+      return -1;
+    }
+    if( 1 != fwrite(buf, nio, 1, dst->bf_fp) ){
+      CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
+        (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
+      return -1;
+    }
+    if( fflush(dst->bf_fp) == EOF ){
+      CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
+        (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
+      return -1;
+    }
+    remain -= nio;
+    pos += nio;
+    if( pos > dst->bf_size )
+      dst->bf_size = pos;
+  }
+
+  if( dst->bf_size == dst->bf_length ) _btf_close(dst);  // will reopen RO
+  _btf_close(src);
+  sprintf(buf, "%s%c%s", m_staging_path, PATH_SP, src->bf_filename);
+  if(arg_verbose) CONSOLE.Debug("Delete file \"%s\"", buf);
+  if( remove(buf) < 0 ){
+    CONSOLE.Warning(2, "error deleting file \"%s\":  %s", buf, strerror(errno));
+  }
+  dst->bf_next = src->bf_next;
+
+  if( 0==strncmp(m_stagedir, src->bf_filename, strlen(m_stagedir)) ){
+    m_stagecount--;
+    if( 0==m_stagecount ){
+      f_remove = 1;
+      m_stagecount = 0;
+      m_stagedir[0] = '\0';
+    }
+  }else f_remove = 1;
+  if( f_remove ){
+    struct stat sb;
+    DIR *dp;
+    struct dirent *dirp;
+    sprintf(buf, "%s%c", m_staging_path, PATH_SP);
+    strncat(buf, src->bf_filename, m_fsizelen);
+    if( 0==stat(buf, &sb) && S_ISDIR(sb.st_mode) && (dp = opendir(buf)) ){
+      while( dirp = readdir(dp) ){
+        if( 0!=strcmp(dirp->d_name, ".") && 0!=strcmp(dirp->d_name, "..") ){
+          f_remove = 0;
+          break;
+        }
+      }
+      closedir(dp);
+      if( f_remove ){
+        if(arg_verbose) CONSOLE.Debug("Remove dir \"%s\"", buf);
+        if( remove(buf) < 0 )
+          CONSOLE.Warning(2, "warn, remove directory \"%s\" failed:  %s", buf,
+            strerror(errno));
+      }
+    }
+  }
+
+  delete src;
+}
+
+// Identify a file that can be merged, and do it
+int btFiles::FindAndMerge(int findall, int dostaging)
+{
+  BTFILE *pbf = m_btfhead;
+  int merged = 0;
+
+  for( ; pbf; pbf = dostaging ? pbf->bf_next : pbf->bf_nextreal ){
+    while( !pbf->bf_flag_staging && pbf->bf_next &&
+        pbf->bf_next->bf_flag_staging && pbf->bf_size < pbf->bf_length &&
+        pbf->bf_offset + pbf->bf_size >= pbf->bf_next->bf_offset ){
+      if( MergeStaging(pbf) < 0 ) goto done;
+      merged = 1;
+      if( !findall ) goto done;
+    }
+  }
+ done:
+  if( !merged || findall ) m_need_merge = 0;
+
+  return merged;
 }
 
 int btFiles::_btf_destroy()
@@ -231,9 +449,6 @@ int btFiles::_btf_destroy()
   BTFILE *pbf,*pbf_next;
   for(pbf = m_btfhead; pbf;){
     pbf_next = pbf->bf_next;
-    if( pbf->bf_fp && pbf->bf_flag_opened ) fclose( pbf->bf_fp );
-    if( pbf->bf_filename ) delete []pbf->bf_filename;
-    if( pbf->bf_buffer ) delete []pbf->bf_buffer;
     delete pbf;
     pbf = pbf_next;
   }
@@ -243,14 +458,58 @@ int btFiles::_btf_destroy()
   return 0;
 }
 
-int btFiles::_btf_ftruncate(int fd,int64_t length)
+int btFiles::ExtendFile(BTFILE *pbf)
 {
-  if( arg_allocate ){
+  uint64_t newsize, length;
+  int retval;
+
+  if( pbf->bf_next )
+    newsize = pbf->bf_next->bf_offset - pbf->bf_offset;
+  else newsize = pbf->bf_length;
+
+  if( (!pbf->bf_flag_opened || pbf->bf_flag_readonly) &&
+      _btf_open(pbf, 1) < 0 ){
+    CONSOLE.Warning(1, "error, failed to open file \"%s\" for writing:  %s",
+      pbf->bf_filename, strerror(errno));
+    return pbf->bf_length ? -1 : 0;
+  }
+  if( pbf->bf_length == 0 ){
+    _btf_close(pbf);
+    return 0;
+  }
+
+  if( arg_allocate == 1 ){
+    off_t pos = pbf->bf_size;
+    if( fseeko(pbf->bf_fp, pos, SEEK_SET) < 0 ){
+      CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
+        (unsigned long long)pos, pbf->bf_filename, strerror(errno));
+      return -1;
+    }
+    length = newsize - pbf->bf_size;
+  }else length = newsize;
+
+  retval = length ? _btf_ftruncate(fileno(pbf->bf_fp), length) : 0;
+  if( retval < 0 ){
+    CONSOLE.Warning(1, "error, allocate file \"%s\" failed:  %s",
+      pbf->bf_filename, strerror(errno));
+  }else pbf->bf_size = newsize;
+
+  _btf_close(pbf);
+  return retval;
+}
+
+int btFiles::_btf_ftruncate(int fd, uint64_t length)
+{
+  off_t offset = length;
+
+  if( length == 0 ) return 0;
+
+  if( arg_allocate == 1 ){  // preallocate to disk (-a)
     char *c = new char[256*1024];
     if( !c ){ errno = ENOMEM; return -1; }
     memset(c, 0, 256*1024);
     int r, wlen;
-    int64_t len = 0;
+    uint64_t len = 0;
     for( int i=0; len < length; i++ ){
       if( len + 256*1024 > length ) wlen = (int)(length - len);
       else wlen = 256*1024;
@@ -260,16 +519,18 @@ int btFiles::_btf_ftruncate(int fd,int64_t length)
     }
     return r;
   }
+
+  // create sparse file (-aa)
 #ifdef WINDOWS
   char c = (char)0;
-  if( lseek(fd,length - 1, SEEK_SET) < 0 ) return -1;
+  if( lseek(fd, offset - 1, SEEK_SET) < 0 ) return -1;
   return write(fd, &c, 1);
 #else
   // ftruncate() not allowed on [v]fat under linux
-  int retval = ftruncate(fd,length);
+  int retval = ftruncate(fd, offset);
   if( retval < 0 ) {
     char c = (char)0;
-    if( lseek(fd,length - 1, SEEK_SET) < 0 ) return -1;
+    if( lseek(fd, offset - 1, SEEK_SET) < 0 ) return -1;
     return write(fd, &c, 1);
   }
   else return retval;
@@ -324,8 +585,7 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
     }
 
     if( S_IFREG & sb.st_mode ){
-      
-      pbf = _new_bfnode();
+      pbf = new BTFILE;
 #ifndef WINDOWS
       if( !pbf ){ errno = ENOMEM; return -1; }
 #endif
@@ -335,10 +595,12 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
 #endif
       strcpy(pbf->bf_filename, fn);
       
-      pbf->bf_length = sb.st_size;
+      pbf->bf_length = pbf->bf_size = sb.st_size;
       m_total_files_length += sb.st_size;
 
-      if( *plastnode ) (*plastnode)->bf_next = pbf; else m_btfhead = pbf;
+      if( *plastnode ){
+        (*plastnode)->bf_next = (*plastnode)->bf_nextreal = pbf;
+      }else m_btfhead = pbf;
 
       *plastnode = pbf;
 
@@ -355,43 +617,29 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
   return 0;
 }
 
-int btFiles::_btf_creat_by_path(const char *pathname, int64_t file_length)
+// Only creates the path, not the final dir or file.
+int btFiles::MkPath(const char *pathname)
 {
   struct stat sb;
-  int fd;
-  char *p,*pnext,last = 0;
-  char sp[MAXPATHLEN];
+  char sp[strlen(pathname)+1];
+  char *p;
 
-  strcpy(sp,pathname);
+  strcpy(sp, pathname);
+  p = sp;
+  if( PATH_SP == *p ) p++;
 
-  pnext = sp;
-  if(PATH_SP == *pnext) pnext++;
-
-  for(; !last; ){
-    for(p = pnext; *p && PATH_SP != *p; p++) ;
-    if( !*p ) last = 1;
-    if(last && PATH_SP == *p){ last = 0; break;}
-    *p = '\0';
-    if(stat(sp,&sb) < 0){
-      if( ENOENT == errno ){
-        if( !last ){
-#ifdef WINDOWS
-          if(mkdir(sp) < 0) break;
-#else
-          if(mkdir(sp,0755) < 0) break;
-#endif
-        }else{
-          if((fd = creat(sp,0644)) < 0){ last = 0; break; }
-          if(file_length && _btf_ftruncate(fd, file_length) < 0){
-            close(fd); last = 0; break;
-          }
-          close(fd);
-        }
-      }else{last = 0; break;}
+  for( ; *p; p++ ){
+    if( PATH_SP == *p ){
+      *p = '\0';
+      if( stat(sp, &sb) < 0 ){
+        if( ENOENT == errno ){
+          if( mkdir(sp, 0755) < 0 ) return -1;
+        }else return -1;
+      }
+      *p = PATH_SP;
     }
-    if( !last ){ *p = PATH_SP; pnext = p + 1; }
   }
-  return last;
+  return 0;
 }
 
 int btFiles::BuildFromFS(const char *pathname)
@@ -407,11 +655,12 @@ int btFiles::BuildFromFS(const char *pathname)
   }
 
   if( S_IFREG & sb.st_mode ){
-    pbf = _new_bfnode();
+    pbf = new BTFILE;
 #ifndef WINDOWS
     if( !pbf ) return -1;
 #endif
-    pbf->bf_length = m_total_files_length = sb.st_size;
+    pbf->bf_offset = 0;
+    pbf->bf_length = pbf->bf_size = m_total_files_length = sb.st_size;
     pbf->bf_filename = new char[strlen(pathname) + 1];
 #ifndef WINDOWS
     if( !pbf->bf_filename ) return -1;
@@ -449,7 +698,8 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
   const char *s, *p;
   size_t r,q,n;
   int64_t t;
-  int f_warned = 0;
+  int f_warned = 0, i = 0;
+  BTFILE *pbt;
 
   if( !decode_query(metabuf, metabuf_len, "info|name", &s, &q, (int64_t*)0,
       QUERY_STR) || MAXPATHLEN <= q )
@@ -461,8 +711,8 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
   r = decode_query(metabuf, metabuf_len, "info|files", (const char**)0, &q,
                    (int64_t*)0, QUERY_POS);
 
-  if( r ){
-    BTFILE *pbf_last = (BTFILE*) 0; 
+  if( r ){  // torrent contains multiple files
+    BTFILE *pbf_last = (BTFILE*) 0;
     BTFILE *pbf = (BTFILE*) 0;
     size_t dl;
     if( decode_query(metabuf,metabuf_len,"info|length",
@@ -508,16 +758,18 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
     }
 
     /* now r saved the pos of files list. q saved list length */
-    p = metabuf + r + 1; 
+    p = metabuf + r + 1;
     q--;
     for(; q && 'e' != *p; p += dl, q -= dl){
       if(!(dl = decode_dict(p, q, (const char*) 0)) ) return -1;
       if( !decode_query(p, dl, "length", (const char**) 0,
                        (size_t*) 0,&t,QUERY_LONG) ) return -1;
-      pbf = _new_bfnode();
+      pbf = new BTFILE;
 #ifndef WINDOWS
       if( !pbf ) return -1;
 #endif
+      m_nfiles++;
+      pbf->bf_offset = m_total_files_length;
       pbf->bf_length = t;
       m_total_files_length += t;
       r = decode_query(p, dl, "path", (const char **)0, &n, (int64_t*)0,
@@ -554,17 +806,21 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
 #endif
         strcpy(pbf->bf_filename, path);
       }
-      if(pbf_last) pbf_last->bf_next = pbf; else m_btfhead = pbf;
+      if(pbf_last){
+        pbf_last->bf_next = pbf_last->bf_nextreal = pbf;
+      }else m_btfhead = pbf;
       pbf_last = pbf;
     }
-  }else{
+  }else{  // torrent contains a single file
     if( !decode_query(metabuf,metabuf_len,"info|length",
                      (const char**) 0,(size_t*) 0,&t,QUERY_LONG) )
       return -1;
-    m_btfhead = _new_bfnode();
+    m_btfhead = new BTFILE;
 #ifndef WINDOWS
     if( !m_btfhead) return -1;
 #endif
+    m_nfiles++;
+    m_btfhead->bf_offset = 0;
     m_btfhead->bf_length = m_total_files_length = t;
     if( saveas ){
       m_btfhead->bf_filename = new char[strlen(saveas) + 1];
@@ -595,69 +851,183 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
       strcpy(m_btfhead->bf_filename, path);
     }
   }
-  return 0;
-}
-
-int btFiles::CreateFiles()
-{
-  int check_exist = 0;
-  char fn[MAXPATHLEN];
-  BTFILE *pbt = m_btfhead;
-  struct stat sb;
-  int i = 0;
-
-  for(; pbt; pbt = pbt->bf_next){
-    m_nfiles++;
-
-    if( m_directory ){
-      if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
-          m_directory, PATH_SP, pbt->bf_filename) ){
-        errno = ENAMETOOLONG;
-        return -1;
-      }
-    }else{
-      strcpy(fn, pbt->bf_filename);
-    }
-    
-    if(stat(fn, &sb) < 0){
-      if(ENOENT == errno){
-        if( arg_allocate ){
-          CONSOLE.Interact_n("");
-          CONSOLE.Interact_n("Creating %s", fn);
-        }
-        if( !_btf_creat_by_path(fn,pbt->bf_length)){
-          CONSOLE.Warning(1, "error, create file \"%s\" failed:  %s", fn,
-            strerror(errno));
-          return -1;
-        }
-      }else{
-        CONSOLE.Warning(1, "error, couldn't create file \"%s\":  %s", fn,
-          strerror(errno));
-        return -1;
-      }
-    }else{
-      if( !check_exist) check_exist = 1;
-      if( !(S_IFREG & sb.st_mode) ){
-        CONSOLE.Warning(1, "error, file \"%s\" is not a regular file.", fn);
-        return -1;
-      }
-      if(sb.st_size != pbt->bf_length){
-        CONSOLE.Warning(1,"error, file \"%s\" size doesn't match; must be %llu",
-                fn, (unsigned long long)(pbt->bf_length));
-        return -1;
-      }
-    }
-  } //end for
 
   m_file = new BTFILE *[m_nfiles];
   if( !m_file ){
     CONSOLE.Warning(1, "error, failed to allocate memory for files list");
     return -1;
   }
-  for( pbt = m_btfhead; pbt; pbt = pbt->bf_next ){
+  for( i=0, pbt = m_btfhead; pbt; pbt = pbt->bf_nextreal ){
     m_file[i++] = pbt;
   }
-  return check_exist;
+  return 0;
+}
+
+int btFiles::SetupFiles(const char *torrentid)
+{
+  DIR *dp, *subdp;
+  struct dirent *dirp;
+  struct stat sb;
+  BTFILE *pbf, *pbt;
+  uint64_t offset, fend;
+  char fn[MAXPATHLEN], *tmp;
+
+  m_fsizelen = sprintf(fn, "%llu", (unsigned long long)m_total_files_length);
+  if( !(m_torrent_id = new char[strlen(torrentid) + 1]) ||
+      !(pBFPieces = new BitField(BTCONTENT.GetNPieces())) ||
+      !(m_staging_path = new char[strlen(torrentid) + 10]) ||
+      !(m_stagedir = new char[m_fsizelen + 1]) ){
+    CONSOLE.Warning(1, "error, failed to allocate memory");
+    return -1;
+  }
+  strcpy(m_torrent_id, torrentid);
+  sprintf(m_staging_path, "%s%c%s", "dtstaging", PATH_SP, m_torrent_id);
+
+  // Identify existing staging files.
+  if( !(dp = opendir(m_staging_path)) && !arg_flg_check_only ){
+    int err = errno;
+    if( stat(m_staging_path, &sb) < 0 ){
+      if( MkPath(m_staging_path) < 0 || mkdir(m_staging_path, 0755) < 0 ){
+        CONSOLE.Warning(1, "error, create staging directory \"%s\" failed:  %s",
+          m_staging_path, strerror(errno));
+        return -1;
+      }
+    }else{
+      CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
+        m_staging_path, strerror(err));
+      return -1;
+    }
+  }else while( dp && (dirp = readdir(dp)) ){
+    if( strlen(dirp->d_name) == m_fsizelen ){
+      if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
+                                 m_staging_path, PATH_SP, dirp->d_name) ||
+          stat(fn, &sb) < 0 || !S_ISDIR(sb.st_mode) ||
+          !(subdp = opendir(fn)) )
+        continue;
+      m_stagecount = 0;
+      strcpy(m_stagedir, dirp->d_name);
+      while( dirp = readdir(subdp) ){
+        if( 0==strncmp(m_torrent_id, dirp->d_name, strlen(m_torrent_id)) &&
+            dirp->d_name[strlen(m_torrent_id)] == '-' &&
+            MAXPATHLEN > snprintf(fn, MAXPATHLEN, "%s%c%s%c%s",
+                 m_staging_path, PATH_SP, m_stagedir, PATH_SP, dirp->d_name) &&
+            0==stat(fn, &sb) && S_ISREG(sb.st_mode) ){
+          offset = strtoull(dirp->d_name + strlen(m_torrent_id) + 1, &tmp, 10);
+          if( tmp != dirp->d_name + strlen(m_torrent_id) + m_fsizelen + 1 )
+            continue;
+
+          if( !(pbf = new BTFILE) ||
+              !(pbf->bf_filename = new char[strlen(m_stagedir) +
+                strlen(dirp->d_name) + 2]) ){
+            CONSOLE.Warning(1,
+              "error, failed to allocate memory for staging file");
+            if( pbf ) delete pbf;
+            return -1;
+          }
+          sprintf(pbf->bf_filename, "%s%c%s", m_stagedir, PATH_SP,
+            dirp->d_name);
+          if( stat(fn, &sb) < 0 ){  // fn already contains path+filename
+            CONSOLE.Warning(1, "error, check staging file \"%s\":  %s", fn,
+              strerror(errno));
+            delete pbf;
+            continue;
+          }
+          pbf->bf_flag_staging = 1;
+          pbf->bf_offset = offset;
+          pbf->bf_size = sb.st_size;
+          if(arg_verbose) CONSOLE.Debug("Found staging file %s size %llu",
+            pbf->bf_filename, (unsigned long long)pbf->bf_size);
+          m_stagecount++;
+    
+          for( pbt = m_btfhead; pbt->bf_next; pbt = pbt->bf_next ){
+            if( pbf->bf_offset < pbt->bf_next->bf_offset ) break;
+          }
+          pbf->bf_next = pbt->bf_next;
+          pbt->bf_next = pbf;
+          pbf->bf_nextreal = pbt->bf_nextreal;
+        }
+      }
+      closedir(subdp);
+    }
+  }
+  if( dp ) closedir(dp);
+
+  // Check for main torrent content files.
+  for( pbt = m_btfhead ; pbt; pbt = pbt->bf_nextreal ){
+    if( m_directory ){
+      if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
+          m_directory, PATH_SP, pbt->bf_filename) ){
+        errno = ENAMETOOLONG;
+        return -1;
+      }
+    }else strcpy(fn, pbt->bf_filename);
+
+    if( stat(fn, &sb) < 0 ){
+      if( ENOENT != errno ){
+        CONSOLE.Warning(1, "error, stat file \"%s\" failed:  %s", fn,
+          strerror(errno));
+        return -1;
+      }
+    }else{
+      if( !(S_IFREG & sb.st_mode) ){
+        CONSOLE.Warning(1, "error, file \"%s\" is not a regular file.", fn);
+        return -1;
+      }
+      if( sb.st_size > pbt->bf_length ){
+        CONSOLE.Warning(1, "error, file \"%s\" size is too big; should be %llu",
+          fn, (unsigned long long)(pbt->bf_length));
+        return -1;
+      }
+      pbt->bf_size = sb.st_size;
+    }
+  }
+
+  // Create/allocate files.
+  if( arg_allocate ){
+    CONSOLE.Interact_n("");
+    CONSOLE.Interact_n("Allocating files");
+    MergeAll();
+    while( ExtendAll() >= 0 && MergeAll() );
+  }else m_need_merge = 1;
+
+  // Set up map of pieces that are available in the files.
+  pbf = m_btfhead;
+  for( size_t idx = 0; idx < BTCONTENT.GetNPieces() && pbf; idx++ ){
+    uint64_t idxoff = idx * BTCONTENT.GetPieceLength();
+    if( idxoff < pbf->bf_offset ) continue;
+    fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
+    while( pbf && pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next) ){
+      pbf = pbf->bf_next;
+      if(pbf) fend = pbf->bf_offset + pbf->bf_size - 1;
+    }
+    if( !pbf || idxoff > fend ) break;  // no more files
+
+    if( idxoff >= pbf->bf_offset ){
+      size_t idxend = idxoff + BTCONTENT.GetPieceLength(idx) - 1;
+      while( pbf && idxend > fend && pbf->bf_next &&
+             pbf->bf_next->bf_offset <= fend + 1 ){
+        pbf = pbf->bf_next;
+        if(pbf) fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
+      }
+      if( !pbf ) break;  // no more files
+      if( idxend <= fend ) pBFPieces->Set(idx);
+    }
+  }
+  if(arg_verbose)
+    CONSOLE.Debug("Files contain %d pieces", (int)pBFPieces->Count());
+
+  return pBFPieces->IsEmpty() ? 0 : 1;
+}
+
+int btFiles::ExtendAll()
+{
+  BTFILE *pbf = m_btfhead;
+
+  for( ; pbf; pbf = pbf->bf_nextreal ){
+    if( pbf->bf_size > 0 && pbf->bf_size >= pbf->bf_length ) continue;
+    if( ExtendFile(pbf) < 0 ) return -1;
+  }
+  return 0;
 }
 
 void btFiles::PrintOut()
@@ -668,7 +1038,7 @@ void btFiles::PrintOut()
   CONSOLE.Print("FILES INFO");
   BitField tmpBitField, tmpFilter;
   if(m_directory) CONSOLE.Print("Directory: %s", m_directory);
-  for( ; p ; p = p->bf_next ){
+  for( ; p ; p = p->bf_nextreal ){
     ++id;
     CONSOLE.Print_n("");
     CONSOLE.Print_n("<%d> %s%s [%llu]", (int)id, m_directory ? " " : "",
@@ -737,7 +1107,7 @@ void btFiles::SetFilter(int nfile, BitField *pFilter, size_t pieceLength)
   }
 
   pFilter->SetAll();
-  for( ; p ; p = p->bf_next ){
+  for( ; p ; p = p->bf_nextreal ){
     if(++id == nfile){
       if( 0 == p->bf_length ){
         p->bf_npieces = 0;

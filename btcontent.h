@@ -111,6 +111,8 @@ class btContent
   void FlushQueue();
   int NeedFlush() const;
   int FlushFailed() const { return m_flush_failed ? 1 : 0 ; }
+  int NeedMerge() const { return m_btfiles.NeedMerge(); }
+  void MergeNext();
 
   int CreateMetainfoFile(const char *mifn);
   int InitialFromFS(const char *pathname, char *ann_url, size_t piece_length);

@@ -88,9 +88,15 @@ void Downloader()
     r = WORLD.IntervalCheck(&rfd, &wfd);
     if( r > maxfd ) maxfd = r;
 
-    while( !f_poll && BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
-      BTCONTENT.FlushQueue();
-      maxsleep = 0;
+    if( !f_poll ){
+      while( BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
+        BTCONTENT.FlushQueue();
+        maxsleep = 0;
+      }
+      while( BTCONTENT.NeedMerge() && WORLD.IsIdle() ){
+        BTCONTENT.MergeNext();
+        maxsleep = 0;
+      }
     }
 
     rfdnext = rfd;

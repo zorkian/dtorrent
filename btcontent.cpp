@@ -272,6 +272,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   const char *s;
   size_t flen, q, r;
   int tmp;
+  char torrentid[41];
 
   m_cache_hit = m_cache_miss = m_cache_pre = 0;
   time(&m_cache_eval_time);
@@ -368,7 +369,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     arg_flg_exam_only = 0;
   }
 
-  if( (tmp = m_btfiles.CreateFiles()) < 0 ) ERR_RETURN();
+  for( int i=0; i < 20; i++ ){
+    sprintf(torrentid + i*2, "%.2x", (int)m_shake_buffer[28+i]);
+  }
+  torrentid[sizeof(torrentid)] = '\0';
+  if( (tmp = m_btfiles.SetupFiles(torrentid)) < 0 ) ERR_RETURN();
   r = tmp;
 
   if( !arg_flg_exam_only ){
@@ -448,9 +453,10 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
           arg_bitfield_file, strerror(errno));
       }
       // Mark missing pieces as "checked" (eligible for download).
-      *pBChecked = *pBRefer;
-      pBChecked->Invert();
     }
+    pBRefer->And(m_btfiles.pBFPieces);
+    *pBChecked = *pBRefer;
+    pBChecked->Invert();
   }
   if( !r ){  // don't hash-check if the files were just created
     m_check_piece = m_npieces;
@@ -765,7 +771,7 @@ void btContent::FlushCache()
     if( m_cache[i] ) FlushPiece(i);
     if( m_flush_failed ) break;
   }
-  if( Seeding() ) CloseAllFiles();
+  if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
 
 void btContent::FlushPiece(size_t idx)
@@ -864,7 +870,7 @@ void btContent::FlushQueue()
       (int)(m_cache_oldest->bc_len));
     FlushEntry(m_cache_oldest);
   }
-  if( Seeding() && !m_flushq ) CloseAllFiles();
+  if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
 
 /* Prepare for prefetching a whole piece.
@@ -1060,14 +1066,16 @@ int btContent::CheckExist()
 
   CONSOLE.Interact_n("");
   for( ; idx < m_npieces; idx++ ){
-    if( GetHashValue(idx, md) < 0 ){
-      CONSOLE.Warning(1, "Error while checking piece %d of %d",
-        (int)idx+1, (int)m_npieces);
-      return -1;
-    }
-    if( memcmp(md, m_hash_table + idx * 20, 20) == 0 ){
-       m_left_bytes -= GetPieceLength(idx);
-       pBF->Set(idx);
+    if( m_btfiles.pBFPieces->IsSet(idx) ){
+      if( GetHashValue(idx, md) < 0 ){
+        CONSOLE.Warning(1, "Error while checking piece %d of %d",
+          (int)idx+1, (int)m_npieces);
+        return -1;
+      }
+      if( memcmp(md, m_hash_table + idx * 20, 20) == 0 ){
+         m_left_bytes -= GetPieceLength(idx);
+         pBF->Set(idx);
+      }
     }
     if( idx % percent == 0 || idx == m_npieces-1 )
       CONSOLE.InteractU("Check exist: %d/%d", idx+1, m_npieces);
@@ -1576,6 +1584,15 @@ void btContent::CloseAllFiles()
 {
   for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
     m_btfiles.CloseFile(n);  // files will reopen read-only
+}
+
+
+void btContent::MergeNext()
+{
+  if( !m_flush_failed ){
+    m_btfiles.MergeNext();
+    if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
+  }
 }
 
 

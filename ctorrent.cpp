@@ -129,7 +129,7 @@ int param_check(int argc, char **argv)
   while( (c=getopt(argc, argv, opts)) != -1 )
     switch( c ){
     case 'a':
-      arg_allocate = 1;
+      arg_allocate++;
       break;
 
     case 'b':
@@ -408,6 +408,7 @@ void usage()
   fprintf(stderr, "%-15s %s\n", "-S host:port",
     "Use CTCS server at host:port");
   fprintf(stderr, "%-15s %s\n", "-a", "Preallocate files on disk");
+  fprintf(stderr, "%-15s %s\n", "-aa", "Allocate sparse files if supported");
   fprintf(stderr, "%-15s %s\n", "-T",
     "Convert foreign filenames to printable text");
   fprintf(stderr, "%-15s %s\n", "-X command",
