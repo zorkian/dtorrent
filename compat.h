@@ -37,6 +37,12 @@ void srandom(unsigned long seed);
 #endif
 
 
+#ifndef HAVE_FSEEKO
+#define fseeko(stream, offset, whence) \
+        fseek((stream), (long)(offset), (whence))
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif

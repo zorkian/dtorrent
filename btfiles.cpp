@@ -23,7 +23,7 @@
 #include "console.h"
 #include "bttime.h"
 
-#ifndef HAVE_SNPRINTF
+#if !defined(HAVE_SNPRINTF) || !defined(HAVE_FSEEKO)
 #include "compat.h"
 #endif
 
@@ -179,16 +179,11 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 
     pbf->bf_last_timestamp = now;
 
-#ifdef HAVE_FSEEKO
-    if( fseeko(pbf->bf_fp,pos,SEEK_SET) < 0 ){
-#else
-    if( fseek(pbf->bf_fp,(long) pos,SEEK_SET) < 0 ){
-#endif
+    if( fseeko(pbf->bf_fp, pos, SEEK_SET) < 0 ){
       CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
         (unsigned long long)pos, pbf->bf_filename, strerror(errno));
       return -1;
     }
-//  }
 
     nio = (len < pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
 
