@@ -478,7 +478,7 @@ int btFiles::ExtendFile(BTFILE *pbf)
     return 0;
   }
 
-  if( arg_allocate == 1 ){
+  if( arg_allocate == DTALLOC_FULL ){
     off_t pos = pbf->bf_size;
     if( fseeko(pbf->bf_fp, pos, SEEK_SET) < 0 ){
       CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
@@ -504,7 +504,7 @@ int btFiles::_btf_ftruncate(int fd, uint64_t length)
 
   if( length == 0 ) return 0;
 
-  if( arg_allocate == 1 ){  // preallocate to disk (-a)
+  if( arg_allocate == DTALLOC_FULL ){  // preallocate to disk (-a)
     char *c = new char[256*1024];
     if( !c ){ errno = ENOMEM; return -1; }
     memset(c, 0, 256*1024);
@@ -983,7 +983,7 @@ int btFiles::SetupFiles(const char *torrentid)
   }
 
   // Create/allocate files.
-  if( arg_allocate ){
+  if( arg_allocate == DTALLOC_FULL || arg_allocate == DTALLOC_SPARSE ){
     CONSOLE.Interact_n("");
     CONSOLE.Interact_n("Allocating files");
     MergeAll();

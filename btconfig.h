@@ -48,8 +48,14 @@ extern unsigned char arg_flg_private;
 extern unsigned char arg_flg_convert_filenames;
 extern char *arg_file_to_download;
 extern unsigned char arg_verbose;
-extern unsigned char arg_allocate;
 extern unsigned char arg_daemon;
+
+enum{
+  DTALLOC_SPARSE = 0,
+  DTALLOC_FULL   = 1,
+  DTALLOC_NONE   = 2
+};
+extern unsigned char arg_allocate;
 
 extern size_t arg_piece_length;
 extern char *arg_announce;
