@@ -51,9 +51,9 @@ extern unsigned char arg_verbose;
 extern unsigned char arg_daemon;
 
 enum{
-  DTALLOC_SPARSE = 0,
-  DTALLOC_FULL   = 1,
-  DTALLOC_NONE   = 2
+  DT_ALLOC_SPARSE = 0,
+  DT_ALLOC_FULL   = 1,
+  DT_ALLOC_NONE   = 2
 };
 extern unsigned char arg_allocate;
 
