@@ -871,6 +871,7 @@ int btFiles::SetupFiles(const char *torrentid)
   BTFILE *pbf, *pbt;
   uint64_t offset, fend;
   char fn[MAXPATHLEN], *tmp;
+  int files_exist = 0;
 
   m_fsizelen = sprintf(fn, "%llu", (unsigned long long)m_total_files_length);
   if( !(m_torrent_id = new char[strlen(torrentid) + 1]) ||
@@ -979,6 +980,7 @@ int btFiles::SetupFiles(const char *torrentid)
         return -1;
       }
       pbt->bf_size = sb.st_size;
+      files_exist = 1;
     }
   }
 
@@ -1016,7 +1018,7 @@ int btFiles::SetupFiles(const char *torrentid)
   if(arg_verbose)
     CONSOLE.Debug("Files contain %d pieces", (int)pBFPieces->Count());
 
-  return pBFPieces->IsEmpty() ? 0 : 1;
+  return (pBFPieces->IsEmpty() || (!files_exist && 0==m_stagecount)) ? 0 : 1;
 }
 
 int btFiles::ExtendAll()
