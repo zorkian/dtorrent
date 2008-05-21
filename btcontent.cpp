@@ -271,7 +271,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   char *b;
   const char *s;
   size_t flen, q, r;
-  int tmp;
+  int check_pieces = 0;
   char torrentid[41];
 
   m_cache_hit = m_cache_miss = m_cache_pre = 0;
@@ -372,44 +372,42 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   for( int i=0; i < 20; i++ ){
     sprintf(torrentid + i*2, "%.2x", (int)m_shake_buffer[28+i]);
   }
-  torrentid[sizeof(torrentid)] = '\0';
-  if( (tmp = m_btfiles.SetupFiles(torrentid)) < 0 ) ERR_RETURN();
-  r = tmp;
+  if( (check_pieces = m_btfiles.SetupFiles(torrentid)) < 0 ) ERR_RETURN();
 
-  if( !arg_flg_exam_only ){
-    global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
+  global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
 #ifndef WINDOWS
-    if( !global_piece_buffer ) ERR_RETURN();
+  if( !global_piece_buffer ) ERR_RETURN();
 #endif
-    global_buffer_size = DEFAULT_SLICE_SIZE;
+  global_buffer_size = DEFAULT_SLICE_SIZE;
 
-    pBF = new BitField(m_npieces);
+  pBF = new BitField(m_npieces);
 #ifndef WINDOWS
-    if( !pBF ) ERR_RETURN();
+  if( !pBF ) ERR_RETURN();
 #endif
 
-    pBRefer = new BitField(m_npieces);
+  pBRefer = new BitField(m_npieces);
 #ifndef WINDOWS
-    if( !pBRefer ) ERR_RETURN();
+  if( !pBRefer ) ERR_RETURN();
 #endif
 
-    pBChecked = new BitField(m_npieces);
+  pBChecked = new BitField(m_npieces);
 #ifndef WINDOWS
-    if( !pBChecked ) ERR_RETURN();
+  if( !pBChecked ) ERR_RETURN();
 #endif
 
-    pBMultPeer = new BitField(m_npieces);
+  pBMultPeer = new BitField(m_npieces);
 #ifndef WINDOWS
-    if( !pBMultPeer ) ERR_RETURN();
+  if( !pBMultPeer ) ERR_RETURN();
 #endif
 
-    //create the file filter
-    pBMasterFilter = new BitField(m_npieces);
+  //create the file filter
+  pBMasterFilter = new BitField(m_npieces);
 #ifndef WINDOWS
-     if( !pBMasterFilter ) ERR_RETURN();
+  if( !pBMasterFilter ) ERR_RETURN();
 #endif
-    if( arg_file_to_download ) SetFilter();
-  }
+  if( arg_file_to_download ) SetFilter();
+
+  check_pieces *= m_btfiles.CreateFiles();
 
   m_left_bytes = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_left_bytes++;
@@ -425,9 +423,10 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
           arg_bitfield_file, strerror(errno));
       }
     }
-    if( r ){
+    if( check_pieces ){
       if( CheckExist() < 0 ) ERR_RETURN();
-      m_btfiles.PrintOut(); // show file completion
+      if( !pBF->IsEmpty() )
+        m_btfiles.PrintOut(); // show file completion
     }
     CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)(pBF->Count()),
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
@@ -436,7 +435,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       if( arg_completion_exit ) CompletionCommand();
       exit(0);
     }
-  }else if( r ){  // files exist already
+  }else if( check_pieces ){  // files exist already
     if( pBRefer->SetReferFile(arg_bitfield_file) < 0 ){
       if( !arg_flg_force_seed_mode ){
         CONSOLE.Warning(2,
@@ -458,7 +457,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     *pBChecked = *pBRefer;
     pBChecked->Invert();
   }
-  if( !r ){  // don't hash-check if the files were just created
+  if( !check_pieces ){  // don't hash-check if the files were just created
     m_check_piece = m_npieces;
     pBChecked->SetAll();
     if( arg_flg_force_seed_mode ){
@@ -1125,7 +1124,8 @@ int btContent::CheckNextPiece()
 
   if( m_check_piece >= m_npieces ){
     CONSOLE.Print("Checking completed.");
-    m_btfiles.PrintOut();  // show file completion
+    if( !pBF->IsEmpty() )
+      m_btfiles.PrintOut();  // show file completion
     if( pBF->IsFull() ){
       WORLD.CloseAllConnectionToSeed();
     }

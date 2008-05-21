@@ -869,7 +869,7 @@ int btFiles::SetupFiles(const char *torrentid)
   struct dirent *dirp;
   struct stat sb;
   BTFILE *pbf, *pbt;
-  uint64_t offset, fend;
+  uint64_t offset;
   char fn[MAXPATHLEN], *tmp;
   int files_exist = 0;
 
@@ -887,13 +887,7 @@ int btFiles::SetupFiles(const char *torrentid)
   // Identify existing staging files.
   if( !(dp = opendir(m_staging_path)) && !arg_flg_check_only ){
     int err = errno;
-    if( stat(m_staging_path, &sb) < 0 ){
-      if( MkPath(m_staging_path) < 0 || mkdir(m_staging_path, 0755) < 0 ){
-        CONSOLE.Warning(1, "error, create staging directory \"%s\" failed:  %s",
-          m_staging_path, strerror(errno));
-        return -1;
-      }
-    }else{
+    if( stat(m_staging_path, &sb) == 0 ){
       CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
         m_staging_path, strerror(err));
       return -1;
@@ -939,6 +933,7 @@ int btFiles::SetupFiles(const char *torrentid)
           if(arg_verbose) CONSOLE.Debug("Found staging file %s size %llu",
             pbf->bf_filename, (unsigned long long)pbf->bf_size);
           m_stagecount++;
+          if( pbf->bf_size > 0 ) files_exist = 1;
     
           for( pbt = m_btfhead; pbt->bf_next; pbt = pbt->bf_next ){
             if( pbf->bf_offset < pbt->bf_next->bf_offset ) break;
@@ -980,7 +975,31 @@ int btFiles::SetupFiles(const char *torrentid)
         return -1;
       }
       pbt->bf_size = sb.st_size;
-      files_exist = 1;
+      if( pbt->bf_size > 0 ) files_exist = 1;
+    }
+  }
+
+  return files_exist ? 1 : 0;
+}
+
+int btFiles::CreateFiles()
+{
+  struct stat sb;
+  BTFILE *pbf;
+  uint64_t idxoff, fend, idxend;
+
+  if( (arg_allocate == DT_ALLOC_NONE || !BTCONTENT.pBMasterFilter->IsEmpty()) &&
+      stat(m_staging_path, &sb) < 0 ){
+    if( ENOENT == errno ){
+      if( MkPath(m_staging_path) < 0 || mkdir(m_staging_path, 0755) < 0 ){
+        CONSOLE.Warning(1, "error, create staging directory \"%s\" failed:  %s",
+          m_staging_path, strerror(errno));
+        return -1;
+      }
+    }else{
+      CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
+        m_staging_path, strerror(errno));
+      return -1;
     }
   }
 
@@ -995,7 +1014,7 @@ int btFiles::SetupFiles(const char *torrentid)
   // Set up map of pieces that are available in the files.
   pbf = m_btfhead;
   for( size_t idx = 0; idx < BTCONTENT.GetNPieces() && pbf; idx++ ){
-    uint64_t idxoff = idx * BTCONTENT.GetPieceLength();
+    idxoff = idx * BTCONTENT.GetPieceLength();
     if( idxoff < pbf->bf_offset ) continue;
     fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
     while( pbf && pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next) ){
@@ -1005,7 +1024,7 @@ int btFiles::SetupFiles(const char *torrentid)
     if( !pbf || idxoff > fend ) break;  // no more files
 
     if( idxoff >= pbf->bf_offset ){
-      size_t idxend = idxoff + BTCONTENT.GetPieceLength(idx) - 1;
+      idxend = idxoff + BTCONTENT.GetPieceLength(idx) - 1;
       while( pbf && idxend > fend && pbf->bf_next &&
              pbf->bf_next->bf_offset <= fend + 1 ){
         pbf = pbf->bf_next;
@@ -1018,15 +1037,24 @@ int btFiles::SetupFiles(const char *torrentid)
   if(arg_verbose)
     CONSOLE.Debug("Files contain %d pieces", (int)pBFPieces->Count());
 
-  return (pBFPieces->IsEmpty() || (!files_exist && 0==m_stagecount)) ? 0 : 1;
+  return pBFPieces->IsEmpty() ? 0 : 1;
 }
 
 int btFiles::ExtendAll()
 {
   BTFILE *pbf = m_btfhead;
+  int i = 0;
+  BitField tmpFilter;
 
-  for( ; pbf; pbf = pbf->bf_nextreal ){
+  for( ; pbf; pbf = pbf->bf_nextreal, i++ ){
     if( pbf->bf_size > 0 && pbf->bf_size >= pbf->bf_length ) continue;
+    if( arg_file_to_download ){
+      SetFilter(i, &tmpFilter, BTCONTENT.GetPieceLength());
+      tmpFilter.Invert();
+      tmpFilter.And(BTCONTENT.pBMasterFilter);
+      if( !tmpFilter.IsEmpty() )
+        continue;
+    }
     if( ExtendFile(pbf) < 0 ) return -1;
   }
   return 0;

@@ -81,7 +81,6 @@ class btFiles
   int MergeStaging(BTFILE *dst);
   int MergeAny() { return FindAndMerge(0, 1); }
   int FindAndMerge(int findall, int dostaging=0);
-  int CreateFiles();
   int ExtendAll();
   int MkPath(const char *pathname);
 
@@ -89,6 +88,7 @@ class btFiles
   BitField *pBFPieces;
 
   int SetupFiles(const char *torrentid);
+  int CreateFiles();
   void CloseFile(size_t nfile);
 
   btFiles();
