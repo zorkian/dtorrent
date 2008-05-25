@@ -389,7 +389,8 @@ int btFiles::MergeStaging(BTFILE *dst)
   }
   dst->bf_next = src->bf_next;
 
-  if( 0==strncmp(m_stagedir, src->bf_filename, strlen(m_stagedir)) ){
+  if( m_stagecount > 0 &&
+      0==strncmp(m_stagedir, src->bf_filename, strlen(m_stagedir)) ){
     m_stagecount--;
     if( 0==m_stagecount ){
       f_remove = 1;
