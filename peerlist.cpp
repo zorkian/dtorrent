@@ -292,6 +292,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       if( p->peer->NeedPrefetch() ){
         if( f_idle || IsIdle() ){
           p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval);
+          time(&now);
           f_idle = 0;
         }else break;
       }
