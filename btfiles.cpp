@@ -28,7 +28,7 @@
 
 #define MAX_OPEN_FILES 20               // max simultaneous open data files
 #define OPT_IO_SIZE 256*1024            // optimal I/O size for large ops
-#define MAX_STAGEFILE_SIZE 2*1024*1024  // size limit of a staging file
+#define MAX_STAGEFILE_SIZE 2*1024*1024  // [soft] size limit of a staging file
 #define MAX_STAGEDIR_FILES 200          // max staging files per directory
 
 btFiles::btFiles()
@@ -209,9 +209,13 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 
   // Read/write the data (all applicable files)
   while( len ){
-    if( !pbf ||
-        (iotype && pbf->bf_flag_staging &&
-          pbf->bf_size >= MAX_STAGEFILE_SIZE) ){
+    if( iotype && pbf && pbf->bf_flag_staging &&
+        pbf->bf_size >= MAX_STAGEFILE_SIZE &&
+        off == pbf->bf_offset + pbf->bf_size ){
+      pbfref = pbf;
+      pbf = (BTFILE *)0;
+    }
+    if( !pbf ){
       if( iotype ){  // write
         // Create new staging file
         if( m_stagecount >= MAX_STAGEDIR_FILES || !m_stagedir[0] ){
