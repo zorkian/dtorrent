@@ -26,7 +26,10 @@
 #include "compat.h"
 #endif
 
-#define MAX_OPEN_FILES 20
+#define MAX_OPEN_FILES 20               // max simultaneous open data files
+#define OPT_IO_SIZE 256*1024            // optimal I/O size for large ops
+#define MAX_STAGEFILE_SIZE 2*1024*1024  // size limit of a staging file
+#define MAX_STAGEDIR_FILES 200          // max staging files per directory
 
 btFiles::btFiles()
 {
@@ -206,10 +209,12 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 
   // Read/write the data (all applicable files)
   while( len ){
-    if( !pbf ){
+    if( !pbf ||
+        (iotype && pbf->bf_flag_staging &&
+          pbf->bf_size >= MAX_STAGEFILE_SIZE) ){
       if( iotype ){  // write
         // Create new staging file
-        if( m_stagecount >= 200 || !m_stagedir[0] ){
+        if( m_stagecount >= MAX_STAGEDIR_FILES || !m_stagedir[0] ){
           char fn[MAXPATHLEN], tmpdir[m_fsizelen+1];
           sprintf(tmpdir, "%.*llu", m_fsizelen, off);
           snprintf(fn, MAXPATHLEN, "%s%c%s", m_staging_path, PATH_SP, tmpdir);
@@ -320,8 +325,8 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
 int btFiles::MergeStaging(BTFILE *dst)
 {
   BTFILE *src = dst->bf_next;
-  char buf[256*1024];
-  size_t nio = 256*1024;
+  char buf[OPT_IO_SIZE];
+  size_t nio = OPT_IO_SIZE;
   off_t pos;
   uint64_t remain;
   int f_remove = 0;
@@ -506,18 +511,19 @@ int btFiles::_btf_ftruncate(int fd, uint64_t length)
   if( length == 0 ) return 0;
 
   if( arg_allocate == DT_ALLOC_FULL ){  // preallocate to disk (-a)
-    char *c = new char[256*1024];
+    char *c = new char[OPT_IO_SIZE];
     if( !c ){ errno = ENOMEM; return -1; }
-    memset(c, 0, 256*1024);
+    memset(c, 0, OPT_IO_SIZE);
     int r, wlen;
     uint64_t len = 0;
     for( int i=0; len < length; i++ ){
-      if( len + 256*1024 > length ) wlen = (int)(length - len);
-      else wlen = 256*1024;
+      if( len + OPT_IO_SIZE > length ) wlen = (int)(length - len);
+      else wlen = OPT_IO_SIZE;
       if( 0 == i % 100 ) CONSOLE.Interact_n(".");
       if( (r = write(fd, c, wlen)) < 0 ) return r;
       len += wlen;
     }
+    delete []c;
     return r;
   }
 
