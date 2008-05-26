@@ -106,6 +106,7 @@ int main(int argc, char **argv)
       "Press 'h' or '?' for help (display/control client options)." );
     Downloader();
     if( cfg_cache_size ) BTCONTENT.FlushCache();
+    while( BTCONTENT.NeedMerge() ) BTCONTENT.MergeNext();
   }
   if( !arg_flg_exam_only ) BTCONTENT.SaveBitfield();
   WORLD.CloseAll();
