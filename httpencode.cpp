@@ -25,7 +25,10 @@ char* Http_url_encode(char *s,const char *b,size_t n)
 {
   size_t r,i;
   for(r = 0,i = 0 ; i < n; i++){
-    if( isalpha(b[i]) || isdigit(b[i]) ){
+    if( !(b[i] & ~0x7f) &&                   // quick ASCII test
+        ((b[i] >= 0x41 && b[i] <= 0x5a) ||   // A-Z [ASCII]
+         (b[i] >= 0x61 && b[i] <= 0x7a) ||   // a-z
+         (b[i] >= 0x30 && b[i] <= 0x39)) ){  // 0-9
       s[r] = b[i];
       r++;
     }else{
