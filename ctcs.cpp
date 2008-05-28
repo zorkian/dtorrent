@@ -52,10 +52,12 @@ Ctcs::~Ctcs()
 
 void Ctcs::Reset(time_t new_interval)
 {
+  int warn = 0;
+
   if(new_interval) m_interval = new_interval;
 
   if( INVALID_SOCKET != m_sock ){
-    if(T_READY==m_status) CONSOLE.Warning(2, "Connection to CTCS closed");
+    if( T_READY==m_status ) warn = 1;
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
   }
@@ -66,6 +68,8 @@ void Ctcs::Reset(time_t new_interval)
   m_sent_ctstatus = 0;
   m_sent_ctbw = 0;
   m_status = T_FREE;
+
+  if( warn ) CONSOLE.Warning(2, "Connection to CTCS closed");
 }
 
 
