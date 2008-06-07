@@ -1205,19 +1205,16 @@ int btContent::APieceComplete(size_t idx)
 
   // Add the completed piece to the flush queue.
   if( cfg_cache_size ){
-    if( IsFull() ) FlushCache();
-    if( !IsFull() || m_flush_failed ){
-      BTFLUSH *last = m_flushq;
-      BTFLUSH *node = new BTFLUSH;
-      if( !node ) FlushPiece(idx);
-      else{
-        node->idx = idx;
-        node->next = (BTFLUSH *)0;
-        if( last ){
-          for( ; last->next; last = last->next);
-          last->next = node;
-        }else m_flushq = node;
-      }
+    BTFLUSH *last = m_flushq;
+    BTFLUSH *node = new BTFLUSH;
+    if( !node ) FlushPiece(idx);
+    else{
+      node->idx = idx;
+      node->next = (BTFLUSH *)0;
+      if( last ){
+        for( ; last->next; last = last->next);
+        last->next = node;
+      }else m_flushq = node;
     }
   }
 
