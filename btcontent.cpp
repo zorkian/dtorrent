@@ -538,10 +538,11 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
     BTCACHE *p;
 
     p = m_cache[idx];
-    for( ; p && offset + len > p->bc_off && !CACHE_FIT(p,offset,len);
-        p = p->bc_next );
-
-    for( ; len && p && CACHE_FIT(p, offset, len); ){
+    while( len && p ){
+      while( p && offset + len > p->bc_off && !CACHE_FIT(p, offset, len) ){
+        p = p->bc_next;
+      }
+      if( !p || !CACHE_FIT(p, offset, len) ) break;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
         if( CacheIO(buf, offset, len2, 0) < 0 ) return -1;
@@ -550,6 +551,7 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
                                 ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         else m_cache_pre += len2 / DEFAULT_SLICE_SIZE +
                             ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
+        p = m_cache[idx];  // p may not be valid after CacheIO
       }else{
         char *src;
         if( offset > p->bc_off ){
@@ -929,13 +931,15 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
     BTCACHE *p;
 
     p = m_cache[idx];
-    for( ; p && (offset + len) > p->bc_off && !CACHE_FIT(p,offset,len);
-        p = p->bc_next );
-
-    for( ; len && p && CACHE_FIT(p, offset, len); ){
+    while( len && p ){
+      while( p && offset + len > p->bc_off && !CACHE_FIT(p, offset, len) ){
+        p = p->bc_next;
+      }
+      if( !p || !CACHE_FIT(p, offset, len) ) break;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
         if( CacheIO(buf, offset, len2, 1) < 0 ) return -1;
+        p = m_cache[idx];  // p may not be valid after CacheIO
       }else{
         if( offset > p->bc_off ){
           len2 = p->bc_off + p->bc_len - offset;
