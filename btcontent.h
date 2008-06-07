@@ -106,7 +106,7 @@ class btContent
   
   void CacheConfigure();
   void FlushCache();
-  void FlushPiece(size_t idx);
+  int FlushPiece(size_t idx);
   void Uncache(size_t idx);
   void FlushQueue();
   int NeedFlush() const;

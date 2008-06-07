@@ -597,6 +597,7 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
   return retval;
 }
 
+
 void btContent::CacheClean(size_t need)
 {
   BTCACHE *p, *pnext;
@@ -607,11 +608,13 @@ void btContent::CacheClean(size_t need)
   again:
   for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
     pnext = p->age_next;
-    if( f_flush ){
+    if( f_flush && p->bc_f_flush ){
       if(arg_verbose)
-        CONSOLE.Debug("Flushing %d/%d/%d", (int)(p->bc_off / m_piece_length),
-          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
-      FlushEntry(p);
+        CONSOLE.Debug("Flushing piece #%d", (int)(p->bc_off / m_piece_length));
+      if( FlushPiece(p->bc_off / m_piece_length) ){
+        pnext = m_cache_oldest;
+        continue;
+      }
     }
     if( !p->bc_f_flush ){
       if(arg_verbose)
@@ -775,16 +778,17 @@ void btContent::FlushCache()
   if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
 
-void btContent::FlushPiece(size_t idx)
+int btContent::FlushPiece(size_t idx)
 {
   BTCACHE *p;
+  int retval = 0;
 
   p = m_cache[idx];
 
   for( ; p; p = p->bc_next ){
-    // Update the age--flushing the entry or its piece.  Usually this means
-    // we've just completed the piece and made it available.
-    if( m_cache_newest != p ){
+    // Update the age if piece is complete, as this should mean we've just
+    // completed the piece and made it available.
+    if( pBF->IsSet(idx) && m_cache_newest != p ){
       if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
       else p->age_prev->age_next = p->age_next;
       p->age_next->age_prev = p->age_prev;
@@ -792,9 +796,12 @@ void btContent::FlushPiece(size_t idx)
       p->age_next = (BTCACHE *)0;
       p->age_prev = m_cache_newest;
       m_cache_newest = p;
+      retval = 1;
     }
     if( p->bc_f_flush ) FlushEntry(p);
   }
+
+  return retval;
 }
 
 void btContent::FlushEntry(BTCACHE *p)
@@ -865,11 +872,9 @@ void btContent::FlushQueue()
       delete goner;
     }
   }else{
-    if(arg_verbose) CONSOLE.Debug("Flushing %d/%d/%d",
-      (int)(m_cache_oldest->bc_off / m_piece_length),
-      (int)(m_cache_oldest->bc_off % m_piece_length),
-      (int)(m_cache_oldest->bc_len));
-    FlushEntry(m_cache_oldest);
+    if(arg_verbose) CONSOLE.Debug("Flushing piece #%d",
+      (int)(m_cache_oldest->bc_off / m_piece_length));
+    FlushPiece(m_cache_oldest->bc_off / m_piece_length);
   }
   if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
@@ -892,11 +897,13 @@ int btContent::CachePrep(size_t idx)
       pnext = p->age_next;
       if( p->bc_off / m_piece_length == idx ) continue;
       if( p->bc_f_flush ){
-        if(arg_verbose)
-          CONSOLE.Debug("Flushing %d/%d/%d", (int)(p->bc_off / m_piece_length),
-            (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
-        FlushEntry(p);
+        if(arg_verbose) CONSOLE.Debug("Flushing piece #%d",
+          (int)(p->bc_off / m_piece_length));
         retval = 1;
+        if( FlushPiece(p->bc_off / m_piece_length) ){
+          pnext = m_cache_oldest;
+          continue;
+        }
       }
       if(arg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
@@ -978,6 +985,7 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
   BTCACHE *p;
   BTCACHE *pp = (BTCACHE*) 0;
   BTCACHE *pnew = (BTCACHE*) 0;
+  size_t idx = off / m_piece_length;
 
   if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
     if( buf ) return m_btfiles.IO(buf, off, len, method);
@@ -986,7 +994,7 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
 
   if(arg_verbose && 0==method)
     CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
-      (int)(off / m_piece_length), (int)(off % m_piece_length), (int)len);
+      (int)(idx), (int)(off % m_piece_length), (int)len);
 
   if( m_cache_size < m_cache_used + len ) CacheClean(len);
   // Note, there is no failure code from CacheClean().  If nothing can be done
@@ -1029,7 +1037,6 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
   m_cache_newest = pnew;
 
   // find insert point: after pp, before p.
-  size_t idx = off / m_piece_length;
   p = m_cache[idx];
   if( p ) pp = p->bc_prev;
   for( ; p && off > p->bc_off; pp = p, p = pp->bc_next );
