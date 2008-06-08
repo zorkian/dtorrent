@@ -329,11 +329,18 @@ int btPeer::RequestPiece()
     BitField tmpBitfield2 = tmpBitfield;
     WORLD.FindValuedPieces(tmpBitfield2, this, BTCONTENT.pBF->IsEmpty());
     if( tmpBitfield2.IsEmpty() ) tmpBitfield2 = tmpBitfield;
+
     if( m_cached_idx < BTCONTENT.CheckedPieces() &&
         tmpBitfield2.IsSet(m_cached_idx) ){
-      // A HAVE msg already selected what we want from this peer.
+      // Prefer the piece indicated by a recent HAVE message.
       idx = m_cached_idx;
-    }else idx = tmpBitfield2.Random();
+    }else idx = BTCONTENT.GetNPieces();
+
+    if( BTCONTENT.pBF->Count() < BTCONTENT.GetNFiles() ||
+        (idx = BTCONTENT.ChoosePiece(tmpBitfield2, tmpBitfield, idx)) >=
+          BTCONTENT.GetNPieces() ){
+      idx = tmpBitfield2.Random();
+    }
     if(arg_verbose) CONSOLE.Debug("Assigning #%d to %p", (int)idx, this);
     return (request_q.CreateWithIdx(idx) < 0) ? -1 : SendRequest();
   }

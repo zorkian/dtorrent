@@ -113,6 +113,8 @@ class btFiles
   int NeedMerge() const { return m_need_merge ? 1 : 0; }
   int MergeNext() { return FindAndMerge(0); }
   int MergeAll() { return FindAndMerge(1); }
+  size_t ChoosePiece(const BitField &choices, const BitField &available,
+    size_t preference) const;
 
   void PrintOut();
 };

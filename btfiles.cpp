@@ -413,7 +413,6 @@ int btFiles::MergeStaging(BTFILE *dst)
     m_stagecount--;
     if( 0==m_stagecount ){
       f_remove = 1;
-      m_stagecount = 0;
       m_stagedir[0] = '\0';
     }
   }else f_remove = 1;
@@ -462,6 +461,67 @@ int btFiles::FindAndMerge(int findall, int dostaging)
   if( !merged || findall ) m_need_merge = 0;
 
   return merged;
+}
+
+/* Of the choices presented, select a piece that will help toward merging
+   staged data.
+*/
+size_t btFiles::ChoosePiece(const BitField &choices, const BitField &available,
+  size_t preference) const
+{
+  BitField needs(BTCONTENT.GetNPieces()), needsnext(BTCONTENT.GetNPieces());
+  BTFILE *pbf = m_btfhead, *pbt;
+  size_t idx;
+  int found;
+
+  for( ; pbf; pbf = pbf->bf_nextreal ){
+    if( pbf->bf_next && pbf->bf_next->bf_flag_staging ){
+      // next piece of this file helps fill a merge gap
+      idx = (pbf->bf_offset + pbf->bf_size) / BTCONTENT.GetPieceLength();
+      if( available.IsSet(idx) &&
+          pbf->bf_next->bf_offset <=
+            pbf->bf_offset + pbf->bf_size + BTCONTENT.GetPieceLength() ){
+        // piece will fill a merge gap
+        return idx;
+      }
+      if( choices.IsSet(preference) &&
+          (uint64_t)preference * BTCONTENT.GetPieceLength() >=
+            pbf->bf_offset && 
+          (uint64_t)preference * BTCONTENT.GetPieceLength() <
+            pbf->bf_next->bf_offset ){
+        // preference helps fill a merge gap
+        return preference;
+      }
+      // mark pieces from this merge gap for selection
+      for( ;
+          (uint64_t)idx * BTCONTENT.GetPieceLength() < pbf->bf_next->bf_offset;
+          idx++ ){
+        if( choices.IsSet(idx) ) needs.Set(idx);
+      }
+      if( needs.IsEmpty() ){
+        // work on the next staging gap of this file as a secondary priority
+        found = 0;
+        for( pbt = pbf->bf_next;
+             !found && pbt->bf_next && pbt->bf_next->bf_flag_staging;
+             pbt = pbt->bf_next ){
+          idx = (pbt->bf_offset + pbt->bf_size) / BTCONTENT.GetPieceLength();
+          for( ;
+              (uint64_t)idx * BTCONTENT.GetPieceLength() <
+                pbt->bf_next->bf_offset;
+              idx++ ){
+            if( choices.IsSet(idx) ){
+              needsnext.Set(idx);
+              found = 1;
+            }
+          }
+        }
+      }  // needs.IsEmpty()
+    }
+  }
+  return needs.IsEmpty() ?
+            ( (needsnext.IsEmpty() || needsnext.IsSet(preference)) ?
+                preference : needsnext.Random() ) :
+            needs.Random();
 }
 
 int btFiles::_btf_destroy()

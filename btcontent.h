@@ -113,6 +113,8 @@ class btContent
   int FlushFailed() const { return m_flush_failed ? 1 : 0 ; }
   int NeedMerge() const { return m_btfiles.NeedMerge(); }
   void MergeNext();
+  size_t ChoosePiece(const BitField &choices, const BitField &available,
+    size_t preference) const;
 
   int CreateMetainfoFile(const char *mifn);
   int InitialFromFS(const char *pathname, char *ann_url, size_t piece_length);

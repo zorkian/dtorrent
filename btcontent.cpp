@@ -1604,6 +1604,16 @@ void btContent::MergeNext()
 }
 
 
+/* Opportunity to influence download piece selection by criteria unknown to
+   the peer object.
+*/
+size_t btContent::ChoosePiece(const BitField &choices,
+  const BitField &available, size_t preference) const
+{
+  return m_btfiles.ChoosePiece(choices, available, preference);
+}
+
+
 void btContent::DumpCache()
 {
   BTCACHE *p = m_cache_oldest;
