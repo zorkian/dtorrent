@@ -195,9 +195,12 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
   // Find the first file to read/write
   while( pbf ){
     pbfnext = pbf->bf_next;
-    if( (off >= pbf->bf_offset && off < pbf->bf_offset + pbf->bf_size) ||
-        (iotype && off == pbf->bf_offset + pbf->bf_size) )
+    if( off >= pbf->bf_offset &&
+        (off < pbf->bf_offset + pbf->bf_size ||
+          (iotype && off == pbf->bf_offset + pbf->bf_size &&
+            pbf->bf_size < MAX_STAGEFILE_SIZE)) ){
       break;
+    }
     if( off < pbf->bf_offset ){
       pbf = (BTFILE *)0;
       break;
@@ -335,6 +338,12 @@ int btFiles::MergeStaging(BTFILE *dst)
   uint64_t remain;
   int f_remove = 0;
 
+  if( src->bf_offset + src->bf_size <= dst->bf_offset + dst->bf_size ){
+    if(arg_verbose)
+      CONSOLE.Debug("Staging file %s range already present in \"%s\"",
+        src->bf_filename, dst->bf_filename);
+    goto delsrc;
+  }
   if(arg_verbose) CONSOLE.Debug("Merge file %s to \"%s\"", src->bf_filename,
     dst->bf_filename);
 
@@ -390,6 +399,7 @@ int btFiles::MergeStaging(BTFILE *dst)
   }
 
   if( dst->bf_size == dst->bf_length ) _btf_close(dst);  // will reopen RO
+ delsrc:
   _btf_close(src);
   sprintf(buf, "%s%c%s", m_staging_path, PATH_SP, src->bf_filename);
   if(arg_verbose) CONSOLE.Debug("Delete file \"%s\"", buf);
