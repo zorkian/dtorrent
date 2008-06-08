@@ -68,8 +68,10 @@ class PeerList
 
   int BandWidthLimitUp() { return BandWidthLimitUp(0); }
   int BandWidthLimitUp(double when);
+  int BandWidthLimitUp(double when, int limit);
   int BandWidthLimitDown() { return BandWidthLimitDown(0); }
   int BandWidthLimitDown(double when);
+  int BandWidthLimitDown(double when, int limit);
   double WaitBW() const;
   void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
 

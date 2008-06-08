@@ -1419,13 +1419,18 @@ size_t PeerList::GetSlowestUp(size_t minimum) const
 
 int PeerList::BandWidthLimitUp(double when)
 {
+  return BandWidthLimitUp(when, cfg_max_bandwidth_up);
+}
+
+int PeerList::BandWidthLimitUp(double when, int limit)
+{
   int limited = 0;
   double nexttime;
 
-  if( cfg_max_bandwidth_up <= 0 ) return 0;
+  if( limit <= 0 ) return 0;
 
   nexttime = Self.LastSendTime() +
-             (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up;
+             (double)(Self.LastSizeSent()) / limit;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
   else if( nexttime <= PreciseTime() + when ) limited = 0;
@@ -1437,14 +1442,19 @@ int PeerList::BandWidthLimitUp(double when)
 
 int PeerList::BandWidthLimitDown(double when)
 {
+  return BandWidthLimitDown(when, cfg_max_bandwidth_down);
+}
+
+int PeerList::BandWidthLimitDown(double when, int limit)
+{
   int limited = 0;
   double nexttime;
 
   // Don't check SeedOnly() here--need to let the input stream drain.
-  if( cfg_max_bandwidth_down <= 0 ) return 0;
+  if( limit <= 0 ) return 0;
 
   nexttime = Self.LastRecvTime() +
-             (double)(Self.LastSizeRecv()) / cfg_max_bandwidth_down;
+             (double)(Self.LastSizeRecv()) / limit;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
   else if( nexttime <= PreciseTime() + when ) limited = 0;
@@ -1456,20 +1466,29 @@ int PeerList::BandWidthLimitDown(double when)
 
 int PeerList::IsIdle()
 {
-  int idle = 0, dlate=0, ulate=0;
+  int idle = 0, dlate = 0, ulate = 0, slow = 0;
 
   if(
-    ( 0==cfg_max_bandwidth_down ||
-      (dlate = (now > (time_t)(Self.LastRecvTime() + Self.LateDL() +
-                     Self.LastSizeRecv() / (double)cfg_max_bandwidth_down))) ||
-      BandWidthLimitDown(Self.LateDL()) )
+    ( (cfg_max_bandwidth_down > 0 &&
+        (dlate = (now > (time_t)(Self.LastRecvTime() + Self.LateDL() +
+                    Self.LastSizeRecv() / (double)cfg_max_bandwidth_down)))) ||
+      0==Self.RateDL() ||
+      ((0==cfg_max_bandwidth_down ||
+       (slow = (Self.RateDL() < cfg_max_bandwidth_down / 2))) &&
+         BandWidthLimitDown(Self.LateDL(), (int)Self.RateDL() * 2)) ||
+      (!slow && BandWidthLimitDown(Self.LateDL())) )
 
     && !(dlate && m_f_dlate) &&
 
-    ( 0==cfg_max_bandwidth_up ||
-      (ulate = (now > (time_t)(Self.LastSendTime() + Self.LateUL() +
-                     Self.LastSizeSent() / (double)cfg_max_bandwidth_up))) ||
-      BandWidthLimitUp(Self.LateUL()) )
+    ( (cfg_max_bandwidth_up > 0 &&
+        (ulate = (now > (time_t)(Self.LastSendTime() + Self.LateUL() +
+                    Self.LastSizeSent() / (double)cfg_max_bandwidth_up)))) ||
+      0==Self.RateUL() ||
+      (slow = 0) ||  // re-initialization
+      ((0==cfg_max_bandwidth_up ||
+       (slow = (Self.RateUL() < cfg_max_bandwidth_up / 2))) &&
+         BandWidthLimitUp(Self.LateUL(), (int)Self.RateUL() * 2)) ||
+      (!slow && BandWidthLimitUp(Self.LateUL())) )
   ){
     idle = 1;
   }
