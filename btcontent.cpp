@@ -600,6 +600,12 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
 
 void btContent::CacheClean(size_t need)
 {
+  CacheClean(need, m_npieces);
+}
+
+/* idx is a piece we wish to avoid expiring */
+void btContent::CacheClean(size_t need, size_t idx)
+{
   BTCACHE *p, *pnext;
   int f_flush = 0;
 
@@ -617,6 +623,7 @@ void btContent::CacheClean(size_t need)
       }
     }
     if( !p->bc_f_flush ){
+      if( !f_flush && idx == p->bc_off / m_piece_length ) continue;
       if(arg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
           (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
@@ -996,9 +1003,12 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
     CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
       (int)(idx), (int)(off % m_piece_length), (int)len);
 
-  if( m_cache_size < m_cache_used + len ) CacheClean(len);
-  // Note, there is no failure code from CacheClean().  If nothing can be done
-  // to increase the cache size, we allocate what we need anyway.
+  if( m_cache_size < m_cache_used + len ){
+    if( 0==method && !pBF->IsSet(idx) ) CacheClean(len, idx);
+    else CacheClean(len);
+    // Note, there is no failure code from CacheClean().  If nothing can be
+    // done to increase the cache size, we allocate what we need anyway.
+  }
   
   if( 0==method && buf && m_btfiles.IO(buf, off, len, method) < 0 ) return -1;
   

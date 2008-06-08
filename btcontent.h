@@ -86,6 +86,7 @@ class btContent
 
   int CheckExist();
   void CacheClean(size_t need);
+  void CacheClean(size_t need, size_t idx);
   void CacheEval();
   uint64_t max_uint64_t(uint64_t a,uint64_t b) { return (a > b) ? a : b; }
   uint64_t min_uint64_t(uint64_t a,uint64_t b) { return (a > b) ? b : a; }
