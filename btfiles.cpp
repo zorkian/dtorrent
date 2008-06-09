@@ -198,7 +198,7 @@ ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
     if( off >= pbf->bf_offset &&
         (off < pbf->bf_offset + pbf->bf_size ||
           (iotype && off == pbf->bf_offset + pbf->bf_size &&
-            pbf->bf_size < MAX_STAGEFILE_SIZE)) ){
+            (!pbf->bf_flag_staging || pbf->bf_size < MAX_STAGEFILE_SIZE))) ){
       break;
     }
     if( off < pbf->bf_offset ){
