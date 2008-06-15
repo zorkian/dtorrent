@@ -114,6 +114,7 @@ class btContent
   int FlushFailed() const { return m_flush_failed ? 1 : 0 ; }
   int NeedMerge() const { return m_btfiles.NeedMerge(); }
   void MergeNext();
+  void MergeAll() { m_btfiles.MergeAll(); }
   size_t ChoosePiece(const BitField &choices, const BitField &available,
     size_t preference) const;
 

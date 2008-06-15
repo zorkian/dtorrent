@@ -883,7 +883,10 @@ void btContent::FlushQueue()
       (int)(m_cache_oldest->bc_off / m_piece_length));
     FlushPiece(m_cache_oldest->bc_off / m_piece_length);
   }
-  if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
+  if( !NeedMerge() && !m_flushq && Seeding() ){
+      CloseAllFiles();
+      CONSOLE.Print("Finished flushing data.");
+  }
 }
 
 /* Prepare for prefetching a whole piece.
@@ -1610,7 +1613,10 @@ void btContent::MergeNext()
 {
   if( !m_flush_failed ){
     m_btfiles.MergeNext();
-    if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
+    if( !NeedMerge() && !m_flushq && Seeding() ){
+      CloseAllFiles();
+      CONSOLE.Print("Finished merging staged data.");
+    }
   }
 }
 

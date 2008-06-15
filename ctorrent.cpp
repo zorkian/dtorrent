@@ -104,12 +104,17 @@ int main(int argc, char **argv)
     sig_setup();  // setup signal handling
     CONSOLE.Interact(
       "Press 'h' or '?' for help (display/control client options)." );
+
     Downloader();
+    WORLD.CloseAll();
     if( cfg_cache_size ) BTCONTENT.FlushCache();
-    while( BTCONTENT.NeedMerge() ) BTCONTENT.MergeNext();
+    if( BTCONTENT.NeedMerge() ){
+      CONSOLE.Interact_n("");
+      CONSOLE.Interact_n("Merging staged data");
+      BTCONTENT.MergeAll();
+    }
   }
   if( !arg_flg_exam_only ) BTCONTENT.SaveBitfield();
-  WORLD.CloseAll();
 
   if(arg_verbose) CONSOLE.cpu();
   exit(0);

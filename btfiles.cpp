@@ -452,6 +452,7 @@ int btFiles::FindAndMerge(int findall, int dostaging)
     while( !pbf->bf_flag_staging && pbf->bf_next &&
         pbf->bf_next->bf_flag_staging && pbf->bf_size < pbf->bf_length &&
         pbf->bf_offset + pbf->bf_size >= pbf->bf_next->bf_offset ){
+      if( findall ) CONSOLE.Interact_n(".");
       if( MergeStaging(pbf) < 0 ) goto done;
       merged = 1;
       if( !findall ) goto done;
@@ -1136,6 +1137,7 @@ int btFiles::ExtendAll()
       if( !tmpFilter.IsEmpty() )
         continue;
     }
+    if( arg_allocate != DT_ALLOC_FULL ) CONSOLE.Interact_n(".");
     if( ExtendFile(pbf) < 0 ) return -1;
   }
   return 0;
