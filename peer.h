@@ -212,7 +212,7 @@ class btPeer:public btBasic
   void PutPending();
 
   int NeedPrefetch() const;
-  void Prefetch(time_t deadline);
+  int Prefetch(time_t deadline);
 
   void dump();
 };

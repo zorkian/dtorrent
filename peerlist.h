@@ -8,6 +8,12 @@
 #include "./peer.h"
 #include "./rate.h"
 
+typedef enum{
+  DT_IDLE_NOTIDLE,
+  DT_IDLE_IDLE,
+  DT_IDLE_POLLING
+}idle_t;
+
 typedef struct _peernode{
   btPeer *peer;
   struct _peernode *next;
@@ -32,11 +38,10 @@ class PeerList
   unsigned char m_f_pause:1;
   unsigned char m_f_limitd:1;
   unsigned char m_f_limitu:1;
-  unsigned char m_f_dlate:1;
-  unsigned char m_f_ulate:1;
   unsigned char m_endgame:1;
-  unsigned char m_reserved:1;
-  
+  unsigned char m_f_idled:1;     // idle action taken this cycle
+  unsigned char m_reserved:2;
+
   int Accepter();
   int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
   int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
@@ -66,12 +71,10 @@ class PeerList
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
-  int BandWidthLimitUp() { return BandWidthLimitUp(0); }
-  int BandWidthLimitUp(double when);
-  int BandWidthLimitUp(double when, int limit);
-  int BandWidthLimitDown() { return BandWidthLimitDown(0); }
-  int BandWidthLimitDown(double when);
-  int BandWidthLimitDown(double when, int limit);
+  int BandWidthLimitUp(double when=0) const;
+  int BandWidthLimitUp(double when, int limit) const;
+  int BandWidthLimitDown(double when=0) const;
+  int BandWidthLimitDown(double when, int limit) const;
   double WaitBW() const;
   void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
 
@@ -112,8 +115,11 @@ class PeerList
   void Defer() { m_defer_count++; }
   void Upload() { m_upload_count++; }
 
-  int IsIdle();
-  void UnLate() { m_f_dlate = m_f_ulate = 0; }
+  idle_t IdleState() const;
+  int IsIdle() const;
+  void SetIdled();
+  void ClearIdled() { m_f_idled = 0; }
+  int Idled() const { return m_f_idled ? 1 : 0; }
   void Pause();
   void Resume();
   int IsPaused() const { return m_f_pause ? 1 : 0; }

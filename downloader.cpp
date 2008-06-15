@@ -32,14 +32,16 @@ void Downloader()
   struct timeval timeout;
   fd_set rfd, rfdnext;
   fd_set wfd, wfdnext;
-  int stopped = 0, f_idleused = 0, f_poll = 0;
+  int stopped = 0, f_poll = 0;
   double maxsleep;
-  time_t then, concheck = (time_t)0;
+  time_t then;
 
   FD_ZERO(&rfdnext); FD_ZERO(&wfdnext);
 
   do{
+    WORLD.ClearIdled();
     time(&now);
+
     if( !stopped ){
       if( !Tracker.IsQuitting() && BTCONTENT.SeedTimeout() )
         Tracker.SetStoped();
@@ -60,8 +62,15 @@ void Downloader()
       maxsleep = 0;  // waited for bandwidth--poll now
     }else{
       WORLD.DontWaitBW();
+      r = Tracker.IntervalCheck(&rfd, &wfd);
+      if( r > maxfd ) maxfd = r;
+      if( arg_ctcs ){
+        r = CTCS.IntervalCheck(&rfd, &wfd);
+        if( r > maxfd ) maxfd = r;
+      }
+      r = CONSOLE.IntervalCheck(&rfd, &wfd);
+      if( r > maxfd ) maxfd = r;
       if( WORLD.IsIdle() ){
-        f_idleused = 0;
         if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() &&
             !BTCONTENT.NeedFlush() ){
           if( BTCONTENT.CheckNextPiece() < 0 ){
@@ -69,20 +78,8 @@ void Downloader()
               (int)(BTCONTENT.CheckedPieces()), (int)(BTCONTENT.GetNPieces()));
             Tracker.SetStoped();
             maxsleep = 2;
-          }else maxsleep = 0;
-          f_idleused = 1;
-          time(&now);
-        }
-        r = Tracker.IntervalCheck(&rfd, &wfd);
-        if( r > maxfd ) maxfd = r;
-        if( arg_ctcs ){
-          r = CTCS.IntervalCheck(&rfd, &wfd);
-          if( r > maxfd ) maxfd = r;
-        }
-        if( !f_idleused || concheck <= now-2 || WORLD.IsIdle() ){
-          concheck = now;
-          r = CONSOLE.IntervalCheck(&rfd, &wfd);
-          if( r > maxfd ) maxfd = r;
+          }
+          WORLD.SetIdled();
         }
       }
     }
@@ -93,20 +90,20 @@ void Downloader()
       time(&now);
       while( BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
         BTCONTENT.FlushQueue();
-        maxsleep = 0;
-        time(&now);
+        WORLD.SetIdled();
       }
       while( BTCONTENT.NeedMerge() && WORLD.IsIdle() ){
         BTCONTENT.MergeNext();
-        maxsleep = 0;
-        time(&now);
+        WORLD.SetIdled();
       }
     }
 
     rfdnext = rfd;
     wfdnext = wfd;
 
-    if( maxsleep < 0 ){  //not yet set
+    if( WORLD.Idled() && WORLD.IdleState() == DT_IDLE_POLLING ){
+      maxsleep = 0;
+    }else if( maxsleep < 0 ){  //not yet set
       maxsleep = WORLD.WaitBW();  // must do after intervalchecks!
       if( maxsleep <= -100 ) maxsleep = 0;
       else if( maxsleep <= 0 || maxsleep > MAX_SLEEP ) maxsleep = MAX_SLEEP;
@@ -115,7 +112,6 @@ void Downloader()
     timeout.tv_sec = (long)maxsleep;
     timeout.tv_usec = (long)( (maxsleep-(long)maxsleep) * 1000000 );
 
-    WORLD.UnLate();
     nfds = select(maxfd + 1,&rfd,&wfd,(fd_set*) 0,&timeout);
     if( nfds < 0 ){
       CONSOLE.Debug("Error from select:  %s", strerror(errno));

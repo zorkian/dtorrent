@@ -1312,8 +1312,10 @@ int btPeer::NeedPrefetch() const
 }
 
 // Call NeedPrefetch() first, which checks additional conditions!
-void btPeer::Prefetch(time_t deadline)
+// returns 1 if triggered disk activity, 0 otherwise
+int btPeer::Prefetch(time_t deadline)
 {
+  int retval = 0;
   size_t rd, ru;
   size_t idx, off, len;
   time_t predict, next_chance;
@@ -1337,18 +1339,19 @@ void btPeer::Prefetch(time_t deadline)
             BTCONTENT.GetPieceLength(idx)-off-len);
         m_prefetch_completion = 2;
       }else{
-        BTCONTENT.ReadSlice(NULL, idx, 0, off);
+        retval = BTCONTENT.ReadSlice(NULL, idx, 0, off);
         if( off+len < BTCONTENT.GetPieceLength(idx) )
           m_prefetch_completion = 1;
         else m_prefetch_completion = 2;
       }
       break;
     case 1:  // data was flushed (time used)
+      retval = 1;
       break;
     }
   }
   else if( Is_Local_UnChoked() && reponse_q.Peek(&idx, &off, &len) == 0 ){
-    if( cfg_max_bandwidth_up )
+    if( cfg_max_bandwidth_up > 0 )
       next_chance = (time_t)( Self.LastSendTime() +
                     (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up );
     else next_chance = now;
@@ -1356,7 +1359,7 @@ void btPeer::Prefetch(time_t deadline)
     if( g_next_up ){
       if( g_next_up != this ){
         // deferral pending; we'll get another chance to prefetch
-        return;
+        return 0;
       }else m_next_send_time = next_chance;  // I am the next sender
     }
     if( m_next_send_time < next_chance ) predict = next_chance;
@@ -1368,11 +1371,12 @@ void btPeer::Prefetch(time_t deadline)
       // This allows re-prefetch if it might have expired from the cache.
       if( !m_prefetch_time || (0==rd && 0==(ru = Self.RateUL())) ||
           now - m_prefetch_time > BTCONTENT.CacheSize() / (rd + ru) ){
-        BTCONTENT.ReadSlice(NULL, idx, off, len);
+        retval = BTCONTENT.ReadSlice(NULL, idx, off, len);
         m_prefetch_time = now;
       }
     }
   }
+  return retval;
 }
 
 int btPeer::PeerError(int weight, const char *message)

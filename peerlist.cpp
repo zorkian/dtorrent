@@ -52,7 +52,7 @@ PeerList::PeerList()
   m_head = m_dead = (PEERNODE*) 0;
   m_listen_sock = INVALID_SOCKET;
   m_peers_count = m_seeds_count = m_conn_count = m_downloads = 0;
-  m_f_pause = m_f_dlate = m_f_ulate = m_endgame = 0;
+  m_f_pause = m_endgame = 0;
   m_max_unchoke = MIN_UNCHOKES;
   m_defer_count = m_missed_count = 0;
   m_upload_count = m_up_opt_count = 0;
@@ -291,9 +291,10 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     for( PEERNODE *p = m_head; p; p = p->next ){
       if( p->peer->NeedPrefetch() ){
         if( f_idle || IsIdle() ){
-          p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval);
-          time(&now);
-          f_idle = 0;
+          if(p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval)){
+            SetIdled();
+            f_idle = 0;
+          }
         }else break;
       }
     }
@@ -1417,12 +1418,12 @@ size_t PeerList::GetSlowestUp(size_t minimum) const
   }
 }
 
-int PeerList::BandWidthLimitUp(double when)
+int PeerList::BandWidthLimitUp(double when) const
 {
   return BandWidthLimitUp(when, cfg_max_bandwidth_up);
 }
 
-int PeerList::BandWidthLimitUp(double when, int limit)
+int PeerList::BandWidthLimitUp(double when, int limit) const
 {
   int limited = 0;
   double nexttime;
@@ -1436,16 +1437,15 @@ int PeerList::BandWidthLimitUp(double when, int limit)
   else if( nexttime <= PreciseTime() + when ) limited = 0;
   else limited = 1;
 
-  if( limited ) m_f_ulate = 1;
   return limited;
 }
 
-int PeerList::BandWidthLimitDown(double when)
+int PeerList::BandWidthLimitDown(double when) const
 {
   return BandWidthLimitDown(when, cfg_max_bandwidth_down);
 }
 
-int PeerList::BandWidthLimitDown(double when, int limit)
+int PeerList::BandWidthLimitDown(double when, int limit) const
 {
   int limited = 0;
   double nexttime;
@@ -1460,44 +1460,59 @@ int PeerList::BandWidthLimitDown(double when, int limit)
   else if( nexttime <= PreciseTime() + when ) limited = 0;
   else limited = 1;
 
-  if( limited ) m_f_dlate = 1;
   return limited;
 }
 
-int PeerList::IsIdle()
+idle_t PeerList::IdleState() const
 {
-  int idle = 0, dlate = 0, ulate = 0, slow = 0;
+  idle_t idle;
+  double dnext, unext, rightnow;
+  int dlimnow, dlimthen, ulimnow, ulimthen;
 
-  if(
-    ( (cfg_max_bandwidth_down > 0 &&
-        (dlate = (now > (time_t)(Self.LastRecvTime() + Self.LateDL() +
-                    Self.LastSizeRecv() / (double)cfg_max_bandwidth_down)))) ||
-      0==Self.RateDL() ||
-      ((0==cfg_max_bandwidth_down ||
-       (slow = (Self.RateDL() < cfg_max_bandwidth_down / 2))) &&
-         BandWidthLimitDown(Self.LateDL(), (int)Self.RateDL() * 2)) ||
-      (!slow && BandWidthLimitDown(Self.LateDL())) )
+  if( cfg_max_bandwidth_down <= 0 && cfg_max_bandwidth_up <= 0 )
+    return DT_IDLE_POLLING;
 
-    && !(dlate && m_f_dlate) &&
+  rightnow = PreciseTime();
 
-    ( (cfg_max_bandwidth_up > 0 &&
-        (ulate = (now > (time_t)(Self.LastSendTime() + Self.LateUL() +
-                    Self.LastSizeSent() / (double)cfg_max_bandwidth_up)))) ||
-      0==Self.RateUL() ||
-      (slow = 0) ||  // re-initialization
-      ((0==cfg_max_bandwidth_up ||
-       (slow = (Self.RateUL() < cfg_max_bandwidth_up / 2))) &&
-         BandWidthLimitUp(Self.LateUL(), (int)Self.RateUL() * 2)) ||
-      (!slow && BandWidthLimitUp(Self.LateUL())) )
-  ){
-    idle = 1;
-  }
+  if( cfg_max_bandwidth_down > 0 ){
+    dnext = Self.LastRecvTime() +
+            (double)Self.LastSizeRecv() / cfg_max_bandwidth_down;
+    dlimnow = (dnext > rightnow);
+    dlimthen = (dnext > rightnow + Self.LateDL());
+  }else dlimnow = dlimthen = 0;
 
-  if( !dlate ) m_f_dlate = 1;
-  else if( m_f_dlate ) idle = 0;
-  if( !ulate ) m_f_ulate = 1;
-  else if( m_f_ulate ) idle = 0;
+  if( cfg_max_bandwidth_up > 0 ){
+    unext = Self.LastSendTime() +
+            (double)Self.LastSizeSent() / cfg_max_bandwidth_up;
+    ulimnow = (unext > rightnow);
+    ulimthen = (unext > rightnow + Self.LateUL());
+  }else ulimnow = ulimthen = 0;
+
+  if( dlimthen && ulimthen )
+    idle = DT_IDLE_IDLE;
+  else if( (dlimnow && !dlimthen) || (ulimnow && !ulimthen) )
+    idle = DT_IDLE_NOTIDLE;
+  else idle = DT_IDLE_POLLING;
+
   return idle;
+}
+
+int PeerList::IsIdle() const
+{
+  switch( IdleState() ){
+  case DT_IDLE_NOTIDLE:
+    return 0;
+  case DT_IDLE_IDLE:
+    return 1;
+  default:
+    return m_f_idled ? 0 : 1;
+  }
+}
+
+void PeerList::SetIdled()
+{
+  m_f_idled = 1;
+  time(&now);
 }
 
 // How long must we wait for bandwidth to become available in either direction?
@@ -1508,11 +1523,11 @@ double PeerList::WaitBW() const
   double nextup = 0, nextdn = 0;
   int use_up = 0, use_dn = 0;
 
-  if( cfg_max_bandwidth_up ){
+  if( cfg_max_bandwidth_up > 0){
     nextup = Self.LastSendTime() +
              (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up;
   }
-  if( cfg_max_bandwidth_down ){
+  if( cfg_max_bandwidth_down > 0 ){
     nextdn = Self.LastRecvTime() +
              (double)(Self.LastSizeRecv()) / cfg_max_bandwidth_down;
   }
