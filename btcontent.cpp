@@ -1249,7 +1249,8 @@ int btContent::SeedTimeout()
   uint64_t dl;
   size_t oldrate = m_prevdlrate;
 
-  if( Seeding() && (!m_flush_failed || IsFull()) ){
+  if( Seeding() && (!m_flush_failed || IsFull()) &&
+      (!arg_completion_exit || (!m_flushq && !NeedMerge())) ){
     if( !m_seed_timestamp ){
       if( IsFull() ){
         Tracker.Reset(15);
