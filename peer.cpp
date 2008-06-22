@@ -37,18 +37,6 @@ int TextPeerID(const unsigned char *peerid, char *txtid)
   return 0;
 }
 
-
-/* g_next_up is used to rotate uploading.  If we have the opportunity to
-   upload to a peer but skip it due to bw limiting, the var is set to point to
-   that peer and it will be given priority at the next opportunity.
-   g_next_dn is similar, but for downloading.
-   g_defer_up is used to let the g_next peer object know if it skipped, as the
-   socket could go non-ready if other messages are sent while waiting for bw.
-*/
-btPeer *btPeer::g_next_up = (btPeer *)0;
-btPeer *btPeer::g_next_dn = (btPeer *)0;
-unsigned char btPeer::g_defer_up = 0;
-
 btBasic Self;
 
 void btBasic::SetIp(struct sockaddr_in addr)
@@ -146,7 +134,7 @@ int btPeer::SetLocal(unsigned char s)
     if(arg_verbose) CONSOLE.Debug("Choking %p (D=%lluMB@%dK/s)", this,
       (unsigned long long)TotalDL() >> 20, (int)(RateDL() >> 10));
     m_state.local_choked = 1; 
-    if( g_next_up == this ) g_next_up = (btPeer *)0;
+    WORLD.DontWaitUL(this);
     if( !reponse_q.IsEmpty()) reponse_q.Empty();
     StopULTimer();
     if( !m_requested && BTCONTENT.IsFull() ){
@@ -374,7 +362,7 @@ int btPeer::MsgDeliver()
       m_choketime = m_last_timestamp;
       m_state.remote_choked = 1;
       StopDLTimer();
-      if( g_next_dn == this ) g_next_dn = (btPeer *)0;
+      WORLD.DontWaitDL(this);
       if( !request_q.IsEmpty() ){
         BTCONTENT.pBMultPeer->Set(request_q.GetRequestIdx());
         PutPending();
@@ -526,8 +514,8 @@ int btPeer::MsgDeliver()
               (m_latency ? (m_latency*2) : 60) ){
           if( PeerError(1, "Bad cancel") < 0 ) return -1;
         }
-      }else if( reponse_q.IsEmpty() && g_next_up == this )
-        g_next_up = (btPeer *)0;
+      }else if( reponse_q.IsEmpty() )
+        WORLD.DontWaitUL(this);
       break;
 
     default:
@@ -665,7 +653,7 @@ int btPeer::CancelPiece(size_t idx)
     StopDLTimer();
     m_standby = 0;
   }
-  if( !m_req_out && g_next_dn == this ) g_next_dn = (btPeer *)0;
+  if( !m_req_out ) WORLD.DontWaitDL(this);
 
   return 1;
 }
@@ -690,7 +678,7 @@ int btPeer::CancelRequest()
     }
     m_cancel_time = now;
   }
-  if( !m_req_out && g_next_dn == this ) g_next_dn = (btPeer *)0;
+  if( !m_req_out ) WORLD.DontWaitDL(this);
 
   return 0;
 }
@@ -721,7 +709,7 @@ int btPeer::CancelSliceRequest(size_t idx, size_t off, size_t len)
               CONSOLE.Debug("ERROR@3: %p m_req_out underflow, resetting",this);
             m_req_out = 0;
           }
-          if( !m_req_out && g_next_dn == this ) g_next_dn = (btPeer *)0;
+          if( !m_req_out ) WORLD.DontWaitDL(this);
           m_cancel_time = now;
 
           // Don't call RequestCheck() here since that could cause the slice
@@ -982,8 +970,8 @@ void btPeer::CloseConnection()
     stream.Close();
     PutPending();
   }
-  if( g_next_up == this ) g_next_up = (btPeer *)0;
-  if( g_next_dn == this ) g_next_dn = (btPeer *)0;
+  WORLD.DontWaitUL(this);
+  WORLD.DontWaitDL(this);
 }
 
 int btPeer::HandShake()
@@ -1135,7 +1123,7 @@ int btPeer::NeedRead(int limited)
   int yn = 1;
 
   if( P_SUCCESS == m_status && stream.PeekMessage(M_PIECE) &&
-      ((g_next_dn && g_next_dn != this) || limited) ){
+      (!WORLD.IsNextDL(this) || limited) ){
     yn = 0;
   }
 
@@ -1165,19 +1153,23 @@ int btPeer::RecvModule()
   ssize_t r = 0;
   
   if( stream.PeekMessage(M_PIECE) ){
-    if( !g_next_dn || g_next_dn==this ){
+    if( WORLD.IsNextDL(this) ){
       int limited = WORLD.BandWidthLimitDown(Self.LateDL());
       if( !limited ){
-        if( g_next_dn ) g_next_dn = (btPeer *)0;
+        WORLD.DontWaitDL(this);
         r = stream.Feed(&rate_dl);  // feed full amount (can download)
 //      if(r>=0) CONSOLE.Debug("%p fed piece, now has %d bytes", this, r);
         Self.OntimeDL(0);
-      }
-      else if( !g_next_dn ){
+      }else{
         if(arg_verbose) CONSOLE.Debug("%p waiting for DL bandwidth", this);
-        g_next_dn = this;
+        WORLD.WaitDL(this);
       }
-    }  // else deferring DL, unless limited.
+    }else{  // deferring DL, unless limited.
+      if(arg_verbose)
+        CONSOLE.Debug("%p deferring or waiting for DL bandwidth", this);
+      WORLD.WaitDL(this);
+    }
+//  m_deferred_dl = 0;  // not used
   }else if( !stream.HaveMessage() ){  // could have been called post-handshake
     r = stream.Feed(BUF_DEF_SIZ, &rate_dl);
 //  if(r>=0) CONSOLE.Debug("%p fed, now has %d bytes (msg=%d)",
@@ -1210,40 +1202,40 @@ int btPeer::SendModule()
 
   if( !reponse_q.IsEmpty() && CouldReponseSlice() ){
     int limited = WORLD.BandWidthLimitUp(Self.LateUL());
-    if( !g_next_up || g_next_up==this ){
+    if( WORLD.IsNextUL(this) ){
       if( !limited ){
-        if( g_next_up ) g_next_up = (btPeer *)0;
+        WORLD.DontWaitUL(this);
         StartULTimer();
         Self.StartULTimer();
         if( ReponseSlice() < 0 ) return -1;
         Self.OntimeUL(0);
-      }
-      else if( !g_next_up ){
+      }else{
         if(arg_verbose) CONSOLE.Debug("%p waiting for UL bandwidth", this);
-        g_next_up = this;
-        if( g_defer_up ) g_defer_up = 0;
+        WORLD.WaitUL(this);
       }
-    }else if( !limited ){
-      if(arg_verbose) CONSOLE.Debug("%p deferring UL to %p", this, g_next_up);
-      if( !g_defer_up ) g_defer_up = 1;
-      WORLD.Defer();
+    }else{
+      if( !limited ){
+        if(arg_verbose)
+          CONSOLE.Debug("%p deferring UL to %p", this, WORLD.GetNextUL());
+        WORLD.GetNextUL()->DeferUL();
+        WORLD.Defer();
+      }else if(arg_verbose) CONSOLE.Debug("%p waiting for UL bandwidth", this);
+      WORLD.WaitUL(this);
     }
-  }else if( g_next_up == this ) g_next_up = (btPeer *)0;
+    m_deferred_ul = 0;
+  }else if( this == WORLD.GetNextUL() ) WORLD.DontWaitUL(this);
 
   return (!m_state.remote_choked) ? RequestCheck() : 0;
 }
 
-// Prevent a peer object from holding g_next_up when it's not ready to write.
-int btPeer::CheckSendStatus()
+// Prevent a peer object from holding the queue when it's not ready to write.
+void btPeer::CheckSendStatus()
 {
-  if( g_next_up == this && !WORLD.BandWidthLimitUp(Self.LateUL()) ){
-    if(arg_verbose){
-      CONSOLE.Debug("%p is not write-ready", this);
-      if( g_defer_up ) CONSOLE.Debug("%p skipped UL", this);
-    }
-    g_next_up = (btPeer *)0;
+  if( m_deferred_ul ){
+    if(arg_verbose) CONSOLE.Debug("%p skipped UL", this);
+    WORLD.ReQueueUL(this);
+    m_deferred_ul = 0;
   }
-  return g_next_up ? 1 : 0;
 }
 
 /* Detect if a peer ignored, discarded, or lost my request and we're waiting
@@ -1356,11 +1348,13 @@ int btPeer::Prefetch(time_t deadline)
                     (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up );
     else next_chance = now;
 
-    if( g_next_up ){
-      if( g_next_up != this ){
+    if( WORLD.GetNextUL() ){
+      if( WORLD.IsNextUL(this) ){
+        m_next_send_time = next_chance;  // I am the next sender
+      }else{
         // deferral pending; we'll get another chance to prefetch
         return 0;
-      }else m_next_send_time = next_chance;  // I am the next sender
+      }
     }
     if( m_next_send_time < next_chance ) predict = next_chance;
     else predict = m_next_send_time;

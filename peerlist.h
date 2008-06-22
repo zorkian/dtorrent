@@ -24,6 +24,7 @@ class PeerList
  private:
   SOCKET m_listen_sock;
   PEERNODE *m_head, *m_dead;
+  PEERNODE *m_next_dl, *m_next_ul;  // UL/DL rotation queues
   size_t m_peers_count, m_seeds_count, m_conn_count, m_downloads;
   size_t m_max_unchoke;
   time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp,
@@ -46,6 +47,9 @@ class PeerList
   int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
   int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
     int f_unchoke_check, btPeer **UNCHOKER);
+  void WaitBWQueue(PEERNODE **queue, btPeer *peer);
+  void BWReQueue(PEERNODE **queue, btPeer *peer);
+  void DontWaitBWQueue(PEERNODE **queue, btPeer *peer);
   
  public:
   PeerList();
@@ -56,7 +60,6 @@ class PeerList
   const char *GetListen() const { return m_listen; }
 
   int IsEmpty() const { return m_peers_count ? 0 : 1; }
-
 
   void PrintOut() const;
 
@@ -77,6 +80,20 @@ class PeerList
   int BandWidthLimitDown(double when, int limit) const;
   double WaitBW() const;
   void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
+
+  // Rotation queue management
+  void WaitDL(btPeer *peer) { WaitBWQueue(&m_next_dl, peer); }
+  void WaitUL(btPeer *peer) { WaitBWQueue(&m_next_ul, peer); }
+  int IsNextDL(const btPeer *peer) const
+    { return (!m_next_dl || peer == m_next_dl->peer) ? 1 : 0; }
+  int IsNextUL(const btPeer *peer) const
+    { return (!m_next_ul || peer == m_next_ul->peer) ? 1 : 0; }
+  btPeer *GetNextDL() { return m_next_dl ? m_next_dl->peer : (btPeer *)0; }
+  btPeer *GetNextUL() { return m_next_ul ? m_next_ul->peer : (btPeer *)0; }
+  void ReQueueDL(btPeer *peer) { BWReQueue(&m_next_dl, peer); }
+  void ReQueueUL(btPeer *peer) { BWReQueue(&m_next_ul, peer); }
+  void DontWaitDL(btPeer *peer) { DontWaitBWQueue(&m_next_dl, peer); }
+  void DontWaitUL(btPeer *peer) { DontWaitBWQueue(&m_next_ul, peer); }
 
   void Tell_World_I_Have(size_t idx);
   btPeer* Who_Can_Abandon(btPeer *proposer);

@@ -49,7 +49,7 @@ PeerList::PeerList()
   m_unchoke_interval = MIN_UNCHOKE_INTERVAL;
   m_opt_interval = MIN_OPT_CYCLE * MIN_UNCHOKE_INTERVAL;
 
-  m_head = m_dead = (PEERNODE*) 0;
+  m_head = m_dead = m_next_dl = m_next_ul = (PEERNODE*) 0;
   m_listen_sock = INVALID_SOCKET;
   m_peers_count = m_seeds_count = m_conn_count = m_downloads = 0;
   m_f_pause = m_endgame = 0;
@@ -286,20 +286,6 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     }else if( now < m_interval_timestamp ) m_interval_timestamp = now;
   }
 
-  if( cfg_cache_size && !m_f_pause && IsIdle() ){
-    int f_idle = 1;
-    for( PEERNODE *p = m_head; p; p = p->next ){
-      if( p->peer->NeedPrefetch() ){
-        if( f_idle || IsIdle() ){
-          if(p->peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval)){
-            SetIdled();
-            f_idle = 0;
-          }
-        }else break;
-      }
-    }
-  }
-
   return FillFDSet(rfdp, wfdp, f_keepalive_check, f_unchoke_check, UNCHOKER);
 }
 
@@ -307,85 +293,96 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   int f_unchoke_check, btPeer **UNCHOKER)
 {
   PEERNODE *p, *pp;
-  int maxfd = -1;
+  btPeer *peer;
+  int maxfd = -1, f_idle;
   SOCKET sk = INVALID_SOCKET;
 
   m_f_limitu = BandWidthLimitUp(Self.LateUL());
   m_f_limitd = BandWidthLimitDown(Self.LateDL());
+  if( cfg_cache_size && !m_f_pause )
+    f_idle = IsIdle();
 
  again:
   pp = (PEERNODE*) 0;
   m_seeds_count = m_conn_count = m_downloads = 0;
   size_t interested_count = 0;
   for( p = m_head; p; ){
-    sk = p->peer->stream.GetSocket();
-    if( PEER_IS_FAILED(p->peer) ){
+    peer = p->peer;
+    sk = peer->stream.GetSocket();
+    if( PEER_IS_FAILED(peer) ){
       if( sk != INVALID_SOCKET ){
         FD_CLR(sk,rfdp);
         FD_CLR(sk,wfdp);
       }
-      if( p->peer->CanReconnect() ){ // connect to this peer again
-        if(arg_verbose) CONSOLE.Debug("Adding %p for reconnect", p->peer);
-        p->peer->Retry();
+      if( peer->CanReconnect() ){ // connect to this peer again
+        if(arg_verbose) CONSOLE.Debug("Adding %p for reconnect", peer);
+        peer->Retry();
         struct sockaddr_in addr;
-        p->peer->GetAddress(&addr);
+        peer->GetAddress(&addr);
         IPQUEUE.Add(&addr);
       }
       if( pp ) pp->next = p->next; else m_head = p->next;
-      if( p->peer->TotalDL() || p->peer->TotalUL() ){  // keep stats
-        p->peer->SetLastTimestamp();
+      if( peer->TotalDL() || peer->TotalUL() ){  // keep stats
+        peer->SetLastTimestamp();
         p->next = m_dead;
         m_dead = p;
       }else{
-        delete p->peer;
+        delete peer;
         delete p;
       }
       m_peers_count--;
       if( pp ) p = pp->next; else p = m_head;
       continue;
     }else{
-      if( !PEER_IS_SUCCESS(p->peer) ) m_conn_count++;
+      if( !PEER_IS_SUCCESS(peer) ) m_conn_count++;
       else{
-        if( p->peer->bitfield.IsFull() ) m_seeds_count++;
-        if( p->peer->Is_Local_Interested() ){
+        if( peer->bitfield.IsFull() ) m_seeds_count++;
+        if( peer->Is_Local_Interested() ){
           interested_count++;
-          if( p->peer->Is_Remote_UnChoked() ) m_downloads++;
+          if( peer->Is_Remote_UnChoked() ) m_downloads++;
         }
       }
       if( f_keepalive_check ){
-        if( 3 * KEEPALIVE_INTERVAL <= now - p->peer->GetLastTimestamp() ){
+        if( 3 * KEEPALIVE_INTERVAL <= now - peer->GetLastTimestamp() ){
           if(arg_verbose) CONSOLE.Debug("close: keepalive expired");
-          p->peer->CloseConnection();
+          peer->CloseConnection();
           goto skip_continue;
         }
-        if( PEER_IS_SUCCESS(p->peer) && 
-            KEEPALIVE_INTERVAL <= now - p->peer->GetLastTimestamp() &&
-            p->peer->AreYouOK() < 0 ){
+        if( PEER_IS_SUCCESS(peer) && 
+            KEEPALIVE_INTERVAL <= now - peer->GetLastTimestamp() &&
+            peer->AreYouOK() < 0 ){
           if(arg_verbose) CONSOLE.Debug("close: keepalive death");
-          p->peer->CloseConnection();
+          peer->CloseConnection();
           goto skip_continue;
         }
       }
-      if( f_unchoke_check && PEER_IS_SUCCESS(p->peer) ){
-        if( p->peer->Is_Remote_Interested() && p->peer->Need_Local_Data() ){
-          if( UNCHOKER && UnChokeCheck(p->peer, UNCHOKER) < 0 )
+      if( f_unchoke_check && PEER_IS_SUCCESS(peer) ){
+        if( peer->Is_Remote_Interested() && peer->Need_Local_Data() ){
+          if( UNCHOKER && UnChokeCheck(peer, UNCHOKER) < 0 )
             goto skip_continue;
-        }else if(p->peer->SetLocal(M_CHOKE) < 0){
+        }else if(peer->SetLocal(M_CHOKE) < 0){
           if(arg_verbose) CONSOLE.Debug("close: Can't choke peer");
-          p->peer->CloseConnection();
+          peer->CloseConnection();
           goto skip_continue;
         }
       }
 
-      if( PEER_IS_FAILED(p->peer) ) goto skip_continue;  // failsafe
+      if( PEER_IS_FAILED(peer) ) goto skip_continue;  // failsafe
       if(maxfd < sk) maxfd = sk;
-      if( !FD_ISSET(sk,rfdp) && p->peer->NeedRead((int)m_f_limitd) )
+      if( !FD_ISSET(sk,rfdp) && peer->NeedRead((int)m_f_limitd) )
         FD_SET(sk,rfdp);
-      if( !FD_ISSET(sk,wfdp) && p->peer->NeedWrite((int)m_f_limitu) )
+      if( !FD_ISSET(sk,wfdp) && peer->NeedWrite((int)m_f_limitu) )
         FD_SET(sk,wfdp);
 
+      if( cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
+        if( peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval) ){
+            SetIdled();
+            f_idle = IsIdle();
+        }
+      }
+
     skip_continue: 
-      if( PEER_IS_FAILED(p->peer) ){
+      if( PEER_IS_FAILED(peer) ){
         FD_CLR(sk,rfdp);
         FD_CLR(sk,wfdp);
       }
@@ -1014,10 +1011,10 @@ void PeerList::PrintOut() const
 void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
-  PEERNODE *p;
+  PEERNODE *p, *pp = (PEERNODE *)0, *pnext;
   btPeer *peer;
   SOCKET sk;
-  int need_check_send = 0;
+  int pmoved, pcount=0;
 
   if( FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
@@ -1027,7 +1024,18 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     }
   }
 
-  for( p = m_head; p && (*nready || need_check_send) ; p = p->next ){
+  if( !Self.OntimeDL() && (peer = GetNextUL()) &&
+      !FD_ISSET(peer->stream.GetSocket(), wfdp) &&
+      !BandWidthLimitUp(Self.LateUL()) ){
+    if(arg_verbose) CONSOLE.Debug("%p is not write-ready", peer);
+    peer->CheckSendStatus();
+  }
+  for( p = m_head;
+       p && *nready;
+       pp = pmoved ? pp : p, p = pnext ){
+    pnext = p->next;
+    pmoved = 0;
+    pcount++;
     if( PEER_IS_FAILED(p->peer) ) continue;
 
     peer = p->peer;
@@ -1041,6 +1049,11 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if( peer->RecvModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: receive");
             peer->CloseConnection();
+          }else if( pcount > 3 ){
+            pp->next = p->next;
+            p->next = m_head;
+            m_head = p;
+            pmoved = 1;
           }
         }
       }
@@ -1063,11 +1076,14 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
             if(arg_verbose) CONSOLE.Debug("close: send");
             peer->CloseConnection();
             FD_CLR(sk,rfdnextp);
+          }else if( !pmoved && pcount > 3 ){
+            pp->next = p->next;
+            p->next = m_head;
+            m_head = p;
+            pmoved = 1;
           }
-          need_check_send = 1;
         }
-      }else if( !Self.OntimeDL() )
-        need_check_send = (peer->CheckSendStatus() && need_check_send);
+      }
     }
     else if( P_HANDSHAKE == peer->GetStatus() ){
       if( FD_ISSET(sk,rfdp) ){
@@ -1594,5 +1610,51 @@ void PeerList::UnchokeIfFree(btPeer *peer)
 void PeerList::AdjustPeersCount()
 {
   Tracker.AdjustPeersCount();
+}
+
+void PeerList::WaitBWQueue(PEERNODE **queue, btPeer *peer)
+{
+  PEERNODE *p = *queue, *pp = (PEERNODE *)0, *node;
+
+  for( ; p; pp = p, p = p->next ){
+    if( peer == p->peer ) return;
+  }
+  if( node = new PEERNODE ){
+    node->next = (PEERNODE *)0;
+    node->peer = peer;
+    if( pp ) pp->next = node;
+    else *queue = node;
+  }
+}
+
+void PeerList::BWReQueue(PEERNODE **queue, btPeer *peer)
+{
+  PEERNODE *p = *queue, *pp = (PEERNODE *)0, *node = (PEERNODE *)0;
+
+  for( ; p; pp = p, p = p->next ){
+    if( node ) continue;
+    if( peer == p->peer ){
+      if( !p->next ) return;
+      if( pp ) pp->next = p->next;
+      else *queue = p->next;
+      p->next = (PEERNODE *)0;
+      node = p;
+    }
+  }
+  pp->next = node;
+}
+
+void PeerList::DontWaitBWQueue(PEERNODE **queue, btPeer *peer)
+{
+  PEERNODE *p = *queue, *pp = (PEERNODE *)0;
+
+  for( ; p; pp = p, p = p->next ){
+    if( peer == p->peer ){
+      if( pp ) pp->next = p->next;
+      else *queue = p->next;
+      delete p;
+      return;
+    }
+  }
 }
 

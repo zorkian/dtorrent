@@ -112,15 +112,16 @@ class btPeer:public btBasic
   unsigned char m_f_keepalive:1;
   unsigned char m_status:4;
   unsigned char m_bad_health:1;
-  unsigned char m_standby:1;
-  unsigned char m_want_again:1;  // attempt reconnect if lost
+  unsigned char m_standby:1;              // nothing to request at this time
+  unsigned char m_want_again:1;           // attempt reconnect if lost
 
-  unsigned char m_connect:1;     // we initiated the connection
-  unsigned char m_retried:1;     // already retried connecting
-  unsigned char m_connect_seed:1; // connected while I am seed
-  unsigned char m_requested:1;   // received a request since unchoke
-  unsigned char m_prefetch_completion:2; // prefetched for piece completion
-  unsigned char m_reserved:2;
+  unsigned char m_connect:1;              // we initiated the connection
+  unsigned char m_retried:1;              // already retried connecting
+  unsigned char m_connect_seed:1;         // connected while I am seed
+  unsigned char m_requested:1;            // received a request since unchoke
+  unsigned char m_prefetch_completion:2;  // prefetched for piece completion
+  unsigned char m_deferred_dl:1;          // peer has deferred DL to me
+  unsigned char m_deferred_ul:1;          // peer has deferred UL to me
 
   BTSTATUS m_state;
 
@@ -138,9 +139,6 @@ class btPeer:public btBasic
   time_t m_cancel_time;
   size_t m_last_req_piece;
 
-  static btPeer *g_next_up, *g_next_dn;
-  static unsigned char g_defer_up;
-  
   int PieceDeliver(size_t mlen);
   int ReportComplete(size_t idx, size_t len);
   int RequestCheck();
@@ -166,7 +164,7 @@ class btPeer:public btBasic
   int RecvModule();
   int SendModule();
   int HealthCheck();
-  int CheckSendStatus();
+  void CheckSendStatus();
   void UnStandby() { m_standby = 0; }
 
   time_t SetLastTimestamp() { return time(&m_last_timestamp); }
@@ -213,6 +211,9 @@ class btPeer:public btBasic
 
   int NeedPrefetch() const;
   int Prefetch(time_t deadline);
+
+  void DeferDL() { m_deferred_dl = 1; }
+  void DeferUL() { m_deferred_ul = 1; }
 
   void dump();
 };
