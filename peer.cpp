@@ -111,6 +111,7 @@ btPeer::btPeer()
   m_prefetch_time = (time_t)0;
   m_requested = 0;
   m_prefetch_completion = 0;
+  readycnt = 0;
 
   rate_dl.SetSelf(Self.DLRatePtr());
   rate_ul.SetSelf(Self.ULRatePtr());

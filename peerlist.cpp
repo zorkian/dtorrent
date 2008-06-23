@@ -58,6 +58,7 @@ PeerList::PeerList()
   m_upload_count = m_up_opt_count = 0;
   m_prev_limit_up = cfg_max_bandwidth_up;
   m_dup_req_pieces = 0;
+  m_readycnt = 0;
 }
 
 PeerList::~PeerList()
@@ -1014,7 +1015,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   PEERNODE *p, *pp = (PEERNODE *)0, *pnext;
   btPeer *peer;
   SOCKET sk;
-  int pmoved, pcount=0;
+  int pready, pmoved, pcount=0;
 
   if( FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
@@ -1030,11 +1031,12 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     if(arg_verbose) CONSOLE.Debug("%p is not write-ready", peer);
     peer->CheckSendStatus();
   }
+
   for( p = m_head;
        p && *nready;
        pp = pmoved ? pp : p, p = pnext ){
     pnext = p->next;
-    pmoved = 0;
+    pmoved = pready = 0;
     pcount++;
     if( PEER_IS_FAILED(p->peer) ) continue;
 
@@ -1045,16 +1047,22 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       if( FD_ISSET(sk,rfdp) ){
         (*nready)--;
         if( !Self.OntimeUL() ){
+          pready = 1;
+          m_readycnt++;
           FD_CLR(sk,rfdnextp);
           if( peer->RecvModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: receive");
             peer->CloseConnection();
-          }else if( pcount > 3 ){
-            pp->next = p->next;
-            p->next = m_head;
-            m_head = p;
-            pmoved = 1;
+          }else{
+            if( pcount > Rank(peer) )
+              pmoved = 1;
+            peer->readycnt = m_readycnt;
           }
+        }else if( m_head != p ) pmoved = 1;
+        if( pmoved ){
+          pp->next = p->next;
+          p->next = m_head;
+          m_head = p;
         }
       }
       if( !Self.OntimeDL() && !Self.OntimeUL() &&
@@ -1071,17 +1079,22 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       if( FD_ISSET(sk,wfdp) ){
         (*nready)--;
         if( !Self.OntimeDL() ){
+          if( !pready ) m_readycnt++;
           FD_CLR(sk,wfdnextp);
           if( peer->SendModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: send");
             peer->CloseConnection();
             FD_CLR(sk,rfdnextp);
-          }else if( !pmoved && pcount > 3 ){
-            pp->next = p->next;
-            p->next = m_head;
-            m_head = p;
-            pmoved = 1;
+          }else if( !pready ){
+            if( pcount > Rank(peer) )
+              pmoved = 1;
+            peer->readycnt = m_readycnt;
           }
+        }else if( m_head != p ) pmoved = 1;
+        if( pmoved && m_head != p ){
+          pp->next = p->next;
+          p->next = m_head;
+          m_head = p;
         }
       }
     }

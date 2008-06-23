@@ -34,6 +34,7 @@ class PeerList
   size_t m_dup_req_pieces;
   int m_prev_limit_up;
   char m_listen[22];
+  unsigned long m_readycnt;      // cumulative count of ready peers
 
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;
@@ -50,6 +51,9 @@ class PeerList
   void WaitBWQueue(PEERNODE **queue, btPeer *peer);
   void BWReQueue(PEERNODE **queue, btPeer *peer);
   void DontWaitBWQueue(PEERNODE **queue, btPeer *peer);
+  unsigned long Rank(btPeer *peer) {
+    return (m_readycnt > peer->readycnt) ? m_readycnt - peer->readycnt : 3;
+  }
   
  public:
   PeerList();
