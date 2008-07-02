@@ -26,8 +26,8 @@ const unsigned char BIT_HEX[] = {0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01};
 #define _isfull() 		(nset >= nbits)
 #define _isfull_sp(sp) 		((sp).nset >= nbits)
 
-size_t BitField::nbytes = 0;
-size_t BitField::nbits = 0;
+bt_index_t BitField::nbytes = 0;
+bt_index_t BitField::nbits = 0;
 
 BitField::BitField()
 {
@@ -40,7 +40,7 @@ BitField::BitField()
   nset = 0;
 }
 
-BitField::BitField(size_t npcs)	
+BitField::BitField(bt_index_t npcs)	
 {
   nbits = npcs;
   nbytes = nbits / 8;
@@ -88,7 +88,7 @@ void BitField::operator=(const BitField &bf)
 // Use instead of Set() when you know nset is incorrect and will be corrected
 // afterward (as in Invert or by _recalc),
 // and either bitfield won't get full or you'll _recalc() afterward to fix it.
-inline void BitField::_set(size_t idx)
+inline void BitField::_set(bt_index_t idx)
 {
   if( idx < nbits && !_isfull() && !_isset(idx) )
     b[idx / 8] |= BIT_HEX[idx % 8];
@@ -96,8 +96,6 @@ inline void BitField::_set(size_t idx)
 
 inline void BitField::_setall(unsigned char *buf)
 {
-  size_t i;
-
   memset(buf,0xFF,nbytes - 1);
 
   if( nbits % 8 ){
@@ -110,10 +108,10 @@ inline void BitField::_recalc()
 {
   // 重新计算 nset 的值
   static unsigned char BITS[256] = {0xff};
-  size_t i;
+  bt_index_t i;
 
   if( BITS[0] ){  // initialize bitcounts
-    size_t j, exp, x;
+    bt_index_t j, exp, x;
     BITS[0] = 0;
     x = 0;
     for(i=0; i<8; i++){
@@ -149,13 +147,13 @@ void BitField::Clear()
   nset = 0;
 }
 
-int BitField::IsSet(size_t idx) const
+int BitField::IsSet(bt_index_t idx) const
 {
   if( idx >= nbits ) return 0;
   return _isfull() ? 1 : _isset(idx);
 }
 
-void BitField::Set(size_t idx)
+void BitField::Set(bt_index_t idx)
 {
   if(idx >= nbits) return;
 
@@ -166,7 +164,7 @@ void BitField::Set(size_t idx)
   }
 }
 
-void BitField::UnSet(size_t idx)
+void BitField::UnSet(bt_index_t idx)
 {
   if( idx >= nbits ) return;
 
@@ -193,8 +191,8 @@ void BitField::Invert()
   }else if( _isfull() ){
     Clear();
   }else{
-    size_t i = 0;
-    size_t s = nset;
+    bt_index_t i = 0;
+    bt_index_t s = nset;
     for( ; i < nbytes - 1; i++ ) b[i] = ~b[i];
 
     if( nbits % 8 ){
@@ -211,7 +209,6 @@ void BitField::Invert()
 // Combine (Logical "OR")
 void BitField::Comb(const BitField &bf)
 {
-  size_t i;
   if( !_isempty_sp(bf) && !_isfull() ){
     if( _isfull_sp(bf) ){
       SetAll();
@@ -219,6 +216,7 @@ void BitField::Comb(const BitField &bf)
       memcpy(b, bf.b, nbytes);
       nset = bf.nset;
     }else{
+      bt_index_t i;
       for(i = 0; i < nbytes; i++) b[i] |= bf.b[i];
       _recalc();
     }
@@ -227,8 +225,6 @@ void BitField::Comb(const BitField &bf)
 
 void BitField::Except(const BitField &bf)
 {
-  size_t i;
-
   if( !_isempty_sp(bf) && !_isempty() ){
     if( _isfull_sp(bf) ){
       Clear();
@@ -240,7 +236,7 @@ void BitField::Except(const BitField &bf)
 #endif
         _setall(b);
       }
-      for(i = 0; i < nbytes; i++) b[i] &= ~bf.b[i];
+      for(bt_index_t i = 0; i < nbytes; i++) b[i] &= ~bf.b[i];
       _recalc();
     }
   }
@@ -248,8 +244,6 @@ void BitField::Except(const BitField &bf)
 
 void BitField::And(const BitField &bf)
 {
-  size_t i;
-
   if( !_isfull_sp(bf) && !_isempty() ){
     if( _isempty_sp(bf) ){
       Clear();
@@ -262,21 +256,20 @@ void BitField::And(const BitField &bf)
         memcpy(b, bf.b, nbytes);
         nset = bf.nset;
       }else{
-        for(i = 0; i < nbytes; i++) b[i] &= bf.b[i];
+        for(bt_index_t i = 0; i < nbytes; i++) b[i] &= bf.b[i];
         _recalc();
       }
     }
   }
 }
 
-size_t BitField::Random() const
+bt_index_t BitField::Random() const
 {
-  size_t idx;
+  bt_index_t idx;
 
   if( _isfull() ) idx = random() % nbits;
   else{
-    size_t i;
-    i = random() % nset + 1;
+    bt_index_t i = random() % nset + 1;
     for(idx = 0; idx < nbits && i; idx++) 
       if( _isset(idx) ) i--;
     idx--;

@@ -20,13 +20,15 @@
 #include <inttypes.h>
 #include <time.h>
 
+#include "bttypes.h"
 #include "bufio.h"
+#include "tracker.h"
 
 #define CTCS_BUFSIZE (200+MAXPATHLEN)
 #define CTCS_PASS_SIZE 21
 
 struct ctstatus {
-  size_t dlrate, ulrate, dlimit, ulimit;
+  dt_rate_t dlrate, ulrate, dlimit, ulimit;
 
   ctstatus(){
     dlrate=ulrate=dlimit=ulimit = 0;
@@ -43,7 +45,7 @@ class Ctcs
 
   struct sockaddr_in m_sin;
 
-  unsigned char m_status:2;
+  dt_trackerstatus_t m_status;
 
   time_t m_interval;
   time_t m_last_timestamp;

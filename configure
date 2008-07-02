@@ -7392,7 +7392,9 @@ fi
 
 
 
-for ac_func in clock_gettime ftruncate gethostbyname gettimeofday getwd inet_ntoa memchr memmove memset mkdir random select snprintf socket strerror strcasecmp strncasecmp strtol strtoll strnstr system vsnprintf
+
+
+for ac_func in clock_gettime ftruncate gethostbyname gettimeofday getwd htonl inet_ntoa memchr memmove memset mkdir ntohl random select snprintf socket strerror strcasecmp strncasecmp strtol strtoll strnstr system vsnprintf
 do
 as_ac_var=`echo "ac_cv_func_$ac_func" | $as_tr_sh`
 { echo "$as_me:$LINENO: checking for $ac_func" >&5

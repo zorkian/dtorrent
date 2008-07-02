@@ -5,13 +5,15 @@
 
 #include <sys/types.h>
 #include <time.h>
+
+#include "bttypes.h"
 #include "btcontent.h"
 #include "bitfield.h"
 
 typedef struct _slice{
-   size_t index;
-   size_t offset;
-   size_t length;
+   bt_index_t index;
+   bt_offset_t offset;
+   bt_length_t length;
    time_t reqtime;
    struct _slice *next;
 }SLICE,*PSLICE;
@@ -32,39 +34,39 @@ class RequestQueue
   void SetNextSend(PSLICE ps) { rq_send = ps; }
   PSLICE GetHead() const { return rq_head; }
   PSLICE NextSend() const { return rq_send; }
-  size_t GetRequestIdx() const { return rq_head ? rq_head->index :
+  bt_index_t GetRequestIdx() const { return rq_head ? rq_head->index :
                                                   BTCONTENT.GetNPieces(); }
-  size_t GetRequestLen() const { return rq_head ? rq_head->length : 0; }
+  bt_length_t GetRequestLen() const { return rq_head ? rq_head->length : 0; }
   void Release(){ rq_head = rq_send = (PSLICE) 0; }
-  int IsValidRequest(size_t idx,size_t off,size_t len) const;
+  int IsValidRequest(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
 
   void operator=(RequestQueue &rq);
-  int Copy(const RequestQueue *prq, size_t idx);
-  int CopyShuffle(const RequestQueue *prq, size_t idx);
-  size_t Qsize() const;
-  size_t Qlen(size_t piece) const;
+  int Copy(const RequestQueue *prq, bt_index_t idx);
+  int CopyShuffle(const RequestQueue *prq, bt_index_t idx);
+  dt_count_t Qsize() const;
+  dt_count_t Qlen(bt_index_t piece) const;
   int LastSlice() const;
 
   int IsEmpty() const { return rq_head ? 0 : 1; }
 
-  int Insert(PSLICE ps,size_t idx,size_t off,size_t len);
-  int Add(size_t idx,size_t off,size_t len);
+  int Insert(PSLICE ps, bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int Add(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int Append(PSLICE ps);
-  int Remove(size_t idx,size_t off,size_t len);
-  int Requeue(size_t idx,size_t off,size_t len);
+  int Remove(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int Requeue(bt_index_t idx, bt_offset_t off, bt_length_t len);
   void MoveLast(PSLICE ps);
-  int HasIdx(size_t idx) const;
-  int HasSlice(size_t idx, size_t off, size_t len) const;
-  time_t GetReqTime(size_t idx,size_t off,size_t len) const;
+  int HasIdx(bt_index_t idx) const;
+  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
+  time_t GetReqTime(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
   void SetReqTime(PSLICE n,time_t t);
 
 
-  int Pop(size_t *pidx,size_t *poff,size_t *plen);
-  int Peek(size_t *pidx,size_t *poff,size_t *plen) const;
+  int Pop(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen);
+  int Peek(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen) const;
 
-  int CreateWithIdx(size_t idx);
-  size_t NSlices(size_t idx) const;
-  size_t Slice_Length(size_t idx,size_t sidx) const;
+  int CreateWithIdx(bt_index_t idx);
+  dt_count_t NSlices(bt_index_t idx) const;
+  bt_length_t Slice_Length(bt_index_t idx, dt_count_t sidx) const;
 };
 
 #define PENDING_QUEUE_SIZE 100
@@ -73,18 +75,18 @@ class PendingQueue
 {
  private:
   PSLICE pending_array[PENDING_QUEUE_SIZE];
-  size_t pq_count;
+  dt_count_t pq_count;
   
  public:
   PendingQueue();
   ~PendingQueue();
   void Empty();
   int Pending(RequestQueue *prq);
-  size_t ReAssign(RequestQueue *prq, BitField &bf);
-  int Exist(size_t idx) const;
-  int HasSlice(size_t idx, size_t off, size_t len);
-  int Delete(size_t idx);
-  int DeleteSlice(size_t idx, size_t off, size_t len);
+  bt_index_t ReAssign(RequestQueue *prq, BitField &bf);
+  int Exist(bt_index_t idx) const;
+  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int Delete(bt_index_t idx);
+  int DeleteSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
 };
 
 extern PendingQueue PENDINGQUEUE;

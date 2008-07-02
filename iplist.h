@@ -15,6 +15,8 @@
 #include <netinet/in.h>
 #endif
 
+#include "bttypes.h"
+
 typedef struct _iplist{
   struct sockaddr_in address;
   struct _iplist *next;
@@ -24,7 +26,7 @@ class IpList
 {
 private:
   IPLIST *ipl_head;
-  size_t count;
+  dt_count_t count;
   void _Emtpy();
 public:
   IpList() { ipl_head = (IPLIST*)0; count = 0;}

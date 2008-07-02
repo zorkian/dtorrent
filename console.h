@@ -11,6 +11,7 @@
 #include <sgtty.h> 
 #endif
 
+#include "bttypes.h"
 #include "rate.h"
 
 // Number of status line formats
@@ -18,11 +19,19 @@
 
 // Output channel labels
 #define O_NCHANNELS 4  // number of output channels
-#define O_NORMAL    0
-#define O_INTERACT  1
-#define O_WARNING   2
-#define O_DEBUG     3
-#define O_INPUT     4  // not an output!  do not include in above count.
+enum dt_conchan_t{
+  O_NORMAL   = 0,
+  O_INTERACT = 1,
+  O_WARNING  = 2,
+  O_DEBUG    = 3,
+  O_INPUT    = 4       // not an output!  do not include in above count.
+};
+
+// Console input modes
+enum dt_conmode_t{
+  DT_CONMODE_CHARS,
+  DT_CONMODE_LINES
+};
 
 
 class ConStream
@@ -30,12 +39,13 @@ class ConStream
  private:
   FILE *m_stream;
   char *m_name;
+  dt_conmode_t m_inputmode;
+
   unsigned char m_newline:1;
   unsigned char m_suspend:1;
-  unsigned char m_inputmode:1;
   unsigned char m_filemode:1;
   unsigned char m_restore:1;
-  unsigned char m_reserved:3;
+  unsigned char m_reserved:4;
 
 #if defined(USE_TERMIOS)
   struct termios m_original;
@@ -65,8 +75,8 @@ class ConStream
   int IsSuspended() { return m_suspend ? 1 : 0; }
 
   int SameDev(ConStream *master) const;
-  int GetInputMode() const { return m_inputmode; }
-  void SetInputMode(int keymode);
+  dt_conmode_t GetInputMode() const { return m_inputmode; }
+  void SetInputMode(dt_conmode_t keymode);
   void PreserveMode();
   void RestoreMode();
   int IsTTY() const;
@@ -84,11 +94,12 @@ class ConStream
 class Console
 {
  private:
+  dt_conmode_t m_conmode;
+
   unsigned char m_live_idx:2;
-  unsigned char m_conmode:1;
   unsigned char m_skip_status:1;
   unsigned char m_status_last:1;
-  unsigned char m_reserved:3;
+  unsigned char m_reserved:4;
 
   int m_status_format;
   int m_oldfd;
@@ -129,8 +140,10 @@ class Console
   void InteractU(const char *message, ...);
   char *Input(const char *prompt, char *field, size_t length);
 
-  char *GetChannel(int channel) const { return m_streams[channel]->GetName(); }
-  int ChangeChannel(int channel, const char *param, int notify = 1);
+  char *GetChannel(dt_conchan_t channel) const {
+    return m_streams[channel]->GetName();
+  }
+  int ChangeChannel(dt_conchan_t channel, const char *param, int notify = 1);
 
   void cpu();
 

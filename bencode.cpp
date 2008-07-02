@@ -32,7 +32,7 @@ static size_t compare_key(const char *key,size_t keylen,const char *keylist)
   return keylen;
 }
 
-size_t buf_long(const char *b,size_t len,char beginchar,char endchar,int64_t *pi)
+size_t buf_int(const char *b,size_t len,char beginchar,char endchar,int64_t *pi)
 {
   const char *p = b;
   const char *psave;
@@ -55,25 +55,13 @@ size_t buf_long(const char *b,size_t len,char beginchar,char endchar,int64_t *pi
   return (size_t)( p - b + 1 );
 }
 
-size_t buf_int(const char *b,size_t len,char beginchar,char endchar,size_t *pi)
-{
-  size_t r;
-
-  if( pi ){
-    int64_t pl;
-    r = buf_long(b,len,beginchar,endchar,&pl);
-    *pi = (size_t) pl;
-  }else{
-    r = buf_long(b,len,beginchar,endchar,(int64_t*) 0);
-  }
-  return r;
-}
-
 size_t buf_str(const char *b,size_t len,const char **pstr,size_t* slen)
 {
   size_t rl,sl;
+  int64_t tmp;
 
-  rl = buf_int(b,len,0,':',&sl);
+  rl = buf_int(b,len,0,':',&tmp);
+  sl = (size_t)tmp;
 
   if( !rl ) return 0;
 
@@ -86,7 +74,7 @@ size_t buf_str(const char *b,size_t len,const char **pstr,size_t* slen)
 
 size_t decode_int(const char *b,size_t len)
 {
-  return(buf_long(b,len,'i','e',(int64_t*) 0));
+  return(buf_int(b,len,'i','e',(int64_t*) 0));
 }
 
 size_t decode_str(const char *b,size_t len)
@@ -153,7 +141,7 @@ size_t decode_rev(const char *b,size_t len,const char *keylist)
   }
 }
 
-size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pi,int64_t *pl,int method)
+size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps,size_t *pz,int64_t *pi,dt_query_t method)
 {
   size_t pos;
   char kl[KEYNAME_LISTSIZ];
@@ -161,17 +149,16 @@ size_t decode_query(const char *b,size_t len,const char *keylist,const char **ps
   pos = decode_rev(b, len, kl);
   if( !pos ) return 0;
   switch(method){
-  case QUERY_STR: return(buf_str(b + pos,len - pos, ps, pi));
-  case QUERY_INT: return(buf_int(b + pos,len - pos, 'i', 'e', pi));
-  case QUERY_POS:
-          if(pi) *pi = decode_rev(b + pos, len - pos, (const char*) 0);
+  case DT_QUERY_STR: return(buf_str(b + pos,len - pos, ps, pz));
+  case DT_QUERY_INT: return(buf_int(b + pos,len - pos, 'i', 'e', pi));
+  case DT_QUERY_POS:
+          if(pz) *pz = decode_rev(b + pos, len - pos, (const char*) 0);
           return pos;
-  case QUERY_LONG: return(buf_long(b + pos,len - pos, 'i', 'e', pl));
   default: return 0;
   }
 }
 
-size_t bencode_buf(const char *buf,size_t len,FILE *fp)
+int bencode_buf(const char *buf,size_t len,FILE *fp)
 {
   char slen[MAX_INT_SIZ];
 
@@ -181,38 +168,38 @@ size_t bencode_buf(const char *buf,size_t len,FILE *fp)
   return 1;
 }
 
-size_t bencode_str(const char *str, FILE *fp)
+int bencode_str(const char *str, FILE *fp)
 {
   return bencode_buf(str, strlen(str), fp);
 }
 
-size_t bencode_int(const uint64_t integer, FILE *fp)
+int bencode_int(const int64_t integer, FILE *fp)
 {
   char buf[MAX_INT_SIZ];
   if( EOF == fputc('i', fp)) return 0;
   if( MAX_INT_SIZ <=
-      snprintf(buf, MAX_INT_SIZ, "%llu", (unsigned long long)integer) )
+      snprintf(buf, MAX_INT_SIZ, "%lld", (long long)integer) )
     return 0;
   if( fwrite(buf, strlen(buf), 1, fp) != 1 ) return 0;
   return (EOF == fputc('e', fp)) ? 0: 1;
 }
 
-size_t bencode_begin_dict(FILE *fp)
+int bencode_begin_dict(FILE *fp)
 {
   return (EOF == fputc('d',fp)) ? 0 : 1;
 }
 
-size_t bencode_begin_list(FILE *fp)
+int bencode_begin_list(FILE *fp)
 {
   return (EOF == fputc('l',fp)) ? 0 : 1;
 }
 
-size_t bencode_end_dict_list(FILE *fp)
+int bencode_end_dict_list(FILE *fp)
 {
   return (EOF == fputc('e',fp)) ? 0 : 1;
 }
 
-size_t bencode_path2list(const char *pathname, FILE *fp)
+int bencode_path2list(const char *pathname, FILE *fp)
 {
   const char *pn;
   const char *p = pathname;

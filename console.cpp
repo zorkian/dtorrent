@@ -34,10 +34,6 @@
 
 // console.cpp:  Copyright 2007-2008 Dennis Holmes  (dholmes@rahul.net)
 
-// input mode definitions
-#define K_CHARS 0
-#define K_LINES 1
-
 const char LIVE_CHAR[4] = {'-', '\\','|','/'};
 
 Console CONSOLE;
@@ -55,7 +51,7 @@ ConStream::ConStream()
   m_restore = 0;
   m_newline = 1;
   m_suspend = 0;
-  m_inputmode = K_LINES;
+  m_inputmode = DT_CONMODE_LINES;
 }
 
 
@@ -147,7 +143,7 @@ void ConStream::RestoreMode()
 }
 
 
-void ConStream::SetInputMode(int keymode)
+void ConStream::SetInputMode(dt_conmode_t keymode)
 {
   if( m_suspend ) return;
 
@@ -166,7 +162,7 @@ void ConStream::SetInputMode(int keymode)
 #endif
 
   switch(keymode) {
-  case K_CHARS:     // read a char at a time, no echo
+  case DT_CONMODE_CHARS:     // read a char at a time, no echo
 #if defined(USE_TERMIOS)
     termset.c_lflag &= ~(ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
@@ -184,7 +180,7 @@ void ConStream::SetInputMode(int keymode)
 #endif
     break;
 
-  case K_LINES:     // read a line at a time (allow terminal editing)
+  case DT_CONMODE_LINES:     // read a line at a time (allow terminal editing)
 #if defined(USE_TERMIOS)
     termset.c_lflag |= (ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
@@ -335,8 +331,8 @@ Console::Console()
   m_streams[O_INPUT] = &m_stdin;
 
   m_streams[O_INPUT]->PreserveMode();
-  m_streams[O_INPUT]->SetInputMode(K_CHARS);
-  m_conmode = K_CHARS;
+  m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
+  m_conmode = DT_CONMODE_CHARS;
 
   if( this == &CONSOLE ) g_console_ready = 1;
 }
@@ -379,14 +375,14 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       FD_ISSET(m_streams[O_INPUT]->Fileno(), rfdp) ){
     FD_CLR(m_streams[O_INPUT]->Fileno(), rfdnextp);
     (*nready)--;
-    if( K_LINES==m_streams[O_INPUT]->GetInputMode() ){  // command parameter
+    if( DT_CONMODE_LINES == m_streams[O_INPUT]->GetInputMode() ){  // cmd param
       SyncNewlines(O_INPUT);
       if( m_streams[O_INPUT]->Input(param, sizeof(param)) ){
         if( s = strchr(param, '\n') ) *s = '\0';
         if( '0'==pending ){
           if( OperatorMenu(param) ) pending = '\0';
         }else{
-          m_streams[O_INPUT]->SetInputMode(K_CHARS);
+          m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
           if( *param ) switch( pending ){
           case 'n':				// get1file
             if( arg_file_to_download ) delete []arg_file_to_download;
@@ -444,7 +440,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }else Interact("Input error!");
       }
       if( '0' != pending ){
-          m_streams[O_INPUT]->SetInputMode(K_CHARS);
+          m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
           Status(1);
       }
 
@@ -497,7 +493,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( BTCONTENT.IsFull() )
           Interact("Download is already complete.");
         else{
-          m_streams[O_INPUT]->SetInputMode(K_LINES);
+          m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           ShowFiles();
           Interact("Enter 0 or * for all files (normal behavior).");
           if( arg_file_to_download )
@@ -507,7 +503,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }
         break;
       case 'S':				// CTCS server
-        m_streams[O_INPUT]->SetInputMode(K_LINES);
+        m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
         Interact_n("");
         if( arg_ctcs ){
           Interact("Enter ':' to stop using CTCS.");
@@ -519,7 +515,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( BTCONTENT.IsFull() )
           Interact("Download is already complete.");
         else{
-          m_streams[O_INPUT]->SetInputMode(K_LINES);
+          m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           Interact("Enter a command to run upon download completion.");
           if( arg_completion_exit )
             Interact("Currently: %s", arg_completion_exit);
@@ -534,7 +530,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case 'Q':				// quit
         if( !Tracker.IsQuitting() ){
-          m_streams[O_INPUT]->SetInputMode(K_LINES);
+          m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           Interact_n("");
           Interact_n("Quit:  Are you sure? ");
         }
@@ -543,34 +539,36 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       case '-':				// decrease value
         if( ('+'==c && inc<0) || ('-'==c && inc>0) ) inc *= -1;
         switch( pending ){
-          int value;
-        case 'd': cfg_max_bandwidth_down +=
+          int64_t value;
+        case 'd': value = (int64_t)cfg_max_bandwidth_down;
+          value += (int64_t)
             ( (cfg_max_bandwidth_down * (abs(inc)/100.0) < 1) ? inc :
-                (int)(cfg_max_bandwidth_down * (inc/100.0)) );
-          if( cfg_max_bandwidth_down < 0 ) cfg_max_bandwidth_down = 0;
+                (cfg_max_bandwidth_down * (inc/100.0)) );
+          cfg_max_bandwidth_down = (value < 0) ? 0 : (dt_rate_t)value;
           break;
-        case 'u': cfg_max_bandwidth_up +=
+        case 'u': value = (int64_t)cfg_max_bandwidth_up;
+          value += (int64_t)
             ( (cfg_max_bandwidth_up * (abs(inc)/100.0) < 1) ? inc :
-                (int)(cfg_max_bandwidth_up * (inc/100.0)) );
-          if( cfg_max_bandwidth_up < 0 ) cfg_max_bandwidth_up = 0;
+                (cfg_max_bandwidth_up * (inc/100.0)) );
+          cfg_max_bandwidth_up = (value < 0) ? 0 : (dt_rate_t)value;
           break;
-        case 'e': cfg_seed_hours += inc;
-          if( cfg_seed_hours < 0 ) cfg_seed_hours = 0;
+        case 'e': value = (int64_t)cfg_seed_hours; value += inc;
+          cfg_seed_hours = (value < 0) ? 0 : (time_t)value;
           break;
         case 'E': cfg_seed_ratio += inc / 10.0;
           if( cfg_seed_ratio < 0 ) cfg_seed_ratio = 0;
           break;
-        case 'm': value = (int)cfg_min_peers; value += inc;
-          cfg_min_peers = (value < 1) ? 1 : (size_t)value;
+        case 'm': value = (int64_t)cfg_min_peers; value += inc;
+          cfg_min_peers = (value < 1) ? 1 : (dt_count_t)value;
           if( cfg_min_peers > cfg_max_peers ) cfg_min_peers = cfg_max_peers;
           break;
-        case 'M': value = (int)cfg_max_peers; value += inc;
-          cfg_max_peers = (value < (int)cfg_min_peers) ?
-                          cfg_min_peers : (size_t)value;
+        case 'M': value = (int64_t)cfg_max_peers; value += inc;
+          cfg_max_peers = (value < (int64_t)cfg_min_peers) ?
+                          cfg_min_peers : (dt_count_t)value;
           if( cfg_max_peers > 1000 ) cfg_max_peers = 1000;
           break;
-        case 'C': value = (int)cfg_cache_size; value += inc;
-          cfg_cache_size = (value < 0) ? 0 : (size_t)value;
+        case 'C': value = (int64_t)cfg_cache_size; value += inc;
+          cfg_cache_size = (value < 0) ? 0 : (dt_mem_t)value;
           BTCONTENT.CacheConfigure();
           break;
         default:
@@ -623,7 +621,8 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
 int Console::OperatorMenu(const char *param)
 {
   static int oper_mode = 0;
-  static int channel, n_opt;
+  static dt_conchan_t channel;
+  static int n_opt;
 
   if( 0==oper_mode ){
     Interact("Operator Menu");
@@ -655,7 +654,7 @@ int Console::OperatorMenu(const char *param)
     Interact(" %2d) Update tracker stats & get peers", ++n_opt);
     Interact(" %2d) Restart (recover) the tracker session", ++n_opt);
     Interact_n("Enter selection: ");
-    m_streams[O_INPUT]->SetInputMode(K_LINES);
+    m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
     oper_mode = 1;
     return 0;
   }
@@ -667,14 +666,14 @@ int Console::OperatorMenu(const char *param)
       return 0;
     }
     if( sel <= O_NCHANNELS+1 ){  // change i/o channel
-      channel = sel - 1;
+      channel = (dt_conchan_t)(sel - 1);
       Interact("Possible values are:");
       Interact(" %s", m_stdout.GetName());
       Interact(" %s", m_stderr.GetName());
       Interact(" %s", m_off.GetName());
       Interact(" a filename");
       Interact_n("Enter a destination: ");
-      m_streams[O_INPUT]->SetInputMode(K_LINES);
+      m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
       oper_mode = 2;
       return 0;
     }else if( sel <= O_NCHANNELS+1 + STATUSLINES ){
@@ -682,7 +681,7 @@ int Console::OperatorMenu(const char *param)
       oper_mode = 0;
       return OperatorMenu("");
     }else if( sel == 1 + O_NCHANNELS+1 + STATUSLINES ){  // detailed status
-      m_streams[O_INPUT]->SetInputMode(K_CHARS);
+      m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
       Interact("");
       Interact("Torrent: %s", arg_metainfo_file);
       ShowFiles();
@@ -739,7 +738,7 @@ int Console::OperatorMenu(const char *param)
       oper_mode = 0;
       return 1;
     }else if( sel == 4 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
-      if( Tracker.GetStatus() == T_FREE ) Tracker.Reset(15);
+      if( Tracker.GetStatus() == DT_TRACKER_FREE ) Tracker.Reset(15);
       else Interact("Already connecting, please be patient...");
       oper_mode = 0;
       return 1;
@@ -764,7 +763,7 @@ int Console::OperatorMenu(const char *param)
 }
 
 
-int Console::ChangeChannel(int channel, const char *param, int notify)
+int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
 {
   ConStream *dest = (ConStream *)0;
 
@@ -829,7 +828,7 @@ int Console::ChangeChannel(int channel, const char *param, int notify)
     m_streams[channel] = dest;
     if( O_INPUT==channel ){
       m_streams[O_INPUT]->PreserveMode();
-      m_streams[O_INPUT]->SetInputMode(K_CHARS);
+      m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
     }
     return 0;
   }else return -1;
@@ -952,8 +951,8 @@ void Console::StatusLine0(char buffer[], size_t length)
 
     partial,
 
-    (Tracker.GetStatus()==T_CONNECTING) ? "Connecting" :
-      ( (Tracker.GetStatus()==T_READY) ? "Connected" :
+    (Tracker.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
+      ( (Tracker.GetStatus()==DT_TRACKER_READY) ? "Connected" :
           (Tracker.IsRestarting() ? "Restarting" :
             (Tracker.IsQuitting() ? "Quitting" :
               (WORLD.IsPaused() ? "Paused" : checked))) )
@@ -968,7 +967,6 @@ void Console::StatusLine1(char buffer[], size_t length)
     int have, avail, all;
     long premain = -1;
     char ptime[20] = "";
-    size_t rate;
     BitField tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(BTCONTENT.GetFilter());
     have = tmpBitfield.Count();
@@ -979,8 +977,8 @@ void Console::StatusLine1(char buffer[], size_t length)
 
     all = BTCONTENT.GetNPieces() - BTCONTENT.GetFilter()->Count();
 
-    if( rate = Self.RateDL() ){
-      premain = (all - have) * BTCONTENT.GetPieceLength() / rate / 60;
+    if( Self.RateDL() ){
+      premain = (all - have) * BTCONTENT.GetPieceLength() / Self.RateDL() / 60;
       if( premain < 60000 )  // 1000 hours
         snprintf(ptime, sizeof(ptime), " %d:%2.2d",
           (int)(premain / 60), (int)(premain % 60));
@@ -1018,25 +1016,24 @@ void Console::StatusLine1(char buffer[], size_t length)
 
   long remain = -1;
   char timeleft[20];
-  size_t rate;
   if( !BTCONTENT.Seeding() || BTCONTENT.FlushFailed() ){  // downloading
-    if( rate = Self.RateDL() ){
+    if( Self.RateDL() ){
       // don't overflow remain
-      if( BTCONTENT.GetLeftBytes() < (uint64_t)rate << 22 )
-        remain = BTCONTENT.GetLeftBytes() / rate / 60;
+      if( BTCONTENT.GetLeftBytes() < (dt_datalen_t)Self.RateDL() << 22 )
+        remain = BTCONTENT.GetLeftBytes() / Self.RateDL() / 60;
       else remain = 99999;
     }
   }else{  //seeding
     if( cfg_seed_hours )
-      remain = cfg_seed_hours * 60 - (now - BTCONTENT.GetSeedTime()) / 60;
-    else if( rate = Self.RateUL() ){
+      remain = (long)cfg_seed_hours * 60 - (now - BTCONTENT.GetSeedTime()) / 60;
+    else if( Self.RateUL() ){
       // don't overflow remain
       if( cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
-          Self.TotalUL() < (uint64_t)rate << 22 )
+          Self.TotalUL() < (dt_datalen_t)Self.RateUL() << 22 )
         remain = (long)( cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
-          Self.TotalUL() ) / rate / 60;
+          Self.TotalUL() ) / Self.RateUL() / 60;
       else remain = 99999;
     }
   }
@@ -1076,8 +1073,8 @@ void Console::StatusLine1(char buffer[], size_t length)
 
     partial,
 
-    (Tracker.GetStatus()==T_CONNECTING) ? "Connecting" :
-      ( (Tracker.GetStatus()==T_READY) ? "Connected" :
+    (Tracker.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
+      ( (Tracker.GetStatus()==DT_TRACKER_READY) ? "Connected" :
           (Tracker.IsRestarting() ? "Restarting" :
             (Tracker.IsQuitting() ? "Quitting" :
               (WORLD.IsPaused() ? "Paused" : checked))) )
@@ -1089,7 +1086,7 @@ void Console::Print(const char *message, ...)
 {
   va_list ap;
 
-  if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
+  if( DT_CONMODE_LINES != m_streams[O_INPUT]->GetInputMode() ||
       m_streams[O_INPUT]->IsSuspended() ||
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
@@ -1117,7 +1114,7 @@ void Console::Print_n(const char *message, ...)
   if( m_status_last && message && *message ) Print_n("");
   m_status_last = 0;
 
-  if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
+  if( DT_CONMODE_LINES != m_streams[O_INPUT]->GetInputMode() ||
       m_streams[O_INPUT]->IsSuspended() ||
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
@@ -1143,7 +1140,7 @@ void Console::Update(const char *message, ...)
 
   m_status_last = 0;
 
-  if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
+  if( DT_CONMODE_LINES != m_streams[O_INPUT]->GetInputMode() ||
       m_streams[O_INPUT]->IsSuspended() ||
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
@@ -1201,7 +1198,7 @@ void Console::Debug(const char *message, ...)
   size_t buflen;
   va_list ap;
 
-  if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
+  if( DT_CONMODE_LINES != m_streams[O_INPUT]->GetInputMode() ||
       m_streams[O_INPUT]->IsSuspended() ||
       (!m_streams[O_DEBUG]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_DEBUG]->SameDev(m_streams[O_INPUT])) ){
@@ -1232,7 +1229,7 @@ void Console::Debug_n(const char *message, ...)
 
   va_list ap;
 
-  if( K_LINES != m_streams[O_INPUT]->GetInputMode() ||
+  if( DT_CONMODE_LINES != m_streams[O_INPUT]->GetInputMode() ||
       m_streams[O_INPUT]->IsSuspended() ||
       (!m_streams[O_DEBUG]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_DEBUG]->SameDev(m_streams[O_INPUT])) ){
@@ -1319,9 +1316,9 @@ char *Console::Input(const char *prompt, char *field, size_t length)
   char *retval;
   Interact_n("");
   Interact_n("%s", prompt);
-  m_streams[O_INPUT]->SetInputMode(K_LINES);
+  m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
   retval = m_streams[O_INPUT]->Input(field, length);
-  m_streams[O_INPUT]->SetInputMode(K_CHARS);
+  m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
   return retval;
 }
 
@@ -1381,7 +1378,7 @@ RETSIGTYPE Console::Signal(int sig_no)
 void Console::Daemonize()
 {
 #ifdef HAVE_WORKING_FORK
-  size_t orig_cache_size = 0;
+  dt_mem_t orig_cache_size = 0;
   pid_t r;
   int nullfd = -1;
 
@@ -1399,7 +1396,7 @@ void Console::Daemonize()
   if( !arg_daemon ) arg_daemon = 1;
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
-    if( m_streams[i]->IsTTY() && ChangeChannel(i, "off", 0) < 0 )
+    if( m_streams[i]->IsTTY() && ChangeChannel((dt_conchan_t)i, "off", 0) < 0 )
       m_streams[i]->Suspend();
   }
   nullfd = OpenNull(nullfd, &m_stdin, 0);

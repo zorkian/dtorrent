@@ -1,6 +1,7 @@
 #include "ctcs.h"  // def.h
 
 #include <stdlib.h>
+#include <limits.h>
 #include <string.h>
 #include <errno.h>
 
@@ -9,7 +10,6 @@
 #include "btcontent.h"
 #include "setnonblock.h"
 #include "connect_nonb.h"
-#include "tracker.h"
 #include "peerlist.h"
 #include "peer.h"
 #include "btconfig.h"
@@ -34,7 +34,7 @@ Ctcs::Ctcs()
 
   m_sock = INVALID_SOCKET;
   m_port = 2780;
-  m_status = T_FREE;
+  m_status = DT_TRACKER_FREE;
   m_interval = 5;
   m_protocol = CTCS_PROTOCOL;
 
@@ -57,7 +57,7 @@ void Ctcs::Reset(time_t new_interval)
   if(new_interval) m_interval = new_interval;
 
   if( INVALID_SOCKET != m_sock ){
-    if( T_READY==m_status ) warn = 1;
+    if( DT_TRACKER_READY==m_status ) warn = 1;
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
   }
@@ -67,7 +67,7 @@ void Ctcs::Reset(time_t new_interval)
   m_last_timestamp = now;
   m_sent_ctstatus = 0;
   m_sent_ctbw = 0;
-  m_status = T_FREE;
+  m_status = DT_TRACKER_FREE;
 
   if( warn ) CONSOLE.Warning(2, "Connection to CTCS closed");
 }
@@ -165,7 +165,7 @@ int Ctcs::SendMessage(const char *message)
   int len, r=0;
   char buf[CTCS_BUFSIZE];
 
-  if( m_status == T_READY ){
+  if( m_status == DT_TRACKER_READY ){
     len = strlen(message);
     strncpy(buf, message, len);
     if( len+1 < CTCS_BUFSIZE ){
@@ -218,9 +218,9 @@ int Ctcs::Send_Torrent(const unsigned char *peerid, char *torrent)
 int Ctcs::Report_Status()
 {
   int changebw;
-  size_t dlrate, ulrate, dlimit, ulimit;
+  dt_rate_t dlrate, ulrate, dlimit, ulimit;
 
-  if( T_READY != m_status ) return 0;
+  if( DT_TRACKER_READY != m_status ) return 0;
 
   dlrate = Self.RateDL();
   ulrate = Self.RateUL();
@@ -245,11 +245,13 @@ int Ctcs::Report_Status()
 int Ctcs::Send_Status()
 {
   char message[CTCS_BUFSIZE];
-  size_t seeders, leechers, nhave, ntotal, dlrate, ulrate, dlimit, ulimit,
-    cacheused;
-  uint64_t dltotal, ultotal;
+  dt_count_t seeders, leechers;
+  dt_mem_t cacheused;
+  bt_index_t nhave, ntotal;
+  dt_datalen_t dltotal, ultotal;
+  dt_rate_t dlrate, ulrate, dlimit, ulimit;
 
-  if( T_READY != m_status ) return 0;
+  if( DT_TRACKER_READY != m_status ) return 0;
 
   seeders = WORLD.GetSeedsCount();
   leechers = WORLD.GetPeersCount() - seeders - WORLD.GetConnCount();
@@ -320,7 +322,7 @@ int Ctcs::Send_Config()
 
     double num = BTCONTENT.GetSeedTime() ?
         (cfg_seed_hours - (now - BTCONTENT.GetSeedTime())/3600.0) :
-        cfg_seed_hours;
+        (double)cfg_seed_hours;
     unsigned long tmp = (unsigned long)(num * 100);
     int pre = (tmp % 10) ? 2 : (tmp % 100) ? 1 : 0;
     snprintf(value, MAXPATHLEN, "%.*f", pre, num);
@@ -396,14 +398,14 @@ int Ctcs::Send_Config()
     sprintf(message, "CTCONFIGDONE");
   }
   else if( m_protocol == 2 )
-    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d",
-      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
+    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %lu %f %d %d %d %d %d",
+      (int)arg_verbose, (unsigned long)cfg_seed_hours, cfg_seed_ratio,
       (int)cfg_max_peers, (int)cfg_min_peers,
       BTCONTENT.GetFilter() ? atoi(BTCONTENT.GetFilterName()) : 0,
       (int)cfg_cache_size, WORLD.IsPaused());
   else  // m_protocol == 1
-    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %d %f %d %d %d %d %d %d",
-      (int)arg_verbose, (int)cfg_seed_hours, cfg_seed_ratio,
+    snprintf(message, CTCS_BUFSIZE, "CTCONFIG %d %lu %f %d %d %d %d %d %d",
+      (int)arg_verbose, (unsigned long)cfg_seed_hours, cfg_seed_ratio,
       (int)cfg_max_peers, (int)cfg_min_peers,
       BTCONTENT.GetFilter() ? atoi(BTCONTENT.GetFilterName()) : 0,
       0, WORLD.IsPaused(), 0);
@@ -456,7 +458,7 @@ int Ctcs::Set_Config(const char *origmsg)
     }else if( 0==strcmp(name, "seed_time") ){
       double value = strtod(valstr, NULL);
       if( value < 0 ) goto err;
-      time_t arg = (time_t)value + ((value - (int)value) ? 1 : 0);
+      unsigned long arg = (time_t)value + ((value - (int)value) ? 1 : 0);
       arg += BTCONTENT.GetSeedTime() ?
              ((now - BTCONTENT.GetSeedTime()) / 3600) : 0;
       if( arg > 0 || 0==BTCONTENT.GetSeedTime() ||
@@ -542,7 +544,7 @@ int Ctcs::Set_Config(const char *origmsg)
       if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
       arg_verbose = arg;
     }
-    if(msgbuf[11] != '.') cfg_seed_hours = atoi(msgbuf+11);
+    if(msgbuf[11] != '.') cfg_seed_hours = strtoul(msgbuf+11, NULL, 10);
     if( !(msgbuf = strchr(msgbuf+11, ' ')) ) goto err;
     if(*++msgbuf != '.') cfg_seed_ratio = atof(msgbuf);
     if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
@@ -598,7 +600,7 @@ int Ctcs::Send_Detail()
 {
   char message[CTCS_BUFSIZE];
   int r=0, priority, current=0;
-  size_t n=0;
+  dt_count_t n=0;
   BTFILE *file=0;
   BitField tmpBitField, fileFilter, availbf, tmpavail, allFilter, tmpFilter,
     *pfilter;
@@ -743,9 +745,9 @@ int Ctcs::Connect()
   r = connect_nonb(m_sock,(struct sockaddr*)&m_sin);
 
   if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1; }
-  else if( r == -2 ) m_status = T_CONNECTING;
+  else if( r == -2 ) m_status = DT_TRACKER_CONNECTING;
   else{
-    m_status = T_READY;
+    m_status = DT_TRACKER_READY;
     if(arg_verbose) CONSOLE.Debug("Connected to CTCS");
     if( Send_Protocol() != 0 && errno != EINPROGRESS ){
       CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
@@ -770,7 +772,7 @@ int Ctcs::Connect()
 
 int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
-  if( T_FREE == m_status ){
+  if( DT_TRACKER_FREE == m_status ){
     if( INVALID_SOCKET != m_sock ){
       FD_CLR(m_sock, rfdp);
       FD_CLR(m_sock, wfdp);
@@ -779,9 +781,9 @@ int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       if(Connect() < 0){ Reset(15); return -1; }
 
       FD_SET(m_sock, rfdp);
-      if( m_status == T_CONNECTING ) FD_SET(m_sock, wfdp);
+      if( m_status == DT_TRACKER_CONNECTING ) FD_SET(m_sock, wfdp);
     }else if( now < m_last_timestamp ) m_last_timestamp = now;
-  }else if( T_CONNECTING == m_status ){
+  }else if( DT_TRACKER_CONNECTING == m_status ){
     FD_SET(m_sock, rfdp);
     FD_SET(m_sock, wfdp);
   }else if( INVALID_SOCKET != m_sock ){
@@ -796,9 +798,9 @@ int Ctcs::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
-  if( T_FREE == m_status ) return 0;
+  if( DT_TRACKER_FREE == m_status ) return 0;
 
-  if( T_CONNECTING == m_status && FD_ISSET(m_sock,wfdp) ){
+  if( DT_TRACKER_CONNECTING == m_status && FD_ISSET(m_sock,wfdp) ){
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;
@@ -816,7 +818,7 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       Reset(15);
       return -1;
     }else{
-      m_status = T_READY; 
+      m_status = DT_TRACKER_READY; 
       if(arg_verbose) CONSOLE.Debug("Connected to CTCS");
       if( Send_Protocol() != 0 && errno != EINPROGRESS ){
         CONSOLE.Warning(2, "warn, send protocol to CTCS failed:  %s",
@@ -835,7 +837,7 @@ int Ctcs::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
         return -1;
       }
     }
-  }else if( T_CONNECTING == m_status && FD_ISSET(m_sock,rfdp) ){
+  }else if( DT_TRACKER_CONNECTING == m_status && FD_ISSET(m_sock,rfdp) ){
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;

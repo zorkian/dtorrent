@@ -6,12 +6,13 @@
 #include <sys/types.h>
 
 #include <time.h>
+#include "bttypes.h"
 #include "bitfield.h"
 #include "btfiles.h"
 
 typedef struct _btcache{
-  uint64_t bc_off;
-  size_t bc_len;
+  dt_datalen_t bc_off;
+  bt_length_t bc_len;
   
   unsigned char bc_f_flush:1;
   unsigned char bc_f_reserved:7;
@@ -25,7 +26,7 @@ typedef struct _btcache{
 }BTCACHE;
 
 typedef struct _btflush{
-  size_t idx;
+  bt_index_t idx;
   struct _btflush *next;
 }BTFLUSH;
 
@@ -51,28 +52,29 @@ class btContent
   unsigned char m_shake_buffer[68];
   char *m_announcelist[9];
   char *m_comment, *m_created_by;
+  time_t m_create_date;
+  int m_private;
 
-  size_t m_hashtable_length;
-  size_t m_piece_length;
-  size_t m_npieces, m_check_piece;
-  time_t m_create_date, m_seed_timestamp, m_start_timestamp;
-  size_t m_private;
+  bt_index_t m_hashtable_length;
+  bt_length_t m_piece_length;
+  bt_index_t m_npieces, m_check_piece;
+  time_t m_seed_timestamp, m_start_timestamp;
+  dt_datalen_t m_left_bytes;
 
-  uint64_t m_left_bytes;
   btFiles m_btfiles;
 
   time_t m_flush_failed, m_flush_tried;
 
   BTCACHE **m_cache, *m_cache_oldest, *m_cache_newest;
-  size_t m_cache_size, m_cache_used;
-  size_t m_cache_hit, m_cache_miss, m_cache_pre;
+  dt_mem_t m_cache_size, m_cache_used;
+  dt_count_t m_cache_hit, m_cache_miss, m_cache_pre;
   time_t m_cache_eval_time;
   BTFLUSH *m_flushq;
 
   BFNODE *m_filters, *m_current_filter;
 
-  size_t m_prevdlrate;
-  size_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
+  dt_rate_t m_prevdlrate;
+  dt_count_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
 
   void _Set_InfoHash(unsigned char buf[20]);
   char* _file2mem(const char *fname, size_t *psiz);
@@ -85,12 +87,16 @@ class btContent
   }
 
   int CheckExist();
-  void CacheClean(size_t need);
-  void CacheClean(size_t need, size_t idx);
+  void CacheClean(bt_length_t need);
+  void CacheClean(bt_length_t need, bt_index_t idx);
   void CacheEval();
-  uint64_t max_uint64_t(uint64_t a,uint64_t b) { return (a > b) ? a : b; }
-  uint64_t min_uint64_t(uint64_t a,uint64_t b) { return (a > b) ? b : a; }
-  ssize_t CacheIO(char *buf, uint64_t off, size_t len, int method);
+  dt_datalen_t max_datalen(dt_datalen_t a, dt_datalen_t b) {
+    return (a > b) ? a : b;
+  }
+  dt_datalen_t min_datalen(dt_datalen_t a, dt_datalen_t b) {
+    return (a > b) ? b : a;
+  }
+  int CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
   void FlushEntry(BTCACHE *p);
 
  public:
@@ -100,30 +106,31 @@ class btContent
   BitField *pBChecked;
   BitField *pBMultPeer;
   char *global_piece_buffer;
-  size_t global_buffer_size;
+  bt_length_t global_buffer_size;
   
   btContent();
   ~btContent();
   
   void CacheConfigure();
   void FlushCache();
-  int FlushPiece(size_t idx);
-  void Uncache(size_t idx);
+  int FlushPiece(bt_index_t idx);
+  void Uncache(bt_index_t idx);
   void FlushQueue();
   int NeedFlush() const;
   int FlushFailed() const { return m_flush_failed ? 1 : 0 ; }
   int NeedMerge() const { return m_btfiles.NeedMerge(); }
   void MergeNext();
   void MergeAll() { m_btfiles.MergeAll(); }
-  size_t ChoosePiece(const BitField &choices, const BitField &available,
-    size_t preference) const;
+  bt_index_t ChoosePiece(const BitField &choices, const BitField &available,
+    bt_index_t preference) const;
 
   int CreateMetainfoFile(const char *mifn);
-  int InitialFromFS(const char *pathname, char *ann_url, size_t piece_length);
+  int InitialFromFS(const char *pathname, char *ann_url,
+    bt_length_t piece_length);
   int InitialFromMI(const char *metainfo_fname,const char *saveas);
 
   int CheckNextPiece();
-  size_t CheckedPieces() const { return m_check_piece; }
+  bt_index_t CheckedPieces() const { return m_check_piece; }
 
   char* GetAnnounce() { return m_announce;}
 
@@ -131,20 +138,23 @@ class btContent
   unsigned char* GetInfoHash() {return (m_shake_buffer + 28);}
   unsigned char* GetPeerId() {return (m_shake_buffer + 48); }
 
-  size_t GetPieceLength(size_t idx);
-  size_t GetPieceLength() const { return m_piece_length; }
-  size_t GetNPieces() const { return m_npieces; }
+  bt_length_t GetPieceLength(bt_index_t idx);
+  bt_length_t GetPieceLength() const { return m_piece_length; }
+  bt_index_t GetNPieces() const { return m_npieces; }
 
-  uint64_t GetTotalFilesLength() const { return m_btfiles.GetTotalLength(); }
-  uint64_t GetLeftBytes() const { return m_left_bytes; }
+  dt_datalen_t GetTotalFilesLength() const {
+    return m_btfiles.GetTotalLength(); }
+  dt_datalen_t GetLeftBytes() const { return m_left_bytes; }
 
-  int APieceComplete(size_t idx);
-  int GetHashValue(size_t idx,unsigned char *md);
+  int APieceComplete(bt_index_t idx);
+  int GetHashValue(bt_index_t idx, unsigned char *md);
 
-  int CachePrep(size_t idx);
-  ssize_t ReadSlice(char *buf,size_t idx,size_t off,size_t len);
-  ssize_t WriteSlice(char *buf,size_t idx,size_t off,size_t len);
-  ssize_t ReadPiece(char *buf,size_t idx);
+  int CachePrep(bt_index_t idx);
+  int ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
+    bt_length_t len);
+  int WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
+    bt_length_t len);
+  int ReadPiece(char *buf, bt_index_t idx);
 
   int PrintOut();
   int PrintFiles();
@@ -164,37 +174,37 @@ class btContent
     m_btfiles.SetFilter(nfile, pFilter, m_piece_length);
   }
 
-  size_t GetNFiles() const { return m_btfiles.GetNFiles(); }
-  char *GetFileName(size_t nfile) const {
+  dt_count_t GetNFiles() const { return m_btfiles.GetNFiles(); }
+  char *GetFileName(dt_count_t nfile) const {
     return m_btfiles.GetFileName(nfile);
   }
-  uint64_t GetFileSize(size_t nfile) const {
+  dt_datalen_t GetFileSize(dt_count_t nfile) const {
     return m_btfiles.GetFileSize(nfile);
   }
-  size_t GetFilePieces(size_t nfile) const {
+  bt_index_t GetFilePieces(dt_count_t nfile) const {
     return m_btfiles.GetFilePieces(nfile);
   }
 
   time_t GetStartTime() const { return m_start_timestamp; }
   time_t GetSeedTime() const { return m_seed_timestamp; }
 
-  size_t GetHashFailures() const { return m_hash_failures; }
-  size_t GetDupBlocks() const { return m_dup_blocks; }
-  size_t GetUnwantedBlocks() const { return m_unwanted_blocks; }
+  dt_count_t GetHashFailures() const { return m_hash_failures; }
+  dt_count_t GetDupBlocks() const { return m_dup_blocks; }
+  dt_count_t GetUnwantedBlocks() const { return m_unwanted_blocks; }
   void CountHashFailure() { m_hash_failures++; }
-  void CountDupBlock(size_t len);
+  void CountDupBlock(bt_length_t len);
   void CountUnwantedBlock() { m_unwanted_blocks++; }
 
   int IsFull() const { return pBF->IsFull(); }
   int Seeding() const;
 
-  size_t CacheHits() const { return m_cache_hit; }
+  dt_count_t CacheHits() const { return m_cache_hit; }
   // "miss" does not count prefetch reads from disk
-  size_t CacheMiss() const { return m_cache_miss; }
+  dt_count_t CacheMiss() const { return m_cache_miss; }
   // instead, "pre" does
-  size_t CachePre() const { return m_cache_pre; }
-  size_t CacheSize() const { return m_cache_size; }
-  size_t CacheUsed() const { return m_cache_used; }
+  dt_count_t CachePre() const { return m_cache_pre; }
+  dt_mem_t CacheSize() const { return m_cache_size; }
+  dt_mem_t CacheUsed() const { return m_cache_used; }
 
   void CloseAllFiles();
 

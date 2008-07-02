@@ -48,8 +48,8 @@ class BufIo
   ssize_t FeedIn(SOCKET sk); //从sk读数据到缓存直到暂时无数据可读或缓冲区满
   ssize_t FeedIn(SOCKET sk, size_t limit);
   ssize_t FlushOut(SOCKET sk); //将缓存中数据写到socket
-  ssize_t Put(SOCKET sk,char *buf,size_t len); //将buf内容添加到缓存
-  ssize_t PutFlush(SOCKET sk,char *buf,size_t len);
+  ssize_t Put(SOCKET sk, const char *buf, size_t len);
+  ssize_t PutFlush(SOCKET sk, const char *buf, size_t len);
 
   char *BasePointer() { return b; }
   char *CurrentPointer() { return ( b + p); }

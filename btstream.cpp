@@ -4,23 +4,41 @@
 #include <inttypes.h>
 #include <string.h>	// memcpy
 
-#include "msgencode.h"
 #include "btconfig.h"
 #include "util.h"
 
-size_t get_nl(char *from)
+bt_int_t get_bt_int(const char *from)
 {
-  // assumes H_INT_LEN==H_LEN==4
-  uint32_t t = 0;
-  memcpy(&t, from, H_INT_LEN);
-  return (size_t)ntohl((unsigned long)t);
+  bt_int_t t = 0;
+#ifdef HAVE_NTOHL
+  if( BT_LEN_INT == 4 && sizeof(bt_int_t) == 4 ){
+    memcpy(&t, from, (size_t)BT_LEN_INT);
+    return (bt_int_t)ntohl((uint32_t)t);
+  }else
+#endif
+  {
+    const char *end = from + BT_LEN_INT;
+    do{
+      t = (t << 8) | *from;
+    }while( from++ < end );
+    return t;
+  }
 }
 
-void set_nl(char *to, size_t from)
+void put_bt_int(char *to, bt_int_t from)
 {
-  // assumes H_INT_LEN==H_LEN==4
-  uint32_t from32 = (uint32_t)htonl((unsigned long)from);
-  memcpy(to, &from32, H_INT_LEN);
+#ifdef HAVE_HTONL
+  if( BT_LEN_INT == 4 && sizeof(bt_int_t) == 4 ){
+    bt_int_t from32 = (bt_int_t)htonl((uint32_t)from);
+    memcpy(to, &from32, (size_t)BT_LEN_INT);
+  }else
+#endif
+  {
+    int x = BT_LEN_INT << 3;  // == 8 * BT_LEN_INT
+    memset(to, 0, (size_t)BT_LEN_INT);
+    while( x -= 8 )
+      *to++ = (from >> x) & 0xff;
+  }
 }
 
 ssize_t btStream::Flush()
@@ -28,91 +46,91 @@ ssize_t btStream::Flush()
   return out_buffer.FlushOut(sock);
 }
 
-ssize_t btStream::Send_State(unsigned char state)
+ssize_t btStream::Send_State(bt_msg_t state)
 {
-  char msg[H_LEN + H_BASE_LEN];
+  char msg[BT_LEN_PRE + BT_LEN_MSGID];
 
-  set_nl(msg, H_BASE_LEN);
-  msg[H_LEN] = (char)state;
-  return out_buffer.Put(sock,msg,H_LEN + H_BASE_LEN);
+  put_bt_msglen(msg, BT_LEN_MSGID);
+  msg[BT_LEN_PRE] = (char)state;
+  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_LEN_MSGID);
 }
 
-ssize_t btStream::Send_Have(size_t idx)
+ssize_t btStream::Send_Have(bt_index_t idx)
 {
-  char msg[H_LEN + H_HAVE_LEN];
+  char msg[BT_LEN_PRE + BT_MSGLEN_HAVE];
 
-  set_nl(msg, H_HAVE_LEN);
-  msg[H_LEN] = (char)M_HAVE;
-  set_nl(msg + H_LEN + H_BASE_LEN, idx);
+  put_bt_msglen(msg, BT_MSGLEN_HAVE);
+  msg[BT_LEN_PRE] = (char)BT_MSG_HAVE;
+  put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
 
-  return out_buffer.Put(sock,msg,H_LEN + H_HAVE_LEN);
+  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_HAVE);
 }
 
 ssize_t btStream::Send_Bitfield(char *bit_buf,size_t len)
 {
-  size_t q = htonl(len + H_BASE_LEN);
-  unsigned char t = M_BITFIELD;
-  ssize_t r = out_buffer.Put(sock,(char*)&q,H_LEN);
-  if(r < 0) return r;
-  r = out_buffer.Put(sock,(char*)&t,H_BASE_LEN);
-  if(r < 0) return r;
-  return out_buffer.Put(sock,bit_buf,len);
-}
-
-ssize_t btStream::Send_Cancel(size_t idx,size_t off,size_t len)
-{
-  char msg[H_LEN + H_CANCEL_LEN];
-
-  set_nl(msg, H_CANCEL_LEN);
-  msg[H_LEN] = M_CANCEL;
-  set_nl(msg + H_LEN + H_BASE_LEN, idx);
-  set_nl(msg + H_LEN + H_BASE_LEN + H_INT_LEN, off);
-  set_nl(msg + H_LEN + H_BASE_LEN + H_INT_LEN * 2, len);
-  return out_buffer.Put(sock,msg,H_LEN + H_CANCEL_LEN);
-}
-
-ssize_t btStream::Send_Piece(size_t idx,size_t off,char *piece_buf,size_t len)
-{
-  size_t q = htonl(len + H_PIECE_LEN);
-  unsigned char t = M_PIECE;
+  char msg[BT_LEN_PRE + BT_LEN_MSGID];
   ssize_t r;
 
-  idx = htonl(idx);
-  off = htonl(off);
-  if( (r = out_buffer.Put(sock,(char*)&q,H_LEN)) < 0 ) return r;
-  if( (r = out_buffer.Put(sock,(char*)&t,H_BASE_LEN)) < 0 ) return r;
-  if( (r = out_buffer.Put(sock,(char*)&idx,H_INT_LEN)) < 0) return r;
-  if( (r = out_buffer.Put(sock,(char*)&off,H_INT_LEN)) < 0) return r;
-  return out_buffer.PutFlush(sock,piece_buf,len);
+  put_bt_msglen(msg, BT_LEN_MSGID + len);
+  msg[BT_LEN_PRE] = (char)BT_MSG_BITFIELD;
+  if( (r = out_buffer.Put(sock, msg, BT_LEN_PRE + BT_LEN_MSGID)) < 0 )
+    return r;
+  return out_buffer.Put(sock, bit_buf, len);
 }
 
-ssize_t btStream::Send_Request(size_t idx, size_t off,size_t len)
+ssize_t btStream::Send_Cancel(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
-  char msg[H_LEN + H_REQUEST_LEN];
+  char msg[BT_LEN_PRE + BT_MSGLEN_CANCEL];
 
-  set_nl(msg, H_REQUEST_LEN);
-  msg[H_LEN] = (char)M_REQUEST;
-  set_nl(msg + H_LEN + H_BASE_LEN, idx);
-  set_nl(msg + H_LEN + H_BASE_LEN + H_INT_LEN, off);
-  set_nl(msg + H_LEN + H_BASE_LEN + H_INT_LEN * 2, len);
-  return out_buffer.Put(sock,msg,H_LEN + H_REQUEST_LEN);
+  put_bt_msglen(msg, BT_MSGLEN_CANCEL);
+  msg[BT_LEN_PRE] = (char)BT_MSG_CANCEL;
+  put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
+  put_bt_offset(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX, off);
+  put_bt_length(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX + BT_LEN_OFF, len);
+  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_CANCEL);
+}
+
+ssize_t btStream::Send_Piece(bt_index_t idx, bt_offset_t off, char *piece_buf,
+  bt_length_t len)
+{
+  char msg[BT_LEN_PRE + BT_MSGLEN_PIECE];
+  ssize_t r;
+
+  put_bt_msglen(msg, BT_MSGLEN_PIECE + len);
+  msg[BT_LEN_PRE] = (char)BT_MSG_PIECE;
+  put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
+  put_bt_offset(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX, off);
+  if( (r = out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_PIECE)) < 0 )
+    return r;
+  return out_buffer.PutFlush(sock, piece_buf, len);
+}
+
+ssize_t btStream::Send_Request(bt_index_t idx, bt_offset_t off, bt_length_t len)
+{
+  char msg[BT_LEN_PRE + BT_MSGLEN_REQUEST];
+
+  put_bt_msglen(msg, BT_MSGLEN_REQUEST);
+  msg[BT_LEN_PRE] = (char)BT_MSG_REQUEST;
+  put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
+  put_bt_offset(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX, off);
+  put_bt_length(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX + BT_LEN_OFF, len);
+  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_REQUEST);
 }
 
 ssize_t btStream::Send_Keepalive()
 {
-  size_t i = 0;
-  return out_buffer.Put(sock,(char*)&i,H_LEN);
+  return out_buffer.Put(sock, "", BT_LEN_PRE);
 }
 
 int btStream::HaveMessage()
 {
   // if message arrived.
-  size_t r;
-  if( H_LEN <= in_buffer.Count() ){
-    r = get_nl(in_buffer.BasePointer());
-    if( cfg_max_slice_size + H_LEN + H_PIECE_LEN < r )
+  bt_msglen_t msglen;
+  if( BT_LEN_PRE <= in_buffer.Count() ){
+    msglen = get_bt_msglen(in_buffer.BasePointer());
+    if( cfg_max_slice_size + BT_LEN_PRE + BT_MSGLEN_PIECE < msglen )
       return -1;  //message too long
-    if( r + H_LEN <= in_buffer.Count() ) return 1;
+    if( msglen + BT_LEN_PRE <= in_buffer.Count() ) return 1;
   }
   return 0; //no message arrived
 }
@@ -135,20 +153,20 @@ ssize_t btStream::Feed(size_t limit, Rate *rate)
   rightnow = PreciseTime();
   retval = in_buffer.FeedIn(sock, limit);
 
-  if( H_LEN + H_PIECE_LEN < in_buffer.Count() &&
-      M_PIECE == in_buffer.BasePointer()[H_LEN] ){
-    size_t r = get_nl(in_buffer.BasePointer());
-    if( r > H_PIECE_LEN ){
+  if( BT_LEN_PRE + BT_MSGLEN_PIECE < in_buffer.Count() &&
+      BT_MSG_PIECE == in_buffer.BasePointer()[BT_LEN_PRE] ){
+    bt_msglen_t msglen = get_bt_msglen(in_buffer.BasePointer());
+    if( msglen > BT_MSGLEN_PIECE ){
       size_t change;
-      if( in_buffer.Count() >= r + H_LEN ){  // have the whole message
-        change = r - H_PIECE_LEN - m_oldbytes;
+      if( in_buffer.Count() >= msglen + BT_LEN_PRE ){  // have the whole message
+        change = msglen - BT_MSGLEN_PIECE - m_oldbytes;
         m_oldbytes = 0;
       }else{
-        size_t nbytes = in_buffer.Count() - H_LEN - H_PIECE_LEN;
+        size_t nbytes = in_buffer.Count() - BT_LEN_PRE - BT_MSGLEN_PIECE;
         change = nbytes - m_oldbytes;
         m_oldbytes = nbytes;
       }
-      rate->RateAdd(change, (size_t)cfg_max_bandwidth_down, rightnow);
+      rate->RateAdd(change, cfg_max_bandwidth_down, rightnow);
     }
   }
   return retval;
@@ -156,35 +174,38 @@ ssize_t btStream::Feed(size_t limit, Rate *rate)
 
 ssize_t btStream::PickMessage()
 {
-  return in_buffer.PickUp( get_nl(in_buffer.BasePointer()) + H_LEN );
+  return in_buffer.PickUp( get_bt_msglen(in_buffer.BasePointer()) + BT_LEN_PRE );
 }
 
-ssize_t btStream::Send_Buffer(char *buf, size_t len)
+ssize_t btStream::Send_Buffer(char *buf, bt_length_t len)
 {
   return out_buffer.Put(sock,buf,len);
 }
 
-// Does not distinguish between keepalive, choke (msg 0), and no message.
-char btStream::PeekMessage()
+// Does not distinguish between keepalive and no message.
+bt_msg_t btStream::PeekMessage()
 {
-  return ( H_LEN < in_buffer.Count() && get_nl(in_buffer.BasePointer()) ) ?
-           in_buffer.BasePointer()[H_LEN] : 0;
+  return ( BT_LEN_PRE < in_buffer.Count() &&
+           get_bt_msglen(in_buffer.BasePointer()) ) ?
+             (bt_msg_t)(in_buffer.BasePointer()[BT_LEN_PRE]) : BT_MSG_NONE;
 }
 
 // Is the next message known to match m?
-int btStream::PeekMessage(char m)
+int btStream::PeekMessage(bt_msg_t m)
 {
-  return ( H_LEN < in_buffer.Count() && m == in_buffer.BasePointer()[H_LEN] &&
-           get_nl(in_buffer.BasePointer()) ) ? 1 : 0;
+  return ( BT_LEN_PRE < in_buffer.Count() &&
+           m == in_buffer.BasePointer()[BT_LEN_PRE] &&
+           get_bt_msglen(in_buffer.BasePointer()) ) ? 1 : 0;
 }
 
 // Is the next next message known to match m?
-int btStream::PeekNextMessage(char m)
+int btStream::PeekNextMessage(bt_msg_t m)
 {
   char *base;
 
-  base = in_buffer.BasePointer() + H_LEN + get_nl(in_buffer.BasePointer());
-  return ( H_LEN < in_buffer.Count() - (base - in_buffer.BasePointer()) &&
-    m == base[H_LEN] && get_nl(base) ) ? 1 : 0;
+  base = in_buffer.BasePointer() + BT_LEN_PRE +
+         get_bt_msglen(in_buffer.BasePointer());
+  return ( BT_LEN_PRE < in_buffer.Count() - (base - in_buffer.BasePointer()) &&
+           m == base[BT_LEN_PRE] && get_bt_msglen(base) ) ? 1 : 0;
 }
 

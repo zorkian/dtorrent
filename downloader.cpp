@@ -128,14 +128,14 @@ void Downloader()
     if( now == then-1 ) now = then;
 
     if( !f_poll && nfds > 0 ){
-      if(T_FREE != Tracker.GetStatus())
+      if(DT_TRACKER_FREE != Tracker.GetStatus())
         Tracker.SocketReady(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
-      if(nfds > 0 && T_FREE != CTCS.GetStatus())
+      if(nfds > 0 && DT_TRACKER_FREE != CTCS.GetStatus())
         CTCS.SocketReady(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
       if(nfds > 0)
         CONSOLE.User(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
     }
     if(nfds > 0)
       WORLD.AnyPeerReady(&rfd,&wfd,&nfds,&rfdnext,&wfdnext);
-  } while(Tracker.GetStatus() != T_FINISHED || Tracker.IsRestarting());
+  } while(Tracker.GetStatus() != DT_TRACKER_FINISHED || Tracker.IsRestarting());
 }

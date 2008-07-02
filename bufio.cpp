@@ -101,7 +101,7 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf,size_t len)
   return (ssize_t)t;
 }
 
-ssize_t BufIo::Put(SOCKET sk, char *buf,size_t len)
+ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
 {
   ssize_t r;
   if( _left_buffer_size < len ){ //no enough space
@@ -137,7 +137,7 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
   return (ssize_t) p;
 }
 
-ssize_t BufIo::PutFlush(SOCKET sk, char *buf,size_t len)
+ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
 {
   if( _left_buffer_size < len && p){
     if( FlushOut(sk) < 0) return -1;

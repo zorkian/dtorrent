@@ -19,16 +19,19 @@
 #include <time.h>
 #include <string.h>
 
+#include "bttypes.h"
 #include "btrequest.h"
 #include "btstream.h"
 #include "bitfield.h"
 #include "rate.h"
 #include "btconfig.h"
 
-#define P_CONNECTING (unsigned char) 0		// connecting
-#define P_HANDSHAKE  (unsigned char) 1		// handshaking
-#define P_SUCCESS (unsigned char) 2		// successful
-#define P_FAILED (unsigned char) 3		// failed
+enum dt_peerstatus_t{
+  DT_PEER_CONNECTING,
+  DT_PEER_HANDSHAKE,
+  DT_PEER_SUCCESS,
+  DT_PEER_FAILED
+};
 
 typedef struct _btstatus{
   unsigned char remote_choked:1;
@@ -65,21 +68,21 @@ public:
   void SetDLRate(Rate rate) { rate_dl = rate; StopDLTimer(); }
   void SetULRate(Rate rate) { rate_ul = rate; StopULTimer(); }
   
-  uint64_t TotalDL() const { return rate_dl.Count(); }
-  uint64_t TotalUL() const { return rate_ul.Count(); }
+  dt_datalen_t TotalDL() const { return rate_dl.Count(); }
+  dt_datalen_t TotalUL() const { return rate_ul.Count(); }
 
-  void DataRecved(size_t nby) { rate_dl.CountAdd(nby); }
-  void DataUnRec(size_t nby) { rate_dl.UnCount(nby); }
-  void DataSended(size_t nby, double timestamp) { rate_ul.CountAdd(nby);
-    rate_ul.RateAdd(nby, (size_t)cfg_max_bandwidth_up, timestamp); }
+  void DataRecved(bt_length_t nby) { rate_dl.CountAdd(nby); }
+  void DataUnRec(bt_length_t nby) { rate_dl.UnCount(nby); }
+  void DataSended(bt_length_t nby, double timestamp) { rate_ul.CountAdd(nby);
+    rate_ul.RateAdd(nby, cfg_max_bandwidth_up, timestamp); }
 
-  size_t CurrentDL() { return rate_dl.CurrentRate(); }
-  size_t CurrentUL() { return rate_ul.CurrentRate(); }
-  size_t RateDL() { return rate_dl.RateMeasure(); }
-  size_t RateUL() { return rate_ul.RateMeasure(); }
+  dt_rate_t CurrentDL() { return rate_dl.CurrentRate(); }
+  dt_rate_t CurrentUL() { return rate_ul.CurrentRate(); }
+  dt_rate_t RateDL() { return rate_dl.RateMeasure(); }
+  dt_rate_t RateUL() { return rate_ul.RateMeasure(); }
 
-  size_t NominalDL() { return rate_dl.NominalRate(); }
-  size_t NominalUL() { return rate_ul.NominalRate(); }
+  dt_rate_t NominalDL() { return rate_dl.NominalRate(); }
+  dt_rate_t NominalUL() { return rate_ul.NominalRate(); }
 
   void StartDLTimer() { rate_dl.StartTimer(); }
   void StartULTimer() { rate_ul.StartTimer(); }
@@ -90,8 +93,8 @@ public:
 
   double LastSendTime() const { return rate_ul.LastRealtime(); }
   double LastRecvTime() const { return rate_dl.LastRealtime(); }
-  size_t LastSizeSent() const { return rate_ul.LastSize(); }
-  size_t LastSizeRecv() const { return rate_dl.LastSize(); }
+  bt_length_t LastSizeSent() const { return rate_ul.LastSize(); }
+  bt_length_t LastSizeRecv() const { return rate_dl.LastSize(); }
 
   Rate *DLRatePtr() { return &rate_dl; }
   Rate *ULRatePtr() { return &rate_ul; }
@@ -108,12 +111,13 @@ class btPeer:public btBasic
 {
  private:
   time_t m_last_timestamp, m_unchoke_timestamp;
+  dt_peerstatus_t m_status;
 
   unsigned char m_f_keepalive:1;
-  unsigned char m_status:4;
   unsigned char m_bad_health:1;
   unsigned char m_standby:1;              // nothing to request at this time
   unsigned char m_want_again:1;           // attempt reconnect if lost
+  unsigned char m_reserved:4;
 
   unsigned char m_connect:1;              // we initiated the connection
   unsigned char m_retried:1;              // already retried connecting
@@ -125,29 +129,29 @@ class btPeer:public btBasic
 
   BTSTATUS m_state;
 
-  size_t m_cached_idx;
+  bt_index_t m_cached_idx;
   int m_err_count;
-  size_t m_req_send;  // target number of outstanding requests
-  size_t m_req_out;   // actual number of outstanding requests
-  size_t m_latency;
-  size_t m_prev_dlrate;
+  dt_count_t m_req_send;  // target number of outstanding requests
+  dt_count_t m_req_out;   // actual number of outstanding requests
+  time_t m_latency;
+  dt_rate_t m_prev_dlrate;
   time_t m_latency_timestamp;
   time_t m_health_time, m_receive_time, m_next_send_time;
-  char m_lastmsg;
+  bt_msg_t m_lastmsg;
   time_t m_choketime;
   time_t m_prefetch_time;
   time_t m_cancel_time;
-  size_t m_last_req_piece;
+  bt_index_t m_last_req_piece;
 
-  int PieceDeliver(size_t mlen);
-  int ReportComplete(size_t idx, size_t len);
+  int PieceDeliver(bt_int_t mlen);
+  int ReportComplete(bt_index_t idx, bt_length_t len);
   int RequestCheck();
   int SendRequest();
   int ReponseSlice();
   int RequestPiece();
   int MsgDeliver();
   int CouldReponseSlice();
-  int RequestSlice(size_t idx,size_t off,size_t len);
+  int RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int PeerError(int weight, const char *message);
 
  public:
@@ -177,17 +181,17 @@ class btPeer:public btBasic
   int Is_Remote_UnChoked() const { return m_state.remote_choked ? 0 : 1; }
   int Is_Local_Interested() const { return m_state.local_interested ? 1 : 0;}
   int Is_Local_UnChoked() const { return m_state.local_choked ? 0 : 1; }
-  int SetLocal(unsigned char s);
+  int SetLocal(bt_msg_t s);
 
   int IsEmpty() const;
 
   int CancelRequest();
-  int CancelSliceRequest(size_t idx, size_t off, size_t len);
-  int CancelPiece(size_t idx);
-  size_t FindLastCommonRequest(BitField &proposerbf);
+  int CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int CancelPiece(bt_index_t idx);
+  bt_index_t FindLastCommonRequest(BitField &proposerbf);
   
-  void SetStatus(unsigned char s){ m_status = s; }
-  unsigned char GetStatus() const { return m_status; }
+  void SetStatus(dt_peerstatus_t s){ m_status = s; }
+  dt_peerstatus_t GetStatus() const { return m_status; }
   int NeedWrite(int limited);
   int NeedRead(int limited);
   

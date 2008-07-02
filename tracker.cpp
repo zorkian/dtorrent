@@ -34,7 +34,7 @@ btTracker::btTracker()
 
   m_sock = INVALID_SOCKET;
   m_port = 80;
-  m_status = T_FREE;
+  m_status = DT_TRACKER_FREE;
   m_f_started = m_f_stoped = m_f_completed = m_f_restart = 0;
 
   m_interval = 15;
@@ -58,7 +58,7 @@ void btTracker::Reset(time_t new_interval)
   if(new_interval) m_interval = new_interval;
 
   if( INVALID_SOCKET != m_sock ){
-    if(arg_verbose && T_READY==m_status)
+    if(arg_verbose && DT_TRACKER_READY==m_status)
       CONSOLE.Debug("Disconnected from tracker");
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
@@ -69,10 +69,10 @@ void btTracker::Reset(time_t new_interval)
   if( now < m_last_timestamp ) m_last_timestamp = now;  // time reversed
 
   if( m_f_stoped ){
-    m_status = T_FINISHED;
+    m_status = DT_TRACKER_FINISHED;
     if( m_f_restart ) Restart();
   }
-  else m_status = T_FREE;
+  else m_status = DT_TRACKER_FREE;
 }
 
 int btTracker:: _IPsin(char *h, int p, struct sockaddr_in *psin)
@@ -107,11 +107,12 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
   char tmphost[MAXHOSTNAMELEN];
   const char *ps;
   size_t i,pos,tmpport;
-  size_t cnt = 0;
+  int64_t bint;
+  dt_count_t cnt = 0;
 
   struct sockaddr_in addr;
 
-  if( decode_query(buf,bufsiz,"failure reason",&ps,&i,(int64_t*)0,QUERY_STR) ){
+  if(decode_query(buf,bufsiz,"failure reason",&ps,&i,(int64_t*)0,DT_QUERY_STR)){
     char failreason[1024];
     if( i < 1024 ){
       memcpy(failreason, ps, i);
@@ -124,7 +125,7 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
     CONSOLE.Warning(1, "TRACKER FAILURE REASON: %s", failreason);
     return -1;
   }
-  if( decode_query(buf,bufsiz,"warning message",&ps,&i,(int64_t*)0,QUERY_STR) ){
+  if(decode_query(buf,bufsiz,"warning message",&ps,&i,(int64_t*)0,DT_QUERY_STR)){
     char warnmsg[1024];
     if( i < 1024 ){
       memcpy(warnmsg, ps, i);
@@ -139,7 +140,7 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
 
   m_peers_count = m_seeds_count = 0;
 
-  if( decode_query(buf,bufsiz,"tracker id",&ps,&i,(int64_t*)0,QUERY_STR) ){
+  if( decode_query(buf,bufsiz,"tracker id",&ps,&i,(int64_t*)0,DT_QUERY_STR) ){
     if( i <= PEER_ID_LEN ){
       memcpy(m_trackerid, ps, i);
       m_trackerid[i] = '\0';
@@ -149,19 +150,17 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
     }
   }
 
-  if( !decode_query(buf, bufsiz, "interval", (const char**)0, &i,
-      (int64_t*)0, QUERY_INT) )
+  if( !decode_query(buf, bufsiz, "interval", (const char**)0, NULL, &bint,
+      DT_QUERY_INT) )
     return -1;
+  m_interval = m_default_interval = (time_t)bint;
 
-  if(m_interval != (time_t)i) m_interval = (time_t)i;
-  if(m_default_interval != (time_t)i) m_default_interval = (time_t)i;
-
-  if( decode_query(buf, bufsiz, "complete", (const char**)0, &i,
-      (int64_t*)0, QUERY_INT) )
-    m_seeds_count = i;
-  if( decode_query(buf, bufsiz, "incomplete", (const char**)0, &i,
-      (int64_t*)0, QUERY_INT) )
-    m_peers_count = m_seeds_count + i;
+  if( decode_query(buf, bufsiz, "complete", (const char**)0, NULL, &bint,
+      DT_QUERY_INT) )
+    m_seeds_count = bint;
+  if( decode_query(buf, bufsiz, "incomplete", (const char**)0, NULL, &bint,
+      DT_QUERY_INT) )
+    m_peers_count = m_seeds_count + bint;
   else{
     if(arg_verbose && 0==m_seeds_count)
       CONSOLE.Debug("Tracker did not supply peers count.");
@@ -169,7 +168,7 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
   }
 
   pos = decode_query(buf, bufsiz, "peers", (const char**)0, (size_t *)0,
-    (int64_t*)0, QUERY_POS);
+    (int64_t*)0, DT_QUERY_POS);
 
   if( !pos ){
     return -1;
@@ -200,14 +199,15 @@ int btTracker::_UpdatePeerList(char *buf,size_t bufsiz)
   for( ; bufsiz && *buf!='e'; buf += pos, bufsiz -= pos ){
     pos = decode_dict(buf,bufsiz,(char*)0);
     if(!pos) break;
-    if( !decode_query(buf,pos,"ip",&ps,&i,(int64_t*)0,QUERY_STR) ||
+    if( !decode_query(buf,pos,"ip",&ps,&i,(int64_t*)0,DT_QUERY_STR) ||
         MAXHOSTNAMELEN < i ) continue;
     memcpy(tmphost,ps,i); tmphost[i] = '\0';
 
-    if( !decode_query(buf,pos,"port",(const char**)0,&tmpport,(int64_t*)0,
-                      QUERY_INT) ) continue;
+    if( !decode_query(buf,pos,"port",(const char**)0,NULL,&bint,
+                      DT_QUERY_INT) ) continue;
+    tmpport = bint;
 
-    if( !decode_query(buf,pos,"peer id",&ps,&i,(int64_t*)0,QUERY_STR) &&
+    if( !decode_query(buf,pos,"peer id",&ps,&i,(int64_t*)0,DT_QUERY_STR) &&
         i != 20 ) continue;
 
     if(_IPsin(tmphost,tmpport,&addr) < 0){
@@ -453,10 +453,10 @@ int btTracker::Connect()
   r = connect_nonb(m_sock,(struct sockaddr*)&m_sin);
 
   if( r == -1 ){ CLOSE_SOCKET(m_sock); return -1; }
-  else if( r == -2 ) m_status = T_CONNECTING;
+  else if( r == -2 ) m_status = DT_TRACKER_CONNECTING;
   else{
     if(arg_verbose) CONSOLE.Debug("Connected to tracker");
-    if( 0 == SendRequest() ) m_status = T_READY;
+    if( 0 == SendRequest() ) m_status = DT_TRACKER_READY;
     else{ CLOSE_SOCKET(m_sock); return -1; }
   }
   return 0;
@@ -532,7 +532,7 @@ int btTracker::SendRequest()
 int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   /* tracker communication */
-  if( T_FREE == m_status ){
+  if( DT_TRACKER_FREE == m_status ){
     if( INVALID_SOCKET != m_sock ){
       FD_CLR(m_sock, rfdp);
       FD_CLR(m_sock, wfdp);
@@ -546,9 +546,9 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       if(Connect() < 0){ Reset(15); return -1; }
 
       FD_SET(m_sock, rfdp);
-      if( m_status == T_CONNECTING ) FD_SET(m_sock, wfdp);
+      if( m_status == DT_TRACKER_CONNECTING ) FD_SET(m_sock, wfdp);
     }else if( now < m_last_timestamp ) m_last_timestamp = now; // time reversed
-  }else if( T_CONNECTING == m_status ){
+  }else if( DT_TRACKER_CONNECTING == m_status ){
     FD_SET(m_sock, rfdp);
     FD_SET(m_sock, wfdp);
   }else if( INVALID_SOCKET != m_sock ){
@@ -561,9 +561,9 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
-  if( T_FREE == m_status ) return 0;
+  if( DT_TRACKER_FREE == m_status ) return 0;
 
-  if( T_CONNECTING == m_status && FD_ISSET(m_sock,wfdp) ){
+  if( DT_TRACKER_CONNECTING == m_status && FD_ISSET(m_sock,wfdp) ){
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;
@@ -584,10 +584,10 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       return -1;
     }else{
       if(arg_verbose) CONSOLE.Debug("Connected to tracker");
-      if( SendRequest() == 0 ) m_status = T_READY; 
+      if( SendRequest() == 0 ) m_status = DT_TRACKER_READY; 
       else { Reset(15); return -1; }
     }
-  }else if( T_CONNECTING == m_status && FD_ISSET(m_sock,rfdp) ){
+  }else if( DT_TRACKER_CONNECTING == m_status && FD_ISSET(m_sock,rfdp) ){
     int error = 0;
     socklen_t n = sizeof(error);
     (*nfds)--;
@@ -630,8 +630,8 @@ void btTracker::Restart()
 {
   m_f_stoped = m_f_restart = 0;
 
-  if( T_FINISHED == m_status ){
-    m_status = T_FREE;
+  if( DT_TRACKER_FINISHED == m_status ){
+    m_status = DT_TRACKER_FREE;
     m_f_started = 0;
     m_interval = 15;
   }
@@ -641,7 +641,7 @@ void btTracker::SetStoped()
 {
   if( !m_f_started ){
     m_f_stoped = 1;
-    m_status = T_FINISHED;
+    m_status = DT_TRACKER_FINISHED;
   }else{
     Reset(15);
     m_f_stoped = 1;
@@ -651,19 +651,19 @@ void btTracker::SetStoped()
 void btTracker::RestartTracker()
 {
   SetStoped(); // finish the tracker
-  // Now we need to wait until the tracker updates (T_FINISHED == m_status),
+  // Now we need to wait until the tracker updates (DT_TRACKER_FINISHED)
   // then Tracker.Restart().
   SetRestart();
 }
 
-size_t btTracker::GetPeersCount() const 
+dt_count_t btTracker::GetPeersCount() const 
 {
   // includes seeds, so must always be >= 1 (myself!)
   return (m_peers_count > m_seeds_count) ? m_peers_count :
            (GetSeedsCount() + (BTCONTENT.IsFull() ? 0 : 1));
 }
 
-size_t btTracker::GetSeedsCount() const
+dt_count_t btTracker::GetSeedsCount() const
 {
   return m_seeds_count ? m_seeds_count : (BTCONTENT.IsFull() ? 1 : 0);
 }

@@ -26,10 +26,16 @@
 #include "compat.h"
 #endif
 
-#define MAX_OPEN_FILES 20               // max simultaneous open data files
-#define OPT_IO_SIZE 256*1024            // optimal I/O size for large ops
-#define MAX_STAGEFILE_SIZE 2*1024*1024  // [soft] size limit of a staging file
-#define MAX_STAGEDIR_FILES 200          // max staging files per directory
+enum dt_alloc_t{
+  DT_ALLOC_SPARSE = 0,
+  DT_ALLOC_FULL   = 1,
+  DT_ALLOC_NONE   = 2
+};
+
+#define MAX_OPEN_FILES 20                // max simultaneous open data files
+#define OPT_IO_SIZE (256*1024)           // optimal I/O size for large ops
+#define MAX_STAGEFILE_SIZE (2*1024*1024) // [soft] size limit of a staging file
+#define MAX_STAGEDIR_FILES 200           // max staging files per directory
 
 btFiles::btFiles()
 {
@@ -76,7 +82,7 @@ btFiles::~btFiles()
   if( m_stagedir ) delete []m_stagedir;
 }
 
-void btFiles::CloseFile(size_t nfile)
+void btFiles::CloseFile(dt_count_t nfile)
 {
   if( nfile && nfile <= m_nfiles )
     _btf_close(m_file[nfile-1]);
@@ -180,16 +186,32 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
   return 0;
 }
 
-ssize_t btFiles::IO(char *buf, uint64_t off, size_t len, const int iotype)
+int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
 {
   off_t pos;
   size_t nio;
   BTFILE *pbf = m_btfhead, *pbfref, *pbfnext = (BTFILE *)0;
 
-  if( (off + (uint64_t)len) > m_total_files_length ){
+  if( (off + (dt_datalen_t)len) > m_total_files_length ){
     CONSOLE.Warning(1, "error, data offset %llu length %lu out of range",
       (unsigned long long)off, (unsigned long)len);
     return -1;
+  }
+
+  // Break up the I/O if necessary due to system limitation.
+  if( len > (size_t)len ){
+    bt_length_t iosize;
+    int r, retval = 0;
+
+    for( iosize = len; iosize > (size_t)iosize; iosize /= 2 );
+    while( len ){
+      if( len < iosize ) iosize = len;
+      r = IO(buf, off, iosize, iotype);
+      if( r != 0 ) retval = r;
+      buf += iosize;
+      len -= iosize;
+    }
+    return retval;
   }
 
   // Find the first file to read/write
@@ -335,7 +357,7 @@ int btFiles::MergeStaging(BTFILE *dst)
   char buf[OPT_IO_SIZE];
   size_t nio = OPT_IO_SIZE;
   off_t pos;
-  uint64_t remain;
+  dt_datalen_t remain;
   int f_remove = 0;
 
   if( src->bf_offset + src->bf_size <= dst->bf_offset + dst->bf_size ){
@@ -467,12 +489,12 @@ int btFiles::FindAndMerge(int findall, int dostaging)
 /* Of the choices presented, select a piece that will help toward merging
    staged data.
 */
-size_t btFiles::ChoosePiece(const BitField &choices, const BitField &available,
-  size_t preference) const
+bt_index_t btFiles::ChoosePiece(const BitField &choices,
+  const BitField &available, bt_index_t preference) const
 {
   BitField needs(BTCONTENT.GetNPieces()), needsnext(BTCONTENT.GetNPieces());
   BTFILE *pbf = m_btfhead, *pbt;
-  size_t idx;
+  bt_index_t idx;
   int found;
 
   for( ; pbf; pbf = pbf->bf_nextreal ){
@@ -486,16 +508,17 @@ size_t btFiles::ChoosePiece(const BitField &choices, const BitField &available,
         return idx;
       }
       if( choices.IsSet(preference) &&
-          (uint64_t)preference * BTCONTENT.GetPieceLength() >=
+          (dt_datalen_t)preference * BTCONTENT.GetPieceLength() >=
             pbf->bf_offset && 
-          (uint64_t)preference * BTCONTENT.GetPieceLength() <
+          (dt_datalen_t)preference * BTCONTENT.GetPieceLength() <
             pbf->bf_next->bf_offset ){
         // preference helps fill a merge gap
         return preference;
       }
       // mark pieces from this merge gap for selection
       for( ;
-          (uint64_t)idx * BTCONTENT.GetPieceLength() < pbf->bf_next->bf_offset;
+          (dt_datalen_t)idx * BTCONTENT.GetPieceLength() <
+            pbf->bf_next->bf_offset;
           idx++ ){
         if( choices.IsSet(idx) ) needs.Set(idx);
       }
@@ -507,7 +530,7 @@ size_t btFiles::ChoosePiece(const BitField &choices, const BitField &available,
              pbt = pbt->bf_next ){
           idx = (pbt->bf_offset + pbt->bf_size) / BTCONTENT.GetPieceLength();
           for( ;
-              (uint64_t)idx * BTCONTENT.GetPieceLength() <
+              (dt_datalen_t)idx * BTCONTENT.GetPieceLength() <
                 pbt->bf_next->bf_offset;
               idx++ ){
             if( choices.IsSet(idx) ){
@@ -534,14 +557,14 @@ int btFiles::_btf_destroy()
     pbf = pbf_next;
   }
   m_btfhead = (BTFILE*) 0;
-  m_total_files_length = (uint64_t) 0;
+  m_total_files_length = 0;
   m_total_opened = 0;
   return 0;
 }
 
 int btFiles::ExtendFile(BTFILE *pbf)
 {
-  uint64_t newsize, length;
+  dt_datalen_t newsize, length;
   int retval;
 
   if( pbf->bf_next )
@@ -579,7 +602,7 @@ int btFiles::ExtendFile(BTFILE *pbf)
   return retval;
 }
 
-int btFiles::_btf_ftruncate(int fd, uint64_t length)
+int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
 {
   off_t offset = length;
 
@@ -590,7 +613,7 @@ int btFiles::_btf_ftruncate(int fd, uint64_t length)
     if( !c ){ errno = ENOMEM; return -1; }
     memset(c, 0, OPT_IO_SIZE);
     int r, wlen;
-    uint64_t len = 0;
+    dt_datalen_t len = 0;
     for( int i=0; len < length; i++ ){
       if( len + OPT_IO_SIZE > length ) wlen = (int)(length - len);
       else wlen = OPT_IO_SIZE;
@@ -784,21 +807,21 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
   BTFILE *pbt;
 
   if( !decode_query(metabuf, metabuf_len, "info|name", &s, &q, (int64_t*)0,
-      QUERY_STR) || MAXPATHLEN <= q )
+      DT_QUERY_STR) || MAXPATHLEN <= q )
     return -1;
 
   memcpy(path, s, q);
   path[q] = '\0';
 
   r = decode_query(metabuf, metabuf_len, "info|files", (const char**)0, &q,
-                   (int64_t*)0, QUERY_POS);
+                   (int64_t*)0, DT_QUERY_POS);
 
   if( r ){  // torrent contains multiple files
     BTFILE *pbf_last = (BTFILE*) 0;
     BTFILE *pbf = (BTFILE*) 0;
     size_t dl;
     if( decode_query(metabuf,metabuf_len,"info|length",
-                    (const char**) 0,(size_t*) 0,(int64_t*) 0,QUERY_LONG) )
+                    (const char**) 0,(size_t*) 0,(int64_t*) 0,DT_QUERY_INT) )
       return -1;
 
     if( saveas ){
@@ -845,7 +868,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
     for(; q && 'e' != *p; p += dl, q -= dl){
       if(!(dl = decode_dict(p, q, (const char*) 0)) ) return -1;
       if( !decode_query(p, dl, "length", (const char**) 0,
-                       (size_t*) 0,&t,QUERY_LONG) ) return -1;
+                       (size_t*) 0,&t,DT_QUERY_INT) ) return -1;
       pbf = new BTFILE;
 #ifndef WINDOWS
       if( !pbf ) return -1;
@@ -855,7 +878,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
       pbf->bf_length = t;
       m_total_files_length += t;
       r = decode_query(p, dl, "path", (const char **)0, &n, (int64_t*)0,
-                       QUERY_POS);
+                       DT_QUERY_POS);
       if( !r ) return -1;
       if(!decode_list2path(p + r, n, path)) return -1;
 
@@ -895,7 +918,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
     }
   }else{  // torrent contains a single file
     if( !decode_query(metabuf,metabuf_len,"info|length",
-                     (const char**) 0,(size_t*) 0,&t,QUERY_LONG) )
+                     (const char**) 0,(size_t*) 0,&t,DT_QUERY_INT) )
       return -1;
     m_btfhead = new BTFILE;
 #ifndef WINDOWS
@@ -951,7 +974,7 @@ int btFiles::SetupFiles(const char *torrentid)
   struct dirent *dirp;
   struct stat sb;
   BTFILE *pbf, *pbt;
-  uint64_t offset;
+  dt_datalen_t offset;
   char fn[MAXPATHLEN], *tmp;
   int files_exist = 0;
 
@@ -1068,7 +1091,7 @@ int btFiles::CreateFiles()
 {
   struct stat sb;
   BTFILE *pbf;
-  uint64_t idxoff, fend, idxend;
+  dt_datalen_t idxoff, fend, idxend;
 
   if( (arg_allocate == DT_ALLOC_NONE || !BTCONTENT.pBMasterFilter->IsEmpty()) &&
       stat(m_staging_path, &sb) < 0 ){
@@ -1095,7 +1118,7 @@ int btFiles::CreateFiles()
 
   // Set up map of pieces that are available in the files.
   pbf = m_btfhead;
-  for( size_t idx = 0; idx < BTCONTENT.GetNPieces() && pbf; idx++ ){
+  for( bt_index_t idx = 0; idx < BTCONTENT.GetNPieces() && pbf; idx++ ){
     idxoff = idx * BTCONTENT.GetPieceLength();
     if( idxoff < pbf->bf_offset ) continue;
     fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
@@ -1146,7 +1169,7 @@ int btFiles::ExtendAll()
 void btFiles::PrintOut()
 {
   BTFILE *p = m_btfhead;
-  size_t id = 0;
+  dt_count_t id = 0;
   CONSOLE.Print("");
   CONSOLE.Print("FILES INFO");
   BitField tmpBitField, tmpFilter;
@@ -1170,7 +1193,7 @@ void btFiles::PrintOut()
     (unsigned long)(m_total_files_length/1024/1024));
 }
 
-size_t btFiles::FillMetaInfo(FILE* fp)
+int btFiles::FillMetaInfo(FILE* fp)
 {
   BTFILE *p;
   if( m_directory ){
@@ -1207,12 +1230,12 @@ size_t btFiles::FillMetaInfo(FILE* fp)
 }
 
 
-void btFiles::SetFilter(int nfile, BitField *pFilter, size_t pieceLength)
+void btFiles::SetFilter(int nfile, BitField *pFilter, bt_length_t pieceLength)
 {
   BTFILE *p = m_btfhead;
-  size_t id = 0;
-  uint64_t sizeBuffer=0;
-  size_t index;
+  dt_count_t id = 0;
+  dt_datalen_t sizeBuffer=0;
+  bt_index_t index;
 
   if( nfile==0 || nfile>m_nfiles ){
     pFilter->Clear();
@@ -1226,7 +1249,7 @@ void btFiles::SetFilter(int nfile, BitField *pFilter, size_t pieceLength)
         p->bf_npieces = 0;
         return;
       }
-      size_t start, stop;
+      bt_index_t start, stop;
       start = sizeBuffer / pieceLength;
       stop  = (sizeBuffer + p->bf_length) / pieceLength;
       // calculation is off if file ends on a piece boundary
@@ -1242,21 +1265,21 @@ void btFiles::SetFilter(int nfile, BitField *pFilter, size_t pieceLength)
   }
 }
 
-char *btFiles::GetFileName(size_t nfile) const
+char *btFiles::GetFileName(dt_count_t nfile) const
 {
   if( nfile && nfile <= m_nfiles )
     return m_file[nfile-1]->bf_filename;
   return (char *)0;
 }
 
-uint64_t btFiles::GetFileSize(size_t nfile) const
+dt_datalen_t btFiles::GetFileSize(dt_count_t nfile) const
 {
   if( nfile && nfile <= m_nfiles )
     return m_file[nfile-1]->bf_length;
   return 0;
 }
 
-size_t btFiles::GetFilePieces(size_t nfile) const
+bt_index_t btFiles::GetFilePieces(dt_count_t nfile) const
 {
   //returns the number of pieces in the file
   if( nfile && nfile <= m_nfiles )

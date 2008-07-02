@@ -42,8 +42,8 @@ void Rate::StopTimer()
     m_total_timeused += (now - m_last_timestamp);
     if( m_history ){
       if( m_history == m_history_last )
-        m_nominal = (size_t)(m_history->bytes /
-                             (m_history->timestamp - m_last_timestamp));
+        m_nominal = (dt_rate_t)(m_history->bytes /
+                                (m_history->timestamp - m_last_timestamp));
       else (void)RateMeasure();  // updates nominal
     }
     m_last_timestamp = 0;
@@ -107,7 +107,8 @@ void Rate::Cleanup()
           }else break;
         }
         if( nzero ){
-          size_t bytes = (size_t)( p->bytes / (reftime - p->timestamp) );
+          bt_length_t bytes =
+            (bt_length_t)(p->bytes / (reftime - p->timestamp));
           BWSAMPLE *q = p->next;
           for( ; nzero; nzero-- ){
             q->bytes += bytes;  // distribute over the following empty samples
@@ -122,24 +123,24 @@ void Rate::Cleanup()
   }
 }
 
-void Rate::CountAdd(size_t nbytes)
+void Rate::CountAdd(bt_length_t nbytes)
 {
   m_count_bytes += nbytes;
   if( m_selfrate ) m_selfrate->CountAdd(nbytes);
 }
 
-void Rate::UnCount(size_t nbytes)
+void Rate::UnCount(bt_length_t nbytes)
 {
   m_count_bytes -= nbytes;
   if( m_selfrate ) m_selfrate->UnCount(nbytes);
 }
 
-void Rate::RateAdd(size_t nbytes, size_t bwlimit)
+void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit)
 {
   RateAdd(nbytes, bwlimit, PreciseTime());
 }
 
-void Rate::RateAdd(size_t nbytes, size_t bwlimit, double timestamp)
+void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
 {
   int update_nominal = 0;
 
@@ -216,7 +217,7 @@ void Rate::operator=(const Rate &ra)
   m_count_bytes = ra.m_count_bytes;
 }
 
-size_t Rate::CurrentRate()
+dt_rate_t Rate::CurrentRate()
 {
   // We can't make up for past slowness by overloading the line now/future.
   // Look at only the most recent data sent/received.
@@ -225,10 +226,10 @@ size_t Rate::CurrentRate()
   double timeused = PreciseTime() - m_last_realtime;
   if( timeused <= 0 ) return 0;
 
-  return (size_t)( m_last_size / timeused );
+  return (dt_rate_t)( m_last_size / timeused );
 }
 
-size_t Rate::NominalRate()
+dt_rate_t Rate::NominalRate()
 {
   if( !m_history && m_last_timestamp && TimeUsed() > 10 ){
     // sent a request over 10 sec ago but have received nothing
@@ -240,7 +241,7 @@ size_t Rate::NominalRate()
   return m_nominal;
 }
 
-size_t Rate::RateMeasure()
+dt_rate_t Rate::RateMeasure()
 {
   // calculate rate based on bandwidth history data
   time_t timestamp = now;
@@ -299,17 +300,17 @@ size_t Rate::RateMeasure()
       (now - (time_t)m_recent_realtime) );
   }
 
-  m_lastrate.value = (size_t)(countbytes / timeused);
+  m_lastrate.value = (dt_rate_t)(countbytes / timeused);
   m_lastrate.recent = m_recent_realtime;
   if( m_update_nominal ) m_nominal = m_lastrate.value;
   return m_lastrate.value;
 }
 
-size_t Rate::RateMeasure(const Rate &ra_to)
+dt_rate_t Rate::RateMeasure(const Rate &ra_to)
 {
   time_t timeused = TimeUsed();
   int tmp = ra_to.m_count_bytes - m_count_bytes;
-  return (size_t)( (tmp>0) ? (tmp/(timeused ? timeused : 1)) : 0 );
+  return (dt_rate_t)( (tmp>0) ? (tmp/(timeused ? timeused : 1)) : 0 );
 }
 
 time_t Rate::TimeUsed()

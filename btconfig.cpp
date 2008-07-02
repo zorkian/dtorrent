@@ -1,13 +1,13 @@
 #include <sys/types.h>
 #include "btconfig.h"
 
-size_t cfg_req_slice_size = DEFAULT_SLICE_SIZE;
-size_t cfg_req_queue_length = 74;
+bt_length_t cfg_req_slice_size = DEFAULT_SLICE_SIZE;
+dt_count_t cfg_req_queue_length = 74;
 
-size_t cfg_cache_size = 16;
+unsigned int cfg_cache_size = 16;
 
-size_t cfg_max_peers = 100;
-size_t cfg_min_peers = 1;
+dt_count_t cfg_max_peers = 100;
+dt_count_t cfg_min_peers = 1;
 
 unsigned long cfg_listen_ip = 0;
 int cfg_listen_port = 0;
@@ -15,10 +15,10 @@ int cfg_max_listen_port = 2706;
 int cfg_min_listen_port = 2106;
 char *cfg_public_ip = (char *) 0;
 
-int cfg_max_bandwidth_down = 0;
-int cfg_max_bandwidth_up = 0;
+dt_rate_t cfg_max_bandwidth_down = 0;
+dt_rate_t cfg_max_bandwidth_up = 0;
 
-time_t cfg_seed_hours = 72;
+unsigned long cfg_seed_hours = 72;
 double cfg_seed_ratio = 0;
 
 // arguments global value
@@ -38,7 +38,7 @@ unsigned char arg_verbose = 0;
 unsigned char arg_allocate = 0;
 unsigned char arg_daemon = 0;
 
-size_t arg_piece_length = 262144;
+bt_length_t arg_piece_length = 262144;
 char *arg_announce = (char*) 0;
 char *arg_comment = (char*) 0;
 

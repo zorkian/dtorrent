@@ -5,14 +5,15 @@
 #include <sys/types.h>
 #include <time.h>
 
+#include "bttypes.h"
 #include "./peer.h"
 #include "./rate.h"
 
-typedef enum{
+enum dt_idle_t{
   DT_IDLE_NOTIDLE,
   DT_IDLE_IDLE,
   DT_IDLE_POLLING
-}idle_t;
+};
 
 typedef struct _peernode{
   btPeer *peer;
@@ -25,16 +26,16 @@ class PeerList
   SOCKET m_listen_sock;
   PEERNODE *m_head, *m_dead;
   PEERNODE *m_next_dl, *m_next_ul;  // UL/DL rotation queues
-  size_t m_peers_count, m_seeds_count, m_conn_count, m_downloads;
-  size_t m_max_unchoke;
+  dt_count_t m_peers_count, m_seeds_count, m_conn_count, m_downloads;
+  dt_count_t m_max_unchoke;
   time_t m_unchoke_check_timestamp, m_keepalive_check_timestamp,
          m_last_progress_timestamp, m_opt_timestamp, m_interval_timestamp;
   time_t m_unchoke_interval, m_opt_interval;
-  size_t m_defer_count, m_missed_count, m_upload_count, m_up_opt_count;
-  size_t m_dup_req_pieces;
-  int m_prev_limit_up;
+  dt_count_t m_defer_count, m_missed_count, m_upload_count, m_up_opt_count;
+  dt_count_t m_dup_req_pieces;
+  dt_rate_t m_prev_limit_up;
   char m_listen[22];
-  unsigned long m_readycnt;      // cumulative count of ready peers
+  dt_count_t m_readycnt;      // cumulative count of ready peers
 
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;
@@ -79,9 +80,9 @@ class PeerList
     fd_set *rfdnextp, fd_set *wfdnextp);
 
   int BandWidthLimitUp(double when=0) const;
-  int BandWidthLimitUp(double when, int limit) const;
+  int BandWidthLimitUp(double when, dt_rate_t limit) const;
   int BandWidthLimitDown(double when=0) const;
-  int BandWidthLimitDown(double when, int limit) const;
+  int BandWidthLimitDown(double when, dt_rate_t limit) const;
   double WaitBW() const;
   void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
 
@@ -99,44 +100,45 @@ class PeerList
   void DontWaitDL(btPeer *peer) { DontWaitBWQueue(&m_next_dl, peer); }
   void DontWaitUL(btPeer *peer) { DontWaitBWQueue(&m_next_ul, peer); }
 
-  void Tell_World_I_Have(size_t idx);
+  void Tell_World_I_Have(bt_index_t idx);
   btPeer* Who_Can_Abandon(btPeer *proposer);
-  size_t What_Can_Duplicate(BitField &bf, const btPeer *proposer, size_t idx);
+  bt_index_t What_Can_Duplicate(BitField &bf, const btPeer *proposer,
+    bt_index_t idx);
   void FindValuedPieces(BitField &bf, const btPeer *proposer, int initial)
     const;
-  btPeer *WhoHas(size_t idx) const;
-  int HasSlice(size_t idx, size_t off, size_t len) const;
-  void CompareRequest(btPeer *proposer, size_t idx);
-  int CancelSlice(size_t idx, size_t off, size_t len);
-  int CancelPiece(size_t idx);
-  void CancelOneRequest(size_t idx);
+  btPeer *WhoHas(bt_index_t idx) const;
+  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
+  void CompareRequest(btPeer *proposer, bt_index_t idx);
+  int CancelSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int CancelPiece(bt_index_t idx);
+  void CancelOneRequest(bt_index_t idx);
 
   void CheckBitField(BitField &bf);
-  int AlreadyRequested(size_t idx) const;
-  size_t Pieces_I_Can_Get() const;
-  size_t Pieces_I_Can_Get(BitField *ptmpBitField) const;
+  int AlreadyRequested(bt_index_t idx) const;
+  bt_index_t Pieces_I_Can_Get() const;
+  bt_index_t Pieces_I_Can_Get(BitField *ptmpBitField) const;
   void CheckInterest();
   btPeer* GetNextPeer(btPeer *peer) const;
   int Endgame();
   void UnStandby();
 
-  size_t GetDupReqs() const { return m_dup_req_pieces; }
+  dt_count_t GetDupReqs() const { return m_dup_req_pieces; }
   void RecalcDupReqs();
 
-  size_t GetSeedsCount() const { return m_seeds_count; }
-  size_t GetPeersCount() const { return m_peers_count; }
-  size_t GetConnCount() const { return m_conn_count; }
+  dt_count_t GetSeedsCount() const { return m_seeds_count; }
+  dt_count_t GetPeersCount() const { return m_peers_count; }
+  dt_count_t GetConnCount() const { return m_conn_count; }
   void AdjustPeersCount();  // passthrough to tracker function
 
-  size_t GetUnchoked() const;
-  size_t GetSlowestUp(size_t minimum) const;
-  size_t GetDownloads() const { return m_downloads; }
-  size_t GetUnchokeInterval() const { return m_unchoke_interval; }
+  dt_count_t GetUnchoked() const;
+  dt_rate_t GetSlowestUp(dt_rate_t minimum) const;
+  dt_count_t GetDownloads() const { return m_downloads; }
+  time_t GetUnchokeInterval() const { return m_unchoke_interval; }
 
   void Defer() { m_defer_count++; }
   void Upload() { m_upload_count++; }
 
-  idle_t IdleState() const;
+  dt_idle_t IdleState() const;
   int IsIdle() const;
   void SetIdled();
   void ClearIdled() { m_f_idled = 0; }

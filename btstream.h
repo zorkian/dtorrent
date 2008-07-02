@@ -2,6 +2,7 @@
 #define BTSTREAM_H
 
 #include "./def.h"
+#include "bttypes.h"
 #include "./bufio.h"
 
 #ifdef WINDOWS
@@ -12,8 +13,36 @@
 
 #include "rate.h"
 
-size_t get_nl(char *from);
-void set_nl(char *to, size_t from);
+bt_int_t get_bt_int(const char *from);
+// The underlying type and length of each of these are all the same.
+inline bt_msglen_t get_bt_msglen(const char *from) {
+  return (bt_msglen_t)get_bt_int(from);
+}
+inline bt_index_t get_bt_index(const char *from) {
+  return (bt_index_t)get_bt_int(from);
+}
+inline bt_offset_t get_bt_offset(const char *from) {
+  return (bt_offset_t)get_bt_int(from);
+}
+inline bt_length_t get_bt_length(const char *from) {
+  return (bt_length_t)get_bt_int(from);
+}
+
+void put_bt_int(char *to, bt_int_t from);
+// The underlying type and length of each of these are all the same.
+inline void put_bt_msglen(char *to, bt_msglen_t from) {
+  put_bt_int(to, (bt_int_t)from);
+}
+inline void put_bt_index(char *to, bt_index_t from) {
+  put_bt_int(to, (bt_int_t)from);
+}
+inline void put_bt_offset(char *to, bt_offset_t from) {
+  put_bt_int(to, (bt_int_t)from);
+}
+inline void put_bt_length(char *to, bt_length_t from) {
+  put_bt_int(to, (bt_int_t)from);
+}
+
 
 class btStream
 {
@@ -47,18 +76,19 @@ public:
   ssize_t Feed(size_t limit, Rate *rate);
 
   int HaveMessage();  // 返回值 1: 缓存中有消息 0: 暂无消息 -1: 失败
-  char PeekMessage();
-  int PeekMessage(char m);
-  int PeekNextMessage(char m);
+  bt_msg_t PeekMessage();
+  int PeekMessage(bt_msg_t m);
+  int PeekNextMessage(bt_msg_t m);
 
   ssize_t Send_Keepalive();
-  ssize_t Send_State(unsigned char state);
-  ssize_t Send_Have(size_t idx);
-  ssize_t Send_Piece(size_t idx,size_t off,char *piece_buf,size_t len);
+  ssize_t Send_State(bt_msg_t state);
+  ssize_t Send_Have(bt_index_t idx);
+  ssize_t Send_Piece(bt_index_t idx, bt_offset_t off, char *piece_buf,
+    bt_length_t len);
   ssize_t Send_Bitfield(char *bit_buf,size_t len);
-  ssize_t Send_Request(size_t idx,size_t off,size_t len);
-  ssize_t Send_Cancel(size_t idx,size_t off,size_t len);
-  ssize_t Send_Buffer(char *buf,size_t len);
+  ssize_t Send_Request(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  ssize_t Send_Cancel(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  ssize_t Send_Buffer(char *buf, bt_length_t len);
 
   ssize_t Flush();
 };

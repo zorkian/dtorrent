@@ -43,6 +43,9 @@
 /* Define to 1 if you have the `getwd' function. */
 #undef HAVE_GETWD
 
+/* Define to 1 if you have the `htonl' function. */
+#undef HAVE_HTONL
+
 /* Define to 1 if you have the `inet_ntoa' function. */
 #undef HAVE_INET_NTOA
 
@@ -78,6 +81,9 @@
 
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
+
+/* Define to 1 if you have the `ntohl' function. */
+#undef HAVE_NTOHL
 
 /* Define to 1 if you have the <openssl/sha.h> header file. */
 #undef HAVE_OPENSSL_SHA_H

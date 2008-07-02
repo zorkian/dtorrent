@@ -44,7 +44,7 @@ void RequestQueue::SetHead(PSLICE ps)
 void RequestQueue::operator=(RequestQueue &rq)
 {
   PSLICE n, u = (PSLICE) 0;
-  size_t idx;
+  bt_index_t idx;
   int flag = 0;
 
   if( rq_head ) _empty_slice_list(&rq_head);
@@ -68,7 +68,7 @@ void RequestQueue::operator=(RequestQueue &rq)
   }
 }
 
-int RequestQueue::Copy(const RequestQueue *prq, size_t idx)
+int RequestQueue::Copy(const RequestQueue *prq, bt_index_t idx)
 {
   PSLICE n, u, ps;
   int found = 0;
@@ -98,12 +98,12 @@ int RequestQueue::Copy(const RequestQueue *prq, size_t idx)
   return 0;
 }
 
-int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
+int RequestQueue::CopyShuffle(const RequestQueue *prq, bt_index_t idx)
 {
   PSLICE n, u, ps, prev, end, psnext, temp;
   SLICE dummy;
   int len, shuffle, setsend=0;
-  size_t firstoff;
+  bt_offset_t firstoff;
 
   if( prq->IsEmpty() ) return 0;
 
@@ -182,9 +182,9 @@ int RequestQueue::CopyShuffle(const RequestQueue *prq, size_t idx)
 }
 
 // Counts all queued slices.
-size_t RequestQueue::Qsize() const
+dt_count_t RequestQueue::Qsize() const
 {
-  size_t cnt = 0;
+  dt_count_t cnt = 0;
   PSLICE n = rq_head;
   PSLICE u = (PSLICE) 0;
 
@@ -193,12 +193,12 @@ size_t RequestQueue::Qsize() const
 }
 
 // Counts only slices from one piece.
-size_t RequestQueue::Qlen(size_t piece) const
+dt_count_t RequestQueue::Qlen(bt_index_t piece) const
 {
-  size_t cnt = 0;
+  dt_count_t cnt = 0;
   PSLICE n = rq_head;
   PSLICE u = (PSLICE) 0;
-  size_t idx;
+  bt_index_t idx;
 
   for( ; n && n->index != piece; n = n->next );
 
@@ -216,7 +216,8 @@ int RequestQueue::LastSlice() const
           (!rq_head->next || rq_head->index != rq_head->next->index) ) ? 1 : 0;
 }
 
-int RequestQueue::Insert(PSLICE ps,size_t idx,size_t off,size_t len)
+int RequestQueue::Insert(PSLICE ps, bt_index_t idx, bt_offset_t off,
+  bt_length_t len)
 {
   PSLICE n;
 
@@ -245,7 +246,7 @@ int RequestQueue::Insert(PSLICE ps,size_t idx,size_t off,size_t len)
   return 0;
 }
 
-int RequestQueue::Add(size_t idx,size_t off,size_t len)
+int RequestQueue::Add(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
   PSLICE n = rq_head;
   PSLICE u = (PSLICE) 0;
@@ -290,7 +291,7 @@ int RequestQueue::Append(PSLICE ps)
   return 0;
 }
 
-int RequestQueue::Remove(size_t idx,size_t off,size_t len)
+int RequestQueue::Remove(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
   PSLICE n = rq_head;
   PSLICE u = (PSLICE) 0;
@@ -310,7 +311,7 @@ int RequestQueue::Remove(size_t idx,size_t off,size_t len)
 
 // Add a slice at an appropriate place in the queue.
 // returns -1 if failed, 1 if request needs to be sent.
-int RequestQueue::Requeue(size_t idx,size_t off,size_t len)
+int RequestQueue::Requeue(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
   int f_send, retval;
   PSLICE n = rq_head;
@@ -347,7 +348,7 @@ void RequestQueue::MoveLast(PSLICE ps)
   u->next = ps;
 }
 
-int RequestQueue::HasIdx(size_t idx) const
+int RequestQueue::HasIdx(bt_index_t idx) const
 {
   PSLICE n = rq_head;
 
@@ -358,7 +359,8 @@ int RequestQueue::HasIdx(size_t idx) const
   return n ? 1 : 0;
 }
 
-int RequestQueue::HasSlice(size_t idx, size_t off, size_t len) const
+int RequestQueue::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
+  const
 {
   PSLICE n = rq_head;
 
@@ -369,7 +371,8 @@ int RequestQueue::HasSlice(size_t idx, size_t off, size_t len) const
   return n ? 1 : 0;
 }
 
-time_t RequestQueue::GetReqTime(size_t idx,size_t off,size_t len) const
+time_t RequestQueue::GetReqTime(bt_index_t idx, bt_offset_t off,
+  bt_length_t len) const
 {
   PSLICE n = rq_head;
 
@@ -387,7 +390,7 @@ void RequestQueue::SetReqTime(PSLICE n,time_t t)
   n->reqtime = t;
 }
 
-int RequestQueue::Pop(size_t *pidx,size_t *poff,size_t *plen)
+int RequestQueue::Pop(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen)
 {
   PSLICE n;
 
@@ -407,7 +410,8 @@ int RequestQueue::Pop(size_t *pidx,size_t *poff,size_t *plen)
   return 0;
 }
 
-int RequestQueue::Peek(size_t *pidx,size_t *poff,size_t *plen) const
+int RequestQueue::Peek(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen)
+  const
 {
   if( !rq_head ) return -1;
 
@@ -418,10 +422,12 @@ int RequestQueue::Peek(size_t *pidx,size_t *poff,size_t *plen) const
   return 0;
 }
 
-int RequestQueue::CreateWithIdx(size_t idx)
+int RequestQueue::CreateWithIdx(bt_index_t idx)
 {
-  size_t i,off,len,ns;
-  
+  dt_count_t i, ns;
+  bt_offset_t off;
+  bt_length_t len;
+
   ns = NSlices(idx);
 
   for( i = off = 0; i < ns; i++ ){
@@ -433,24 +439,27 @@ int RequestQueue::CreateWithIdx(size_t idx)
   return 0;
 }
 
-size_t RequestQueue::Slice_Length(size_t idx,size_t sidx) const
+bt_length_t RequestQueue::Slice_Length(bt_index_t idx, dt_count_t sidx) const
 {
-  size_t plen = BTCONTENT.GetPieceLength(idx);
+  bt_length_t plen = BTCONTENT.GetPieceLength(idx);
 
   return (sidx == ( plen / cfg_req_slice_size)) ?
     (plen % cfg_req_slice_size) : 
     cfg_req_slice_size;
 }
 
-size_t RequestQueue::NSlices(size_t idx) const
+dt_count_t RequestQueue::NSlices(bt_index_t idx) const
 {
-  size_t r,n;
-  r = BTCONTENT.GetPieceLength(idx);
-  n = r / cfg_req_slice_size;
-  return ( r % cfg_req_slice_size ) ? n + 1 : n;
+  bt_length_t len;
+  dt_count_t n;
+
+  len = BTCONTENT.GetPieceLength(idx);
+  n = len / cfg_req_slice_size;
+  return ( len % cfg_req_slice_size ) ? n + 1 : n;
 }
 
-int RequestQueue::IsValidRequest(size_t idx,size_t off,size_t len) const
+int RequestQueue::IsValidRequest(bt_index_t idx, bt_offset_t off,
+  bt_length_t len) const
 {
   return ( idx < BTCONTENT.GetNPieces() &&
            len &&
@@ -485,7 +494,7 @@ void PendingQueue::Empty()
     }
 }
 
-int PendingQueue::Exist(size_t idx) const
+int PendingQueue::Exist(bt_index_t idx) const
 {
   int i, j = 0;
   for ( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
@@ -497,7 +506,7 @@ int PendingQueue::Exist(size_t idx) const
   return 0;
 }
 
-int PendingQueue::HasSlice(size_t idx, size_t off, size_t len)
+int PendingQueue::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
   int i, j = 0;
   for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
@@ -523,7 +532,9 @@ int PendingQueue::Pending(RequestQueue *prq)
   int retval = 0;
   int i = 0, j = -1;
   PSLICE n, u = (PSLICE) 0;
-  size_t idx, off, len;
+  bt_index_t idx;
+  bt_offset_t off;
+  bt_length_t len;
   RequestQueue tmprq;
 
   if( pq_count >= PENDING_QUEUE_SIZE ){
@@ -575,11 +586,11 @@ int PendingQueue::Pending(RequestQueue *prq)
   return retval;
 }
 
-size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
+bt_index_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
 {
   int i = 0;
-  size_t sc = pq_count;
-  size_t idx = BTCONTENT.GetNPieces();
+  dt_count_t sc = pq_count;
+  bt_index_t idx = BTCONTENT.GetNPieces();
 
   for( ; i < PENDING_QUEUE_SIZE && sc; i++ ){
     if( pending_array[i] != (PSLICE) 0){
@@ -599,7 +610,7 @@ size_t PendingQueue::ReAssign(RequestQueue *prq, BitField &bf)
   return idx;
 }
 
-int PendingQueue::Delete(size_t idx)
+int PendingQueue::Delete(bt_index_t idx)
 {
   int i, j = 0, r = 0;
   for ( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
@@ -616,7 +627,7 @@ int PendingQueue::Delete(size_t idx)
   return r;
 }
 
-int PendingQueue::DeleteSlice(size_t idx, size_t off, size_t len)
+int PendingQueue::DeleteSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
   int i, j = 0, r = 0;
   RequestQueue rq;

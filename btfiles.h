@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#include "bttypes.h"
 #include "bitfield.h"
 #include "btconfig.h"
 
@@ -14,11 +15,11 @@ typedef struct _btfile{
   char *bf_filename;         // full path of file
   FILE *bf_fp;
   char *bf_buffer;           // IO buffer
-  uint64_t bf_length;        // final size of file
-  uint64_t bf_offset;        // torrent offset of file start
-  uint64_t bf_size;          // current size of file
+  dt_datalen_t bf_length;    // final size of file
+  dt_datalen_t bf_offset;    // torrent offset of file start
+  dt_datalen_t bf_size;      // current size of file
   time_t bf_last_timestamp;  // last IO timestamp
-  size_t bf_npieces;         // number of pieces contained
+  bt_index_t bf_npieces;     // number of pieces contained
 
   unsigned char bf_flag_opened:1;
   unsigned char bf_flag_readonly:1;
@@ -56,9 +57,9 @@ class btFiles
   
   BTFILE *m_btfhead;
   char *m_directory;
-  uint64_t m_total_files_length;
-  size_t m_total_opened;	// already opened
-  size_t m_nfiles;
+  dt_datalen_t m_total_files_length;
+  dt_count_t m_total_opened;	// already opened
+  dt_count_t m_nfiles;
   int m_fsizelen;
   BTFILE **m_file;
   char *m_torrent_id;      // unique torrent identifier (ASCII)
@@ -74,7 +75,7 @@ class btFiles
   int _btf_close(BTFILE *pbf);
   int _btf_open(BTFILE *pbf, const int iotype);
   int ExtendFile(BTFILE *pbf);
-  int _btf_ftruncate(int fd, uint64_t length);
+  int _btf_ftruncate(int fd, dt_datalen_t length);
   int _btf_destroy();
   int _btf_recurses_directory(const char *cur_path, BTFILE **plastnode);
   int ConvertFilename(char *dst, const char *src, int size);
@@ -89,7 +90,7 @@ class btFiles
 
   int SetupFiles(const char *torrentid);
   int CreateFiles();
-  void CloseFile(size_t nfile);
+  void CloseFile(dt_count_t nfile);
 
   btFiles();
   ~btFiles();
@@ -99,22 +100,22 @@ class btFiles
                   const char *saveas);
 
   char *GetDataName() const;
-  uint64_t GetTotalLength() const { return m_total_files_length; }
-  ssize_t IO(char *buf, uint64_t off, size_t len, const int iotype);
-  size_t FillMetaInfo(FILE* fp);
+  dt_datalen_t GetTotalLength() const { return m_total_files_length; }
+  int IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype);
+  int FillMetaInfo(FILE* fp);
 
-  void SetFilter(int nfile, BitField *pFilter, size_t pieceLength);
+  void SetFilter(int nfile, BitField *pFilter, bt_length_t pieceLength);
 
-  size_t GetNFiles() const { return m_nfiles; }
-  char *GetFileName(size_t nfile) const;
-  uint64_t GetFileSize(size_t nfile) const;
-  size_t GetFilePieces(size_t nfile) const;
+  dt_count_t GetNFiles() const { return m_nfiles; }
+  char *GetFileName(dt_count_t nfile) const;
+  dt_datalen_t GetFileSize(dt_count_t nfile) const;
+  bt_index_t GetFilePieces(dt_count_t nfile) const;
 
   int NeedMerge() const { return m_need_merge ? 1 : 0; }
   int MergeNext() { return FindAndMerge(0); }
   int MergeAll() { return FindAndMerge(1); }
-  size_t ChoosePiece(const BitField &choices, const BitField &available,
-    size_t preference) const;
+  bt_index_t ChoosePiece(const BitField &choices, const BitField &available,
+    bt_index_t preference) const;
 
   void PrintOut();
 };

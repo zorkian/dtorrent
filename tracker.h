@@ -24,10 +24,12 @@
 
 #include "btconfig.h"
 
-#define T_FREE 		0
-#define T_CONNECTING	1
-#define T_READY		2
-#define T_FINISHED	3
+enum dt_trackerstatus_t{
+  DT_TRACKER_FREE,
+  DT_TRACKER_CONNECTING,
+  DT_TRACKER_READY,
+  DT_TRACKER_FINISHED
+};
 
 class btTracker
 {
@@ -37,28 +39,28 @@ class btTracker
   int m_port;
   char m_key[9];
   char m_trackerid[PEER_ID_LEN+1];
+  dt_trackerstatus_t m_status;
 
   struct sockaddr_in m_sin;
 
-  unsigned char m_status:2;
   unsigned char m_f_started:1;
   unsigned char m_f_stoped:1;
   unsigned char m_f_completed:1;
   unsigned char m_f_restart:1;
   unsigned char m_f_boguspeercnt:1;
-  unsigned char m_reserved:1;
+  unsigned char m_reserved:3;
 
   time_t m_interval;		// 与Tracker通信的时间间隔
   time_t m_default_interval;		// interval that the tracker tells us to wait
   time_t m_last_timestamp;	// 最后一次成功与Tracker通信的时间
-  size_t m_connect_refuse_click;
+  dt_count_t m_connect_refuse_click;
 
-  size_t m_ok_click;	// tracker ok response counter
-  size_t m_peers_count;	// total number of peers
-  size_t m_seeds_count;	// total number of seeds
-  size_t m_prevpeers;	// number of peers previously seen
+  dt_count_t m_ok_click;     // tracker ok response counter
+  dt_count_t m_peers_count;  // total number of peers
+  dt_count_t m_seeds_count;  // total number of seeds
+  dt_count_t m_prevpeers;    // number of peers previously seen
   time_t m_report_time;
-  uint64_t m_totaldl, m_totalul, m_report_dl, m_report_ul;
+  dt_datalen_t m_totaldl, m_totalul, m_report_dl, m_report_ul;
 
   SOCKET m_sock;
   BufIo m_request_buffer, m_reponse_buffer;
@@ -82,8 +84,8 @@ class btTracker
 
   void Reset(time_t new_interval);
 
-  unsigned char GetStatus() { return m_status; }
-  void SetStatus(unsigned char s) { m_status = s; }
+  dt_trackerstatus_t GetStatus() { return m_status; }
+  void SetStatus(dt_trackerstatus_t s) { m_status = s; }
 
   SOCKET GetSocket() { return m_sock; }
 
@@ -98,19 +100,19 @@ class btTracker
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
-  size_t GetRefuseClick() const { return m_connect_refuse_click; }
-  size_t GetOkClick() const { return m_ok_click; }
-  size_t GetPeersCount() const;
-  size_t GetSeedsCount() const;
+  dt_count_t GetRefuseClick() const { return m_connect_refuse_click; }
+  dt_count_t GetOkClick() const { return m_ok_click; }
+  dt_count_t GetPeersCount() const;
+  dt_count_t GetSeedsCount() const;
   void AdjustPeersCount() {
     if(m_f_boguspeercnt && m_peers_count) m_peers_count--; }
   time_t GetInterval() const { return m_default_interval; }
 
   time_t GetReportTime() const { return m_report_time; }
-  uint64_t GetReportDL() const { return m_report_dl; }
-  uint64_t GetReportUL() const { return m_report_ul; }
-  void CountDL(size_t nbytes) { m_totaldl += nbytes; }
-  void CountUL(size_t nbytes) { m_totalul += nbytes; }
+  dt_datalen_t GetReportDL() const { return m_report_dl; }
+  dt_datalen_t GetReportUL() const { return m_report_ul; }
+  void CountDL(bt_length_t nbytes) { m_totaldl += nbytes; }
+  void CountUL(bt_length_t nbytes) { m_totalul += nbytes; }
 };
 
 extern btTracker Tracker;

@@ -41,14 +41,14 @@
 #include "bttime.h"
 #include "util.h"
 
-#define meta_str(keylist,pstr,pint) decode_query(b,flen,(keylist),(pstr),(pint),(int64_t*) 0,QUERY_STR)
-#define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(pint),(int64_t*) 0,QUERY_INT)
-#define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,QUERY_POS)
+#define meta_str(keylist,pstr,psiz) decode_query(b,flen,(keylist),(pstr),(psiz),(int64_t*) 0,DT_QUERY_STR)
+#define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(pint),DT_QUERY_INT)
+#define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,DT_QUERY_POS)
 
 // Does "ca" overlap the data that lies from roff to rlen?
 #define CACHE_FIT(ca,roff,rlen)	\
-(max_uint64_t((ca)->bc_off,(roff)) <= \
- min_uint64_t(((ca)->bc_off + (ca)->bc_len - 1),(roff + rlen - 1)))
+(max_datalen((ca)->bc_off,(roff)) <= \
+ min_datalen(((ca)->bc_off + (ca)->bc_len - 1),(roff + rlen - 1)))
 
 
 btContent BTCONTENT;
@@ -172,9 +172,10 @@ int btContent::CreateMetainfoFile(const char *mifn)
   return -1;
 }
 
-int btContent::InitialFromFS(const char *pathname, char *ann_url, size_t piece_length)
+int btContent::InitialFromFS(const char *pathname, char *ann_url,
+  bt_length_t piece_length)
 {
-  size_t n, percent;
+  bt_index_t n, percent;
 
   // piece length
   m_piece_length = piece_length;
@@ -270,7 +271,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   unsigned char *ptr = m_shake_buffer;
   char *b;
   const char *s;
-  size_t flen, q, r;
+  size_t flen, q, bsiz;
+  int64_t bint;
   int check_pieces = 0;
   char torrentid[41];
 
@@ -281,26 +283,27 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   if ( !b ) return -1;
 
   // announce
-  if( !meta_str("announce",&s,&r) ) ERR_RETURN();
-  if( r > MAXPATHLEN ) ERR_RETURN();
-  m_announce = new char [r + 1];
-  memcpy(m_announce, s, r);
-  m_announce[r] = '\0';
+  if( !meta_str("announce",&s,&bsiz) ) ERR_RETURN();
+  if( bsiz > MAXPATHLEN ) ERR_RETURN();
+  m_announce = new char [bsiz + 1];
+  memcpy(m_announce, s, bsiz);
+  m_announce[bsiz] = '\0';
 
   // announce-list
-  if( r = meta_pos("announce-list") ){
+  if( bsiz = meta_pos("announce-list") ){
     const char *sptr;
-    size_t slen, n=0;
-    if( q = decode_list(b+r, flen-r, (char *)0) ){
-      int alend = r + q;
-      r++;  // 'l'
-      for( ; r < alend && *(b+r) != 'e' && n < 9; ){  // each list
-        if( !(q = decode_list(b+r, alend-r, (char *)0)) ) break;
-        r++;  // 'l'
-        for( ; r < alend && n < 9; ){  // each value
-          if( !(q = buf_str(b+r, alend-r, &sptr, &slen)) )
+    size_t slen;
+    int n = 0;
+    if( q = decode_list(b+bsiz, flen-bsiz, (char *)0) ){
+      int alend = bsiz + q;
+      bsiz++;  // 'l'
+      for( ; bsiz < alend && *(b+bsiz) != 'e' && n < 9; ){  // each list
+        if( !(q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ) break;
+        bsiz++;  // 'l'
+        for( ; bsiz < alend && n < 9; ){  // each value
+          if( !(q = buf_str(b+bsiz, alend-bsiz, &sptr, &slen)) )
             break;  // next list
-          r += q;
+          bsiz += q;
           if( strncasecmp(m_announce, sptr, slen) ){
             m_announcelist[n] = new char[slen+1];
             memcpy(m_announcelist[n], sptr, slen);
@@ -308,36 +311,37 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
             n++;
           }
         }
-        r++;  // 'e'
+        bsiz++;  // 'e'
       }
     }
   }
   
-  if( meta_int("creation date", &r) ) m_create_date = (time_t) r;
-  if( meta_str("comment", &s, &r) && r ){
-    if( m_comment = new char[r + 1] ){
-      memcpy(m_comment, s, r);
-      m_comment[r] = '\0';
+  if( meta_int("creation date", &bint) ) m_create_date = (time_t)bint;
+  if( meta_str("comment", &s, &bsiz) && bsiz ){
+    if( m_comment = new char[bsiz + 1] ){
+      memcpy(m_comment, s, bsiz);
+      m_comment[bsiz] = '\0';
     }
   }
-  if( meta_str("created by", &s, &r) && r ){
-    if( m_created_by = new char[r + 1] ){
-      memcpy(m_created_by, s, r);
-      m_created_by[r] = '\0';
+  if( meta_str("created by", &s, &bsiz) && bsiz ){
+    if( m_created_by = new char[bsiz + 1] ){
+      memcpy(m_created_by, s, bsiz);
+      m_created_by[bsiz] = '\0';
     }
   }
 
   // infohash
-  if( !(r = meta_pos("info")) ) ERR_RETURN();
-  if( !(q = decode_dict(b + r, flen - r, (char *) 0)) ) ERR_RETURN();
-  Sha1(b + r, q, m_shake_buffer + 28);
+  if( !(bsiz = meta_pos("info")) ) ERR_RETURN();
+  if( !(q = decode_dict(b + bsiz, flen - bsiz, (char *) 0)) ) ERR_RETURN();
+  Sha1(b + bsiz, q, m_shake_buffer + 28);
 
   // private flag
-  if( meta_int("info|private", &r) ) m_private = r;
+  if( meta_int("info|private", &bint) ) m_private = bint;
  
   // hash table
-  if( !meta_str("info|pieces",&s,&m_hashtable_length) ||
+  if( !meta_str("info|pieces",&s,&bsiz) ||
       m_hashtable_length % 20 != 0 ) ERR_RETURN();
+  m_hashtable_length = bsiz;
 
   if( !arg_flg_exam_only ){
     m_hash_table = new unsigned char[m_hashtable_length];
@@ -347,7 +351,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     memcpy(m_hash_table, s, m_hashtable_length);
   }
 
-  if( !meta_int("info|piece length",&m_piece_length) ) ERR_RETURN();
+  if( !meta_int("info|piece length",&bint) ) ERR_RETURN();
+  m_piece_length = (bt_length_t)bint;
   m_npieces = m_hashtable_length / 20;
 
   if( m_piece_length < cfg_req_slice_size )
@@ -464,7 +469,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       CONSOLE.Warning(2, "Files were not present; overriding force mode!");
     }
   }else if( arg_flg_force_seed_mode && !arg_flg_check_only ){
-    size_t idx = 0;
+    bt_index_t idx = 0;
     *pBF = *pBRefer;
     if( pBF->IsFull() ){
       CONSOLE.Interact("Skipping hash checks and forcing seed mode.");
@@ -527,14 +532,15 @@ void btContent::_Set_InfoHash(unsigned char buf[20])
 }
 
 // returns <0 if error; if using cache: 1 if read from disk, 0 otherwise
-ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
+int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
+  bt_length_t len)
 {
-  ssize_t retval = 0;
-  uint64_t offset = (uint64_t)idx * (uint64_t)m_piece_length + off;
+  int retval = 0;
+  dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
   if( !m_cache_size ) return buf ? m_btfiles.IO(buf, offset, len, 0) : 0;
   else{
-    size_t len2;
+    bt_length_t len2;
     BTCACHE *p;
 
     p = m_cache[idx];
@@ -598,13 +604,13 @@ ssize_t btContent::ReadSlice(char *buf,size_t idx,size_t off,size_t len)
 }
 
 
-void btContent::CacheClean(size_t need)
+void btContent::CacheClean(bt_length_t need)
 {
   CacheClean(need, m_npieces);
 }
 
 /* idx is a piece we wish to avoid expiring */
-void btContent::CacheClean(size_t need, size_t idx)
+void btContent::CacheClean(bt_length_t need, bt_index_t idx)
 {
   BTCACHE *p, *pnext;
   int f_flush = 0;
@@ -659,16 +665,16 @@ void btContent::CacheClean(size_t need, size_t idx)
 void btContent::CacheEval()
 {
   BTCACHE *p = m_cache_oldest;
-  size_t interval;
-  size_t unflushed = 0, dlnext, upadd = 0, upmax = 0, upmin = 0, total;
+  time_t interval;
+  dt_mem_t unflushed = 0, dlnext, upadd = 0, upmax = 0, upmin = 0, total;
 
-  size_t rateup = Self.RateUL();
-  size_t ratedn = Self.RateDL();
-  size_t unchoked = WORLD.GetUnchoked();
+  dt_rate_t rateup = Self.RateUL();
+  dt_rate_t ratedn = Self.RateDL();
+  dt_count_t unchoked = WORLD.GetUnchoked();
 
   // Time until next cache size eval: unchoke interval or time to dl a piece.
   if( ratedn ){
-    interval = m_piece_length / ratedn;
+    interval = (time_t)(m_piece_length / ratedn);
     if( interval > WORLD.GetUnchokeInterval() )
       interval = WORLD.GetUnchokeInterval();
     else if( 0==interval ) interval = 1;
@@ -694,7 +700,7 @@ void btContent::CacheEval()
     // keep prefetched data longer than 2.5 unchoke intervals.
     if( rateup && unchoked ){
       // A very slow peer can't possibly benefit from cache--don't grow for it.
-      size_t slowest = (size_t)( 1 + DEFAULT_SLICE_SIZE /
+      dt_rate_t slowest = (dt_rate_t)( 1 + DEFAULT_SLICE_SIZE /
                                  ((double)cfg_cache_size*1024*1024 / rateup) );
       // Lead cache: data we need to cache to keep the slowest up's data cached
       // Add a slice per up for timing uncertainty
@@ -703,24 +709,24 @@ void btContent::CacheEval()
       else upadd = DEFAULT_SLICE_SIZE * unchoked;
 
       upmin = DEFAULT_SLICE_SIZE * unchoked;
-      upmax = (size_t)( DEFAULT_SLICE_SIZE * (unchoked-1) +
+      upmax = (dt_mem_t)( DEFAULT_SLICE_SIZE * (unchoked-1) +
         rateup * 2.5 * WORLD.GetUnchokeInterval() );
     }
   }else{
     if( rateup > ratedn ){
-      size_t slowest = (size_t)( 1 +
+      dt_rate_t slowest = (dt_rate_t)( 1 +
         cfg_req_slice_size * ((double)ratedn / cfg_cache_size*1024*1024) +
         DEFAULT_SLICE_SIZE * ((double)rateup / cfg_cache_size*1024*1024) );
       if( slowest = WORLD.GetSlowestUp(slowest) )
         // lead cache is how much we'll use while uploading a slice to slowest
         // (default_slice_size / slowest) * (ratedn + rateup)
-        upadd = (size_t)( ((double)DEFAULT_SLICE_SIZE / slowest) *
+        upadd = (dt_mem_t)( ((double)DEFAULT_SLICE_SIZE / slowest) *
                           (ratedn + rateup + 1) );
       else upadd = m_piece_length * unchoked;
     }
     else if( rateup ){
       // same as m_piece_length / (cfg_cache_size*1024*1024 / (double)ratedn)
-      size_t slowest = (size_t)( 1 +
+      dt_rate_t slowest = (dt_rate_t)( 1 +
         ratedn * ((double)m_piece_length / (cfg_cache_size*1024*1024)) );
       if( slowest = WORLD.GetSlowestUp(slowest) ){
         // m_piece_length / (double)slowest * ratedn
@@ -785,7 +791,7 @@ void btContent::FlushCache()
   if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
 
-int btContent::FlushPiece(size_t idx)
+int btContent::FlushPiece(bt_index_t idx)
 {
   BTCACHE *p;
   int retval = 0;
@@ -848,7 +854,7 @@ void btContent::FlushEntry(BTCACHE *p)
   }
 }
 
-void btContent::Uncache(size_t idx)
+void btContent::Uncache(bt_index_t idx)
 {
   BTCACHE *p, *pnext;
 
@@ -894,11 +900,11 @@ void btContent::FlushQueue()
    return  0:  already ready (no time used)
    return  1:  data was flushed (time used)
 */
-int btContent::CachePrep(size_t idx)
+int btContent::CachePrep(bt_index_t idx)
 {
   int retval = 0;
   BTCACHE *p, *pnext;
-  size_t need = GetPieceLength(idx);
+  bt_length_t need = GetPieceLength(idx);
 
   if( m_cache_size < m_cache_used + need ){
     for( p=m_cache[idx]; p; p=p->bc_next ) need -= p->bc_len;
@@ -935,16 +941,17 @@ int btContent::CachePrep(size_t idx)
   return retval;
 }
 
-ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
+int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
+  bt_length_t len)
 {
-  uint64_t offset = (uint64_t)idx * (uint64_t)m_piece_length + off;
+  dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
   //CONSOLE.Debug("Offset-write: %llu - Piece:%lu",
   //  (unsigned long long)offset, (unsigned long)idx);
 
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 1);
   else{
-    size_t len2;
+    bt_length_t len2;
     BTCACHE *p;
 
     p = m_cache[idx];
@@ -990,12 +997,12 @@ ssize_t btContent::WriteSlice(char *buf,size_t idx,size_t off,size_t len)
   return 0;
 }
 
-ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
+int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
 {
   BTCACHE *p;
   BTCACHE *pp = (BTCACHE*) 0;
   BTCACHE *pnew = (BTCACHE*) 0;
-  size_t idx = off / m_piece_length;
+  bt_index_t idx = off / m_piece_length;
 
   if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
     if( buf ) return m_btfiles.IO(buf, off, len, method);
@@ -1064,25 +1071,25 @@ ssize_t btContent::CacheIO(char *buf, uint64_t off, size_t len, int method)
   return 0;
 }
 
-ssize_t btContent::ReadPiece(char *buf,size_t idx)
+int btContent::ReadPiece(char *buf, bt_index_t idx)
 {
   return ReadSlice(buf, idx, 0, GetPieceLength(idx));
 }
 
-size_t btContent::GetPieceLength(size_t idx)
+bt_length_t btContent::GetPieceLength(bt_index_t idx)
 {
   // Slight optimization to avoid division in every call.  The second test is
   // still needed in case the torrent size is exactly n pieces.
   return (idx == m_npieces - 1 &&
           idx == m_btfiles.GetTotalLength() / m_piece_length) ?
-    (size_t)(m_btfiles.GetTotalLength() % m_piece_length) :
+    (bt_length_t)(m_btfiles.GetTotalLength() % m_piece_length) :
     m_piece_length;
 }
 
 int btContent::CheckExist()
 {
-  size_t idx = 0;
-  size_t percent = GetNPieces() / 100;
+  bt_index_t idx = 0;
+  bt_index_t percent = GetNPieces() / 100;
   unsigned char md[20];
 
   if( !percent ) percent = 1;
@@ -1110,7 +1117,7 @@ int btContent::CheckExist()
 
 int btContent::CheckNextPiece()
 {
-  size_t idx = m_check_piece;
+  bt_index_t idx = m_check_piece;
   unsigned char md[20];
   int f_checkint = 0;
 
@@ -1126,7 +1133,7 @@ int btContent::CheckNextPiece()
   }
   if( idx < m_npieces ){
     // Don't use the cache for this (looks a bit ugly but helps performance).
-    size_t tmp_cache_size = m_cache_size;
+    dt_mem_t tmp_cache_size = m_cache_size;
     m_cache_size = 0;
     int r = GetHashValue(idx, md);
     m_cache_size = tmp_cache_size;
@@ -1195,7 +1202,7 @@ char* btContent::_file2mem(const char *fname, size_t *psiz)
   return b;
 }
 
-int btContent::APieceComplete(size_t idx)
+int btContent::APieceComplete(bt_index_t idx)
 {
   unsigned char md[20];
   if(pBF->IsSet(idx)) return 1;
@@ -1234,7 +1241,7 @@ int btContent::APieceComplete(size_t idx)
   return 1;
 }
 
-int btContent::GetHashValue(size_t idx,unsigned char *md)
+int btContent::GetHashValue(bt_index_t idx, unsigned char *md)
 {
   if( global_buffer_size < m_piece_length ){
     delete []global_piece_buffer;
@@ -1249,8 +1256,8 @@ int btContent::GetHashValue(size_t idx,unsigned char *md)
 // This is btcontent's "IntervalCheck()"
 int btContent::SeedTimeout()
 {
-  uint64_t dl;
-  size_t oldrate = m_prevdlrate;
+  dt_datalen_t dl;
+  dt_rate_t oldrate = m_prevdlrate;
 
   if( Seeding() && (!m_flush_failed || IsFull()) &&
       (!arg_completion_exit || (!m_flushq && !NeedMerge())) ){
@@ -1433,7 +1440,7 @@ void btContent::CheckFilter()
 
   if( m_current_filter != original ){
     if( m_current_filter ){
-      size_t last;
+      int last;
       tmpBitfield = *GetFilter();
       tmpBitfield.Invert();      // what I want...
       tmpBitfield.Except(*pBF);  // ...that I don't have
@@ -1443,7 +1450,7 @@ void btContent::CheckFilter()
       else CONSOLE.Print("Downloading file(s): %s", m_current_filter->name);
       CONSOLE.Print( "Pieces: %d (%llu bytes)", (int)(tmpBitfield.Count()),
         (unsigned long long)
-          ((tmpBitfield.Count() - last) * (uint64_t)m_piece_length +
+          ((tmpBitfield.Count() - last) * (dt_datalen_t)m_piece_length +
            (last ? GetPieceLength(m_npieces-1) : 0)) );
     }
   }
@@ -1459,7 +1466,7 @@ void btContent::SetFilter()
 {
   // Set up filter list
   char *list=(char *)0, *tok, *dash, *plus;
-  size_t start, end;
+  dt_count_t start, end;
   BitField tmpFilter, *pfilter;
   BFNODE *node=m_filters, *pnode=(BFNODE *)0;
 
@@ -1507,7 +1514,7 @@ void btContent::SetFilter()
       pfilter->SetAll();
       do{
         start = atoi(tok);
-        m_btfiles.SetFilter((int)start, &tmpFilter, m_piece_length);
+        m_btfiles.SetFilter(start, &tmpFilter, m_piece_length);
         pfilter->And(tmpFilter);
 
         plus = strchr(tok, '+');
@@ -1515,7 +1522,7 @@ void btContent::SetFilter()
         if( (dash = strchr(tok, '-')) && (!plus || dash < plus) ){
           end = atoi(dash + 1);
           while( ++start <= end ){
-            m_btfiles.SetFilter((int)start, &tmpFilter, m_piece_length);
+            m_btfiles.SetFilter(start, &tmpFilter, m_piece_length);
             pfilter->And(tmpFilter);
           }
         }
@@ -1595,7 +1602,7 @@ void btContent::SaveBitfield()
 }
 
 
-void btContent::CountDupBlock(size_t len)
+void btContent::CountDupBlock(bt_length_t len)
 {
   m_dup_blocks++;
   Tracker.CountDL(len);
@@ -1604,7 +1611,7 @@ void btContent::CountDupBlock(size_t len)
 
 void btContent::CloseAllFiles()
 {
-  for( size_t n=1; n <= m_btfiles.GetNFiles(); n++ )
+  for( dt_count_t n=1; n <= m_btfiles.GetNFiles(); n++ )
     m_btfiles.CloseFile(n);  // files will reopen read-only
 }
 
@@ -1624,8 +1631,8 @@ void btContent::MergeNext()
 /* Opportunity to influence download piece selection by criteria unknown to
    the peer object.
 */
-size_t btContent::ChoosePiece(const BitField &choices,
-  const BitField &available, size_t preference) const
+bt_index_t btContent::ChoosePiece(const BitField &choices,
+  const BitField &available, bt_index_t preference) const
 {
   return m_btfiles.ChoosePiece(choices, available, preference);
 }
@@ -1651,7 +1658,7 @@ void btContent::DumpCache()
 
   CONSOLE.Debug("BY PIECE:");
   count = 0;
-  for( size_t idx=0; idx < m_npieces; idx++ ){
+  for( bt_index_t idx=0; idx < m_npieces; idx++ ){
     for( p=m_cache[idx]; p; p=p->bc_next ){
       CONSOLE.Debug("  %p prev=%p %d/%d/%d %sflushed",
         p, p->bc_prev,

@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "btconfig.h"
 #include "btcontent.h"
@@ -171,7 +172,7 @@ int param_check(int argc, char **argv)
       break;
 
     case 'e':			// Exit while complete
-      cfg_seed_hours = (time_t)strtoul(optarg, NULL, 10);
+      cfg_seed_hours = strtoul(optarg, NULL, 10);
       break;
 
     case 'E':			// target seed ratio
@@ -275,7 +276,7 @@ int param_check(int argc, char **argv)
       break;
 
     case 'l':			// piece Length (default 262144)
-      arg_piece_length = atoi(optarg);
+      arg_piece_length = atol(optarg);
       if( arg_piece_length < 65536 || arg_piece_length > 4096*1024 ){
         CONSOLE.Warning(1, "-%c argument must be between 65536 and %d",
           c, 4096*1024);
