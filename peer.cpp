@@ -1213,7 +1213,10 @@ int btPeer::SendModule()
   if( !m_state.remote_choked && RequestCheck() < 0 )
     return -1;
 
-  if( m_haveq[0] < BTCONTENT.GetNPieces() && SendHaves() < 0 ){
+  /* Don't want to send HAVEs unless we're sending something else too.  So
+     insure there's data present (here), or there's about to be (below). */
+  if( stream.out_buffer.Count() &&
+      m_haveq[0] < BTCONTENT.GetNPieces() && SendHaves() < 0 ){
     if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }
@@ -1234,6 +1237,7 @@ int btPeer::SendModule()
         WORLD.DontWaitUL(this);
         StartULTimer();
         Self.StartULTimer();
+        if( m_haveq[0] < BTCONTENT.GetNPieces() && SendHaves() < 0 ) return -1;
         if( ReponseSlice() < 0 ) return -1;
         f_flushed = 1;
         Self.OntimeUL(0);
