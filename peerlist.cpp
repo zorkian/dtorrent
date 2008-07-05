@@ -824,24 +824,36 @@ void PeerList::RecalcDupReqs()
 void PeerList::Tell_World_I_Have(bt_index_t idx)
 {
   PEERNODE *p;
-  int f_seed = 0;
+  btPeer *peer;
+  int r = 0, f_seed = 0;
 
   if ( BTCONTENT.Seeding() ) f_seed = 1;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) ) continue;
 
-    // Don't send HAVE to seeders, except for our first piece.
-    if( (!p->peer->bitfield.IsFull() || 1==BTCONTENT.pBF->Count()) &&
-        p->peer->stream.Send_Have(idx) < 0) 
-      p->peer->CloseConnection();
+    peer = p->peer;
 
+    /* Send HAVE now to:
+         all if we're now seeding or it's our first piece
+         non-interested peers who need the piece
+       Otherwise queue the HAVE to send later.
+    */
+    if( f_seed || BTCONTENT.pBF->Count() == 1 ||
+        (!peer->Is_Remote_Interested() && !peer->bitfield.IsSet(idx)) ){
+      if( f_seed ) r = (int)peer->SendHaves();
+      if( r >= 0 )
+        r = (int)peer->stream.Send_Have(idx);
+    }else r = peer->QueueHave(idx);
+
+    if( r < 0 )
+      peer->CloseConnection();
     else if( f_seed ){
       // request queue is emptied by setting not-interested state
-      if( p->peer->SetLocal(BT_MSG_NOT_INTERESTED) < 0 ){
+      if( peer->SetLocal(BT_MSG_NOT_INTERESTED) < 0 ){
         if(arg_verbose)
           CONSOLE.Debug("close: Can't set self not interested (T_W_I_H)");
-        p->peer->CloseConnection();
+        peer->CloseConnection();
       }
     }
   } // end for

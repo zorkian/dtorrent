@@ -112,6 +112,10 @@ btPeer::btPeer()
   m_prefetch_completion = 0;
   readycnt = 0;
 
+  for( int i=0; i < HAVEQ_SIZE; i++ ){
+    m_haveq[i] = BTCONTENT.GetNPieces();
+  }
+
   rate_dl.SetSelf(Self.DLRatePtr());
   rate_ul.SetSelf(Self.ULRatePtr());
 }
@@ -1204,9 +1208,23 @@ int btPeer::RecvModule()
 
 int btPeer::SendModule()
 {
-  if( stream.out_buffer.Count() && stream.Flush() < 0 ){
+  int f_flushed = 0;
+
+  if( !m_state.remote_choked && RequestCheck() < 0 )
+    return -1;
+
+  if( m_haveq[0] < BTCONTENT.GetNPieces() && SendHaves() < 0 ){
     if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
+  }
+
+  if( stream.out_buffer.Count() &&
+      !reponse_q.IsEmpty() && !CouldReponseSlice() ){
+    if( stream.Flush() < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      return -1;
+    }
+    f_flushed = 1;
   }
 
   if( !reponse_q.IsEmpty() && CouldReponseSlice() ){
@@ -1217,6 +1235,7 @@ int btPeer::SendModule()
         StartULTimer();
         Self.StartULTimer();
         if( ReponseSlice() < 0 ) return -1;
+        f_flushed = 1;
         Self.OntimeUL(0);
       }else{
         if(arg_verbose) CONSOLE.Debug("%p waiting for UL bandwidth", this);
@@ -1234,7 +1253,30 @@ int btPeer::SendModule()
     m_deferred_ul = 0;
   }else if( this == WORLD.GetNextUL() ) WORLD.DontWaitUL(this);
 
-  return (!m_state.remote_choked) ? RequestCheck() : 0;
+  return f_flushed ? 0 : stream.Flush();
+}
+
+ssize_t btPeer::SendHaves()
+{
+  ssize_t r;
+  for( int i=0; i < HAVEQ_SIZE && m_haveq[i] < BTCONTENT.GetNPieces(); i++ ){
+    if( (r = stream.Send_Have(m_haveq[i])) < 0 ) return r;
+    m_haveq[i] = BTCONTENT.GetNPieces();
+  }
+  return 0;
+}
+
+int btPeer::QueueHave(bt_index_t idx)
+{
+  if( m_haveq[HAVEQ_SIZE - 1] < BTCONTENT.GetNPieces() ){
+    if( SendHaves() < 0 || stream.Send_Have(idx) < 0 )
+      return -1;
+  }else{
+    int i;
+    for( i=0; m_haveq[i] < BTCONTENT.GetNPieces(); i++ );
+    m_haveq[i] = idx;
+  }
+  return 0;
 }
 
 // Prevent a peer object from holding the queue when it's not ready to write.

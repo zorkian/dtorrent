@@ -33,6 +33,8 @@ enum dt_peerstatus_t{
   DT_PEER_FAILED
 };
 
+#define HAVEQ_SIZE 5
+
 typedef struct _btstatus{
   unsigned char remote_choked:1;
   unsigned char remote_interested:1;
@@ -142,6 +144,7 @@ class btPeer:public btBasic
   time_t m_prefetch_time;
   time_t m_cancel_time;
   bt_index_t m_last_req_piece;
+  bt_index_t m_haveq[HAVEQ_SIZE];  // need to send HAVE for these pieces
 
   int PieceDeliver(bt_int_t mlen);
   int ReportComplete(bt_index_t idx, bt_length_t len);
@@ -219,6 +222,9 @@ class btPeer:public btBasic
 
   void DeferDL() { m_deferred_dl = 1; }
   void DeferUL() { m_deferred_ul = 1; }
+
+  ssize_t SendHaves();
+  int QueueHave(bt_index_t idx);
 
   void dump();
 };
