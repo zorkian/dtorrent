@@ -50,7 +50,11 @@ btTracker::btTracker()
 
 btTracker::~btTracker()
 {
-  if( m_sock != INVALID_SOCKET) CLOSE_SOCKET(m_sock);
+  if( m_sock != INVALID_SOCKET){
+    if( !cfg_child_process )
+      shutdown(m_sock, SHUT_RDWR);
+    CLOSE_SOCKET(m_sock);
+  }
 }
 
 void btTracker::Reset(time_t new_interval)
@@ -60,6 +64,8 @@ void btTracker::Reset(time_t new_interval)
   if( INVALID_SOCKET != m_sock ){
     if(arg_verbose && DT_TRACKER_READY==m_status)
       CONSOLE.Debug("Disconnected from tracker");
+    if( !cfg_child_process )
+      shutdown(m_sock, SHUT_RDWR);
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
   }
@@ -510,14 +516,15 @@ int btTracker::SendRequest()
   // hc
   //CONSOLE.Warning(0, "SendRequest: %s", REQ_BUFFER);
 
-  if( 0 !=
-      m_request_buffer.PutFlush(m_sock,REQ_BUFFER,strlen((char*)REQ_BUFFER)) ){
+  if( m_request_buffer.PutFlush(m_sock, REQ_BUFFER, strlen(REQ_BUFFER)) < 0 ){
     CONSOLE.Warning(2,
       "warn, send request to tracker failed:  %s", strerror(errno));
     if( event == str_event[2] )
       m_f_completed = 0;  // failed sending completion event
     return -1;
   }else{
+    if( 0==m_request_buffer.Count() )
+      shutdown(m_sock, SHUT_WR);
     m_report_time = now;
     m_report_dl = m_totaldl;
     m_report_ul = m_totalul;
@@ -618,6 +625,8 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
         Reset(15);
         return -1;
       }
+      if( 0==m_request_buffer.Count() )
+        shutdown(m_sock, SHUT_WR);
     }
   }else{  // failsafe
     Reset(15);

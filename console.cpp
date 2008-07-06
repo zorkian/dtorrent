@@ -57,9 +57,11 @@ ConStream::ConStream()
 
 ConStream::~ConStream()
 {
-  if( m_restore ) RestoreMode();
-  if( !m_suspend ) _newline();
-  if( m_stream ) fclose(m_stream);
+  if( !cfg_child_process ){
+    if( m_restore ) RestoreMode();
+    if( !m_suspend ) _newline();
+    if( m_stream ) fclose(m_stream);
+  }
   if( m_name ) delete []m_name;
 }
 

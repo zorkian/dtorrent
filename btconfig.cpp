@@ -1,6 +1,8 @@
 #include <sys/types.h>
 #include "btconfig.h"
 
+int cfg_child_process = 0;
+
 bt_length_t cfg_req_slice_size = DEFAULT_SLICE_SIZE;
 dt_count_t cfg_req_queue_length = 74;
 

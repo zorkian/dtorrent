@@ -46,7 +46,11 @@ Ctcs::Ctcs()
 
 Ctcs::~Ctcs()
 {
-  if( m_sock != INVALID_SOCKET) CLOSE_SOCKET(m_sock);
+  if( m_sock != INVALID_SOCKET){
+    if( !cfg_child_process )
+      shutdown(m_sock, SHUT_RDWR);
+    CLOSE_SOCKET(m_sock);
+  }
 }
 
 
@@ -58,6 +62,8 @@ void Ctcs::Reset(time_t new_interval)
 
   if( INVALID_SOCKET != m_sock ){
     if( DT_TRACKER_READY==m_status ) warn = 1;
+    if( !cfg_child_process )
+      shutdown(m_sock, SHUT_RDWR);
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
   }

@@ -60,7 +60,8 @@ btFiles::~btFiles()
 
   _btf_destroy();
 
-  if( 0==stat(m_staging_path, &sb) && S_ISDIR(sb.st_mode) &&
+  if( !cfg_child_process &&
+      0==stat(m_staging_path, &sb) && S_ISDIR(sb.st_mode) &&
       (dp = opendir(m_staging_path)) ){
     while( dirp = readdir(dp) ){
       if( 0!=strcmp(dirp->d_name, ".") && 0!=strcmp(dirp->d_name, "..") ){

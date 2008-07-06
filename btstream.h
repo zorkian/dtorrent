@@ -55,20 +55,12 @@ public:
   BufIo out_buffer;
 
   btStream() { sock = sock_was = INVALID_SOCKET; m_oldbytes = 0; }
-  ~btStream() { if( INVALID_SOCKET != sock) CLOSE_SOCKET(sock); }
+  ~btStream() { Close(); }
 
   SOCKET GetSocket() { return (INVALID_SOCKET==sock) ? sock_was : sock; }
   void SetSocket(SOCKET sk){ sock = sk; }
 
-  void Close(){
-    if( INVALID_SOCKET != sock ){
-      CLOSE_SOCKET(sock);
-      sock_was = sock;
-      sock = INVALID_SOCKET;
-    }
-    in_buffer.Close();
-    out_buffer.Close();
-  }
+  void Close();
 
   ssize_t PickMessage(); //移除接收缓存中的一条消息
   ssize_t Feed();

@@ -2,7 +2,9 @@
 
 #include <arpa/inet.h>
 #include <inttypes.h>
-#include <string.h>	// memcpy
+#include <string.h>      // memcpy
+#include <sys/types.h>   // shutdown
+#include <sys/socket.h>  // shutdown
 
 #include "btconfig.h"
 #include "util.h"
@@ -39,6 +41,19 @@ void put_bt_int(char *to, bt_int_t from)
     while( x -= 8 )
       *to++ = (from >> x) & 0xff;
   }
+}
+
+void btStream::Close()
+{
+  if( INVALID_SOCKET != sock ){
+    if( !cfg_child_process )
+      shutdown(sock, SHUT_RDWR);
+    CLOSE_SOCKET(sock);
+    sock_was = sock;
+    sock = INVALID_SOCKET;
+  }
+  in_buffer.Close();
+  out_buffer.Close();
 }
 
 ssize_t btStream::Flush()

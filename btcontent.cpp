@@ -1394,6 +1394,7 @@ void btContent::CompletionCommand()
     CONSOLE.Warning(2,"warn, fork failed running completion command:  %s",
       strerror(errno));
   }else if( r==0 ){
+    cfg_child_process = 1;
     if( m_cache_used ){  // free the cache in the child process
       BTCACHE *p, *pnext;
       for( p=m_cache_oldest; p; p=pnext ){
@@ -1402,6 +1403,7 @@ void btContent::CompletionCommand()
         delete p;
       }
     }
+    WORLD.CloseAll();  // deallocate peers
 #endif
     if( system(cmdstr) < 0 )
       CONSOLE.Warning(2, "warn, failure running completion command:  %s",

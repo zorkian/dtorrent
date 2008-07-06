@@ -16,6 +16,10 @@ extern dt_count_t cfg_req_queue_length;
 #define PEER_ID_LEN 20
 #define PEER_PFX "-CD0303-"
 
+/* Is this a secondary process which should not disturb the terminal, existing
+   connections, etc? */
+extern int cfg_child_process;
+
 extern char *cfg_user_agent;	// HTTP header
 
 extern unsigned int cfg_cache_size;  // megabytes
