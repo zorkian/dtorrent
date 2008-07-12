@@ -17,7 +17,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap)
   int r;
   char *buffer[4*MAXPATHLEN];  /* git-r-dun */
 
-  if( (r = vsprintf(buffer, format, ap)) >= 0){
+  if( (r = vsprintf(buffer, format, ap)) >= 0 ){
     strncpy(str, buffer, size-1);
     str[size] = '\0';
   }
@@ -62,9 +62,9 @@ char *strnstr(const char *haystack, const char *needle, size_t haystacklen)
     if( plen < len ) return (char *)0;
 
     if( strncmp(p, needle, len) == 0 )
-      return (p);
+      return p;
   }
-  return (char*) 0;
+  return (char *)0;
 }
 #endif
 

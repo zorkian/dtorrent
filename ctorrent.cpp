@@ -1,4 +1,4 @@
-#include "./def.h"
+#include "def.h"
 #include <sys/types.h>
 
 #ifdef WINDOWS
@@ -22,7 +22,7 @@
 #include "ctcs.h"
 #include "console.h"
 
-#include "./config.h"
+#include "config.h"
 #include "util.h"
 
 #ifndef WINDOWS
@@ -49,19 +49,21 @@ int main(int argc, char **argv)
 
   RandomInit();
   arg_user_agent = new char[MAX_PF_LEN+1];
-  strcpy(arg_user_agent,PEER_PFX);
+  strcpy(arg_user_agent, PEER_PFX);
 
   cfg_user_agent = new char[strlen(PACKAGE_NAME)+strlen(PACKAGE_VERSION)+2];
 #ifndef WINDOWS
   if( !cfg_user_agent ) return -1;
 #endif
   sprintf(cfg_user_agent, "%s/%s", PACKAGE_NAME, PACKAGE_VERSION);
-  while(s = strchr(cfg_user_agent, ' ')) *s = '-';
+  while( s = strchr(cfg_user_agent, ' ') ) *s = '-';
 
   if( argc < 2 ){
     usage();
     exit(1);
-  } else if( param_check(argc,argv) < 0 ) exit(1);
+  }else if( param_check(argc, argv) < 0 ){
+    exit(1);
+  }
 
   if( arg_flg_make_torrent ){
     if( !arg_announce ){
@@ -86,14 +88,14 @@ int main(int argc, char **argv)
 
   if( !arg_flg_exam_only && (!arg_flg_check_only || arg_flg_force_seed_mode) )
     if( arg_ctcs ) CTCS.Initial();
-  
-  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as) < 0){
+
+  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as) < 0 ){
     CONSOLE.Warning(1, "error, initial meta info failed.");
     exit(1);
   }
 
   if( !arg_flg_exam_only && (!arg_flg_check_only || arg_flg_force_seed_mode) ){
-    if(WORLD.Initial_ListenPort() < 0){
+    if( WORLD.Initial_ListenPort() < 0 ){
       CONSOLE.Warning(2, "warn, you can't accept connections.");
     }
 
@@ -135,11 +137,11 @@ int param_check(int argc, char **argv)
 
   while( (c=getopt(argc, argv, opts)) != -1 )
     switch( c ){
-    case 'a':
+    case 'a':  // change allocation mode
       if( ++arg_allocate > 2 ) arg_allocate = 2;
       break;
 
-    case 'b':
+    case 'b':  // set bitfield file
       arg_bitfield_file = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
       if( !arg_bitfield_file ) return -1;
@@ -147,39 +149,39 @@ int param_check(int argc, char **argv)
       strcpy(arg_bitfield_file, optarg);
       break;
 
-    case 'i':			// listen on ip XXXX
+    case 'i':  // listen on given IP address
       cfg_listen_ip = inet_addr(optarg);
       break;
 
-    case 'I':			// set public ip XXXX
+    case 'I':  // set public IP address
       cfg_public_ip = new char[strlen(optarg) + 1];
       if( !cfg_public_ip ) return -1;
       strcpy(cfg_public_ip, optarg);
       break;
 
-    case 'p':			// listen on Port XXXX
+    case 'p':  // listen on given port
       if( arg_flg_make_torrent ) arg_flg_private = 1;
       else cfg_listen_port = atoi(optarg);
       break;
 
-    case 's':			// Save as FILE/DIR NAME
+    case 's':  // save as given file/dir name
       if( arg_save_as ) return -1;  // specified twice
       arg_save_as = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
       if( !arg_save_as ) return -1;
 #endif
-      strcpy(arg_save_as,optarg);
+      strcpy(arg_save_as, optarg);
       break;
 
-    case 'e':			// Exit while complete
+    case 'e':  // seed timeout (exit time)
       cfg_seed_hours = strtoul(optarg, NULL, 10);
       break;
 
-    case 'E':			// target seed ratio
+    case 'E':  // target seed ratio
       cfg_seed_ratio = atof(optarg);
       break;
 
-    case 'c':			// Check exist only
+    case 'c':  // check piece hashes only
       if( arg_flg_make_torrent ){
         arg_comment = new char[strlen(optarg) + 1];
         if( !arg_comment ) return -1;
@@ -187,19 +189,19 @@ int param_check(int argc, char **argv)
       }else arg_flg_check_only = 1;
       break;
 
-    case 'C':			// Max cache size
+    case 'C':  // max cache size
       cfg_cache_size = atoi(optarg);
       break;
-      
-    case 'M':			// Max peers
+
+    case 'M':  // max peers
       cfg_max_peers = atoi(optarg);
       if( cfg_max_peers > 1000 || cfg_max_peers < 20 ){
         CONSOLE.Warning(1, "-%c argument must be between 20 and 1000", c);
         return -1;
       }
       break;
-      
-    case 'm':			// Min peers
+
+    case 'm':  // min peers
       cfg_min_peers = atoi(optarg);
       if( cfg_min_peers > 1000 || cfg_min_peers < 1 ){
         CONSOLE.Warning(1, "-%c argument must be between 1 and 1000", c);
@@ -207,47 +209,48 @@ int param_check(int argc, char **argv)
       }
       break;
 
-    case 'z':			// slice size
+    case 'z':  // slice size for requests
       cfg_req_slice_size = atoi(optarg) * 1024;
-      if(cfg_req_slice_size < 1024 || cfg_req_slice_size > cfg_max_slice_size){
+      if( cfg_req_slice_size < 1024 ||
+          cfg_req_slice_size > cfg_max_slice_size ){
         CONSOLE.Warning(1, "-%c argument must be between 1 and %d",
           c, cfg_max_slice_size / 1024);
         return -1;
       }
       break;
 
-    case 'n':			// Which file download
+    case 'n':  // file download list
       if( arg_file_to_download ) return -1;  // specified twice
       arg_file_to_download = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
       if( !arg_file_to_download ) return -1;
 #endif
-      strcpy(arg_file_to_download,optarg);
+      strcpy(arg_file_to_download, optarg);
       break;
 
-    case 'f':			// force seed mode, skip sha1 check when startup.
+    case 'f':  // force bitfield accuracy or seeding, skip initial hash check
       arg_flg_force_seed_mode = 1;
       break;
-      
-    case 'D':			// download bandwidth limit
+
+    case 'D':  // download bandwidth limit
       cfg_max_bandwidth_down = (int)(strtod(optarg, NULL) * 1024);
       break;
 
-    case 'U':			// upload bandwidth limit
+    case 'U':  // upload bandwidth limit
       cfg_max_bandwidth_up = (int)(strtod(optarg, NULL) * 1024);
       break;
 
-    case 'P':			// peer ID prefix
+    case 'P':  // peer ID prefix
       l = strlen(optarg);
-      if (l > MAX_PF_LEN) {
+      if( l > MAX_PF_LEN ){
         CONSOLE.Warning(1, "-P arg must be %d or less characters", MAX_PF_LEN);
         return -1;
       }
-      if (l == 1 && *optarg == '-') *arg_user_agent = (char) 0;
-      else strcpy(arg_user_agent,optarg);
+      if( l == 1 && *optarg == '-' ) *arg_user_agent = (char)0;
+      else strcpy(arg_user_agent, optarg);
       break;
 
-    case 'A':			// HTTP user-agent header string
+    case 'A':  // HTTP user-agent header string
       if( cfg_user_agent ) delete []cfg_user_agent;
       cfg_user_agent = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
@@ -256,12 +259,12 @@ int param_check(int argc, char **argv)
       strcpy(cfg_user_agent, optarg);
       break;
 
-    case 'T':			// convert foreign filenames to printable text
+    case 'T':  // convert foreign filenames to printable text
       arg_flg_convert_filenames = 1;
       break;
 
      // BELOW OPTIONS USED FOR CREATE TORRENT.
-    case 'u':			// Announce URL
+    case 'u':  // tracker announce URL
       if( arg_announce ) return -1;  // specified twice
       arg_announce = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
@@ -270,12 +273,12 @@ int param_check(int argc, char **argv)
       strcpy(arg_announce, optarg);
       break;
 
-    case 't':			// make Torrent
+    case 't':  // make torrent
       arg_flg_make_torrent = 1;
       CONSOLE.ChangeChannel(O_INPUT, "off", 0);
       break;
 
-    case 'l':			// piece Length (default 262144)
+    case 'l':  // piece length
       arg_piece_length = atol(optarg);
       if( arg_piece_length < 65536 || arg_piece_length > 4096*1024 ){
         CONSOLE.Warning(1, "-%c argument must be between 65536 and %d",
@@ -285,12 +288,12 @@ int param_check(int argc, char **argv)
       break;
      // ABOVE OPTIONS USED FOR CREATE TORRENT.
 
-    case 'x':			// print torrent information only
+    case 'x':  // print torrent information only
       arg_flg_exam_only = 1;
       CONSOLE.ChangeChannel(O_INPUT, "off", 0);
       break;
 
-    case 'S':			// CTCS server
+    case 'S':  // CTCS server
       if( arg_ctcs ) return -1;  // specified twice
       arg_ctcs = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
@@ -303,7 +306,7 @@ int param_check(int argc, char **argv)
       strcpy(arg_ctcs, optarg);
       break;
 
-    case 'X':			// "user exit" on download completion
+    case 'X':  // "user exit" on download completion
       if( arg_completion_exit ) return -1;  // specified twice
       arg_completion_exit = new char[strlen(optarg) + 1];
 #ifndef WINDOWS
@@ -320,26 +323,27 @@ int param_check(int argc, char **argv)
       strcpy(arg_completion_exit, optarg);
       break;
 
-    case 'v':			// verbose output
+    case 'v':  // verbose output
       arg_verbose = 1;
       break;
 
-    case 'd':			// daemon mode (fork to background)
+    case 'd':  // daemon mode (fork to background)
       arg_daemon++;
       break;
 
     case 'h':
-    case 'H':			// help
+    case 'H':  // help
       usage();
       return -1;
 
     default:
-      //unknown option.
+      // unknown option.
       CONSOLE.Warning(1, "Use -h for help/usage.");
       return -1;
     }
 
-  argc -= optind; argv += optind;
+  argc -= optind;
+  argv += optind;
   if( cfg_min_peers >= cfg_max_peers ) cfg_min_peers = cfg_max_peers - 1;
   if( argc != 1 ){
     if( arg_flg_make_torrent )
@@ -368,17 +372,18 @@ int param_check(int argc, char **argv)
 void usage()
 {
   CONSOLE.ChangeChannel(O_INPUT, "off", 0);
-  fprintf(stderr,"%s   Original code Copyright: YuHong(992126018601033)\n",
+  fprintf(stderr, "%s   Original code Copyright: YuHong(992126018601033)\n",
     PACKAGE_STRING);
-  fprintf(stderr,"WARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");
-  fprintf(stderr,"\nGeneral Options:\n");
+  fprintf(stderr,
+    "WARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");
+  fprintf(stderr, "\nGeneral Options:\n");
   fprintf(stderr, "%-15s %s\n", "-h/-H", "Show this message");
   fprintf(stderr, "%-15s %s\n", "-x",
     "Decode metainfo (torrent) file only, don't download");
   fprintf(stderr, "%-15s %s\n", "-c", "Check pieces only, don't download");
   fprintf(stderr, "%-15s %s\n", "-v", "Verbose output (for debugging)");
 
-  fprintf(stderr,"\nDownload Options:\n");
+  fprintf(stderr, "\nDownload Options:\n");
   fprintf(stderr, "%-15s %s\n", "-e int",
     "Exit while seed <int> hours later (default 72 hours)");
   fprintf(stderr, "%-15s %s\n", "-E num",
@@ -424,7 +429,7 @@ void usage()
   fprintf(stderr, "%-15s %s\n", "-d", "Daemon mode (fork to background)");
   fprintf(stderr, "%-15s %s\n", "-dd", "Daemon mode with I/O redirection");
 
-  fprintf(stderr,"\nMake metainfo (torrent) file options:\n");
+  fprintf(stderr, "\nMake metainfo (torrent) file options:\n");
   fprintf(stderr, "%-15s %s\n", "-t", "Create a new torrent file");
   fprintf(stderr, "%-15s %s\n", "-u URL", "Tracker's URL");
   fprintf(stderr, "%-15s %s\n", "-l piece_len",
@@ -433,11 +438,12 @@ void usage()
   fprintf(stderr, "%-15s %s\n", "-p", "Private (disable peer exchange)");
   fprintf(stderr, "%-15s %s\n", "-c comment", "Include a comment/description");
 
-  fprintf(stderr,"\nExample:\n");
-  fprintf(stderr,"ctorrent -s new_filename -e 12 -C 32 -p 6881 example.torrent\n");
-  fprintf(stderr,"\nhome page: http://ctorrent.sourceforge.net/\n");
-  fprintf(stderr,"see also: http://www.rahul.net/dholmes/ctorrent/\n");
-  fprintf(stderr,"bug report: %s\n",PACKAGE_BUGREPORT);
-  fprintf(stderr,"original author: bsdi@sina.com\n\n");
+  fprintf(stderr, "\nExample:\n");
+  fprintf(stderr,
+    "ctorrent -s new_filename -e 12 -C 32 -p 6881 example.torrent\n");
+  fprintf(stderr, "\nhome page: http://ctorrent.sourceforge.net/\n");
+  fprintf(stderr, "see also: http://www.rahul.net/dholmes/ctorrent/\n");
+  fprintf(stderr, "bug report: %s\n", PACKAGE_BUGREPORT);
+  fprintf(stderr, "original author: bsdi@sina.com\n\n");
 }
 

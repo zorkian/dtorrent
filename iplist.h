@@ -29,12 +29,14 @@ private:
   dt_count_t count;
   void _Emtpy();
 public:
-  IpList() { ipl_head = (IPLIST*)0; count = 0;}
-  ~IpList() { if(ipl_head) _Emtpy(); }
-  int Add(const struct sockaddr_in* psin);
-  int Pop(struct sockaddr_in* psin);
-  int IsEmpty() { return count ? 0 : 1; }
+  IpList(){ ipl_head = (IPLIST *)0; count = 0; }
+  ~IpList(){ if(ipl_head) _Emtpy(); }
+  int Add(const struct sockaddr_in *psin);
+  int Pop(struct sockaddr_in *psin);
+  int IsEmpty(){ return count ? 0 : 1; }
 };
 
 extern IpList IPQUEUE;
-#endif
+
+#endif  // IPLIST_H
+

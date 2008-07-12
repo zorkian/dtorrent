@@ -4,11 +4,10 @@
 #include <direct.h>
 #include <io.h>
 #include <memory.h>
-// include windows sha1 header here.
-
 #else
 #include <unistd.h>
 #include <sys/param.h>
+#endif
 
 #if defined(USE_STANDALONE_SHA1)
 #include "sha1.h"
@@ -18,8 +17,6 @@
 #include <ssl/sha.h>
 #elif defined(HAVE_SHA_H)
 #include <sha.h>
-#endif
-
 #endif
 
 #include <stdio.h>
@@ -41,52 +38,57 @@
 #include "bttime.h"
 #include "util.h"
 
-#define meta_str(keylist,pstr,psiz) decode_query(b,flen,(keylist),(pstr),(psiz),(int64_t*) 0,DT_QUERY_STR)
-#define meta_int(keylist,pint) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(pint),DT_QUERY_INT)
-#define meta_pos(keylist) decode_query(b,flen,(keylist),(const char**) 0,(size_t*) 0,(int64_t*) 0,DT_QUERY_POS)
+#define meta_str(keylist, pstr, psiz) \
+  decode_query(b, flen, (keylist), (pstr), (psiz), (int64_t *)0, DT_QUERY_STR)
+#define meta_int(keylist, pint) \
+  decode_query(b, flen, (keylist), (const char **)0, (size_t *)0, (pint), \
+    DT_QUERY_INT)
+#define meta_pos(keylist) \
+  decode_query(b, flen, (keylist), (const char **)0, (size_t *)0, \
+    (int64_t *) 0, DT_QUERY_POS)
 
 // Does "ca" overlap the data that lies from roff to rlen?
-#define CACHE_FIT(ca,roff,rlen)	\
-(max_datalen((ca)->bc_off,(roff)) <= \
- min_datalen(((ca)->bc_off + (ca)->bc_len - 1),(roff + rlen - 1)))
+#define CACHE_FIT(ca, roff, rlen) \
+  (max_datalen((ca)->bc_off, (roff)) <= \
+   min_datalen(((ca)->bc_off + (ca)->bc_len - 1), (roff + rlen - 1)))
 
 
 btContent BTCONTENT;
 
-static void Sha1(char *ptr,size_t len,unsigned char *dm)
+static void Sha1(char *ptr, size_t len, unsigned char *dm)
 {
 #if defined(USE_STANDALONE_SHA1)
   SHA1_CTX context;
   SHA1Init(&context);
-  SHA1Update(&context,(unsigned char*)ptr,len);
-  SHA1Final(dm,&context);
+  SHA1Update(&context, (unsigned char *)ptr, len);
+  SHA1Final(dm, &context);
 #else
 #ifdef WINDOWS
   ;
 #else
   SHA_CTX context;
   SHA1_Init(&context);
-  SHA1_Update(&context,(unsigned char*)ptr,len);
-  SHA1_Final(dm,&context);
+  SHA1_Update(&context, (unsigned char *)ptr, len);
+  SHA1_Final(dm, &context);
 #endif
 #endif
 }
 
 btContent::btContent()
 {
-  m_announce = global_piece_buffer = (char*) 0;
+  m_announce = global_piece_buffer = (char *)0;
   global_buffer_size = 0;
   memset(m_announcelist, 0, 9*sizeof(char *));
-  m_hash_table = (unsigned char *) 0;
-  m_create_date = m_seed_timestamp = (time_t) 0;
+  m_hash_table = (unsigned char *)0;
+  m_create_date = m_seed_timestamp = (time_t)0;
   m_private = 0;
   m_comment = m_created_by = (char *)0;
 
-  pBF = (BitField*) 0;
-  pBMasterFilter = (BitField*) 0;
-  pBRefer = (BitField*) 0;
-  pBChecked = (BitField*) 0;
-  pBMultPeer = (BitField*) 0;
+  pBF = (Bitfield *)0;
+  pBMasterFilter = (Bitfield *)0;
+  pBRefer = (Bitfield *)0;
+  pBChecked = (Bitfield *)0;
+  pBMultPeer = (Bitfield *)0;
   time(&m_start_timestamp);
   m_cache_oldest = m_cache_newest = (BTCACHE *)0;
   m_cache_size = m_cache_used = 0;
@@ -151,7 +153,7 @@ int btContent::CreateMetainfoFile(const char *mifn)
 
     // pieces (hash table)
     if( bencode_str("pieces", fp) != 1 ) goto err;
-    if( bencode_buf((const char*) m_hash_table, m_hashtable_length, fp) != 1 )
+    if( bencode_buf((const char *)m_hash_table, m_hashtable_length, fp) != 1 )
       goto err;
 
     // private
@@ -179,7 +181,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
 
   // piece length
   m_piece_length = piece_length;
-  if( m_piece_length % 65536 ){ 
+  if( m_piece_length % 65536 ){
     m_piece_length /= 65536;
     m_piece_length *= 65536;
   }
@@ -187,18 +189,18 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
   // This is really just a sanity check on the piece length to create.
   if( !m_piece_length || m_piece_length > 4096*1024 )
     m_piece_length = 262144;
-  
-  m_announce = ann_url;
-  m_create_date = time((time_t*) 0);
 
-  if(m_btfiles.BuildFromFS(pathname) < 0) return -1;
+  m_announce = ann_url;
+  m_create_date = time((time_t *)0);
+
+  if( m_btfiles.BuildFromFS(pathname) < 0 ) return -1;
 
   global_piece_buffer = new char[m_piece_length];
 #ifndef WINDOWS
   if( !global_piece_buffer ) return -1;
 #endif
   global_buffer_size = m_piece_length;
-  
+
   // n pieces
   m_npieces = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_npieces++;
@@ -246,9 +248,9 @@ int btContent::PrintOut()
   if( m_private ) CONSOLE.Print("Private: %s", m_private ? "Yes" : "No");
   if( m_comment ){
     char *s = new char[strlen(m_comment)+1];
-    if(s){
+    if( s ){
       strcpy(s, m_comment);
-      for(char *t=s; *t; t++)
+      for( char *t=s; *t; t++ )
         if( !isprint(*t) && !strchr("\t\r\n", *t) ) *t = '?';
       CONSOLE.Print("Comment: %s", s);
       delete []s;
@@ -265,9 +267,8 @@ int btContent::PrintFiles()
   return 0;
 }
 
-int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
+int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 {
-#define ERR_RETURN()	{if(b) delete []b; return -1;}
   unsigned char *ptr = m_shake_buffer;
   char *b;
   const char *s;
@@ -279,12 +280,12 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   m_cache_hit = m_cache_miss = m_cache_pre = 0;
   time(&m_cache_eval_time);
 
-  b = _file2mem(metainfo_fname,&flen);
-  if ( !b ) return -1;
+  b = _file2mem(metainfo_fname, &flen);
+  if( !b ) return -1;
 
   // announce
-  if( !meta_str("announce",&s,&bsiz) ) ERR_RETURN();
-  if( bsiz > MAXPATHLEN ) ERR_RETURN();
+  if( !meta_str("announce", &s, &bsiz) ) goto err;
+  if( bsiz > MAXPATHLEN ) goto err;
   m_announce = new char [bsiz + 1];
   memcpy(m_announce, s, bsiz);
   m_announce[bsiz] = '\0';
@@ -297,10 +298,10 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
     if( q = decode_list(b+bsiz, flen-bsiz, (char *)0) ){
       int alend = bsiz + q;
       bsiz++;  // 'l'
-      for( ; bsiz < alend && *(b+bsiz) != 'e' && n < 9; ){  // each list
+      while( bsiz < alend && *(b+bsiz) != 'e' && n < 9 ){  // each list
         if( !(q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ) break;
         bsiz++;  // 'l'
-        for( ; bsiz < alend && n < 9; ){  // each value
+        while( bsiz < alend && n < 9 ){  // each value
           if( !(q = buf_str(b+bsiz, alend-bsiz, &sptr, &slen)) )
             break;  // next list
           bsiz += q;
@@ -315,7 +316,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       }
     }
   }
-  
+
   if( meta_int("creation date", &bint) ) m_create_date = (time_t)bint;
   if( meta_str("comment", &s, &bsiz) && bsiz ){
     if( m_comment = new char[bsiz + 1] ){
@@ -331,27 +332,27 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   }
 
   // infohash
-  if( !(bsiz = meta_pos("info")) ) ERR_RETURN();
-  if( !(q = decode_dict(b + bsiz, flen - bsiz, (char *) 0)) ) ERR_RETURN();
+  if( !(bsiz = meta_pos("info")) ) goto err;
+  if( !(q = decode_dict(b + bsiz, flen - bsiz, (char *) 0)) ) goto err;
   Sha1(b + bsiz, q, m_shake_buffer + 28);
 
   // private flag
   if( meta_int("info|private", &bint) ) m_private = bint;
- 
+
   // hash table
-  if( !meta_str("info|pieces",&s,&bsiz) ||
-      m_hashtable_length % 20 != 0 ) ERR_RETURN();
+  if( !meta_str("info|pieces", &s, &bsiz) || m_hashtable_length % 20 != 0 )
+    goto err;
   m_hashtable_length = bsiz;
 
   if( !arg_flg_exam_only ){
     m_hash_table = new unsigned char[m_hashtable_length];
 #ifndef WINDOWS
-    if( !m_hash_table ) ERR_RETURN();
+    if( !m_hash_table ) goto err;
 #endif
     memcpy(m_hash_table, s, m_hashtable_length);
   }
 
-  if( !meta_int("info|piece length",&bint) ) ERR_RETURN();
+  if( !meta_int("info|piece length", &bint) ) goto err;
   m_piece_length = (bt_length_t)bint;
   m_npieces = m_hashtable_length / 20;
 
@@ -360,11 +361,11 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
 
   cfg_req_queue_length = (m_piece_length / cfg_req_slice_size) * 2 - 1;
 
-  if( m_btfiles.BuildFromMI(b, flen, saveas) < 0 ) ERR_RETURN();
+  if( m_btfiles.BuildFromMI(b, flen, saveas) < 0 ) goto err;
 
   delete []b;
   b = (char *)0;
-  
+
   if( arg_flg_exam_only ){
     PrintOut();
     return 0;
@@ -377,38 +378,38 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   for( int i=0; i < 20; i++ ){
     sprintf(torrentid + i*2, "%.2x", (int)m_shake_buffer[28+i]);
   }
-  if( (check_pieces = m_btfiles.SetupFiles(torrentid)) < 0 ) ERR_RETURN();
+  if( (check_pieces = m_btfiles.SetupFiles(torrentid)) < 0 ) goto err;
 
   global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
 #ifndef WINDOWS
-  if( !global_piece_buffer ) ERR_RETURN();
+  if( !global_piece_buffer ) goto err;
 #endif
   global_buffer_size = DEFAULT_SLICE_SIZE;
 
-  pBF = new BitField(m_npieces);
+  pBF = new Bitfield(m_npieces);
 #ifndef WINDOWS
-  if( !pBF ) ERR_RETURN();
+  if( !pBF ) goto err;
 #endif
 
-  pBRefer = new BitField(m_npieces);
+  pBRefer = new Bitfield(m_npieces);
 #ifndef WINDOWS
-  if( !pBRefer ) ERR_RETURN();
+  if( !pBRefer ) goto err;
 #endif
 
-  pBChecked = new BitField(m_npieces);
+  pBChecked = new Bitfield(m_npieces);
 #ifndef WINDOWS
-  if( !pBChecked ) ERR_RETURN();
+  if( !pBChecked ) goto err;
 #endif
 
-  pBMultPeer = new BitField(m_npieces);
+  pBMultPeer = new Bitfield(m_npieces);
 #ifndef WINDOWS
-  if( !pBMultPeer ) ERR_RETURN();
+  if( !pBMultPeer ) goto err;
 #endif
 
-  //create the file filter
-  pBMasterFilter = new BitField(m_npieces);
+  // create the file filter
+  pBMasterFilter = new Bitfield(m_npieces);
 #ifndef WINDOWS
-  if( !pBMasterFilter ) ERR_RETURN();
+  if( !pBMasterFilter ) goto err;
 #endif
   if( arg_file_to_download ) SetFilter();
 
@@ -416,8 +417,8 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
 
   m_left_bytes = m_btfiles.GetTotalLength() / m_piece_length;
   if( m_btfiles.GetTotalLength() % m_piece_length ) m_left_bytes++;
-  if( m_left_bytes != m_npieces ) ERR_RETURN();
-  
+  if( m_left_bytes != m_npieces ) goto err;
+
   m_left_bytes = m_btfiles.GetTotalLength();
 
   if( arg_flg_check_only ){
@@ -429,7 +430,7 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
       }
     }
     if( check_pieces ){
-      if( CheckExist() < 0 ) ERR_RETURN();
+      if( CheckExist() < 0 ) goto err;
       if( !pBF->IsEmpty() )
         m_btfiles.PrintOut(); // show file completion
     }
@@ -488,22 +489,24 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   m_cache = new BTCACHE *[m_npieces];
   if( !m_cache ){
     CONSOLE.Warning(1, "error, allocate cache index failed");
-    ERR_RETURN();
+    goto err;
   }
-  memset(m_cache, 0, m_npieces * sizeof(BTCACHE*));
+  memset(m_cache, 0, m_npieces * sizeof(BTCACHE *));
   CacheConfigure();
 
-  *ptr = (unsigned char) 19; ptr++; // protocol string length
-  memcpy(ptr,"BitTorrent protocol",19); ptr += 19; //  protocol string
-  memset(ptr,0,8);		// reserved set zero.
+  *ptr++ = (unsigned char)19;                         // protocol string length
+  memcpy(ptr, "BitTorrent protocol", 19);             // protocol string
+  ptr += 19;
+  memset(ptr, 0, 8);                                  // reserved bytes
+  ptr += 8;  //dnh don't really need ptr??
 
-  {				// peer id
-        char *sptr = arg_user_agent;
-        char *dptr = (char *)m_shake_buffer + 48;
-        char *eptr = dptr + PEER_ID_LEN;
-        while (*sptr) *dptr++ = *sptr++;
-        while (dptr < eptr)
-          *dptr++ = (unsigned char)RandBits(sizeof(unsigned char) * 8);
+  { // peer id
+    char *sptr = arg_user_agent;
+    char *dptr = (char *)m_shake_buffer + 48;
+    char *eptr = dptr + PEER_ID_LEN;
+    while( *sptr ) *dptr++ = *sptr++;
+    while( dptr < eptr )
+      *dptr++ = (unsigned char)RandBits(sizeof(unsigned char) * 8);
   }
 
   if( arg_announce ){
@@ -516,18 +519,22 @@ int btContent::InitialFromMI(const char *metainfo_fname,const char *saveas)
   }
 
   return 0;
+
+ err:
+  if( b ) delete []b;
+  return -1;
 }
 
 btContent::~btContent()
 {
-  if(m_hash_table) delete []m_hash_table;
-  if(m_announce) delete []m_announce;
-  if(global_piece_buffer) delete []global_piece_buffer;
-  if(pBF) delete pBF;
+  if( m_hash_table ) delete []m_hash_table;
+  if( m_announce ) delete []m_announce;
+  if( global_piece_buffer ) delete []global_piece_buffer;
+  if( pBF ) delete pBF;
 }
 
-void btContent::_Set_InfoHash(unsigned char buf[20]) 
-{ 
+void btContent::_Set_InfoHash(unsigned char buf[20])
+{
   memcpy(m_shake_buffer + 28, buf, 20);
 }
 
@@ -553,8 +560,8 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
         len2 = p->bc_off - offset;
         if( CacheIO(buf, offset, len2, 0) < 0 ) return -1;
         retval = 1;
-        if(buf) m_cache_miss += len2 / DEFAULT_SLICE_SIZE +
-                                ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
+        if( buf ) m_cache_miss += len2 / DEFAULT_SLICE_SIZE +
+                                  ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         else m_cache_pre += len2 / DEFAULT_SLICE_SIZE +
                             ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         p = m_cache[idx];  // p may not be valid after CacheIO
@@ -589,11 +596,11 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
       if( buf ) buf += len2;
       offset += len2;
       len -= len2;
-    }// end for;
+    }  // end while
 
     if( len ){
-      if(buf) m_cache_miss += len / DEFAULT_SLICE_SIZE +
-                              ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
+      if( buf ) m_cache_miss += len / DEFAULT_SLICE_SIZE +
+                                ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
       else m_cache_pre += len / DEFAULT_SLICE_SIZE +
                           ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
       retval = CacheIO(buf, offset, len, 0);
@@ -680,15 +687,15 @@ void btContent::CacheEval()
     else if( 0==interval ) interval = 1;
   }else interval = WORLD.GetUnchokeInterval();
 
-  // Download: total unflushed data + data to dl before next eval
-  // Hold the first piece a bit to let uploading begin.
+  /* Download: total unflushed data + data to dl before next eval
+     Hold the first piece a bit to let uploading begin. */
   if( pBF->IsFull() ) dlnext = 0;
   else{
     if( pBF->Count() < 2 ) unflushed = m_cache_used;
     else for( ; p; p = p->age_next )
       if( p->bc_f_flush ) unflushed += p->bc_len;
-    // Make sure we can read back and check a completed piece.
-    // But free some cache if download has completely stalled.
+    /* Make sure we can read back and check a completed piece.
+       But free some cache if download has completely stalled. */
     dlnext = ratedn ? (ratedn * interval + m_piece_length) : 0;
   }
 
@@ -696,14 +703,14 @@ void btContent::CacheEval()
   upmin = DEFAULT_SLICE_SIZE * unchoked;
   upmax = cfg_cache_size*1024*1024;
   if( pBF->IsFull() ){
-    // Seed mode.  All cache data is prefetched, and we don't normally need to
-    // keep prefetched data longer than 2.5 unchoke intervals.
+    /* Seed mode.  All cache data is prefetched, and we don't normally need to
+       keep prefetched data longer than 2.5 unchoke intervals. */
     if( rateup && unchoked ){
       // A very slow peer can't possibly benefit from cache--don't grow for it.
       dt_rate_t slowest = (dt_rate_t)( 1 + DEFAULT_SLICE_SIZE /
                                  ((double)cfg_cache_size*1024*1024 / rateup) );
-      // Lead cache: data we need to cache to keep the slowest up's data cached
-      // Add a slice per up for timing uncertainty
+      /* Lead cache: data we need to cache to keep the slowest up's data cached
+         Add a slice per up for timing uncertainty */
       if( slowest = WORLD.GetSlowestUp(slowest) )
         upadd = DEFAULT_SLICE_SIZE * ( rateup / slowest + unchoked-1 );
       else upadd = DEFAULT_SLICE_SIZE * unchoked;
@@ -718,8 +725,8 @@ void btContent::CacheEval()
         cfg_req_slice_size * ((double)ratedn / cfg_cache_size*1024*1024) +
         DEFAULT_SLICE_SIZE * ((double)rateup / cfg_cache_size*1024*1024) );
       if( slowest = WORLD.GetSlowestUp(slowest) )
-        // lead cache is how much we'll use while uploading a slice to slowest
-        // (default_slice_size / slowest) * (ratedn + rateup)
+        /* lead cache is how much we'll use while uploading a slice to slowest
+           (default_slice_size / slowest) * (ratedn + rateup) */
         upadd = (dt_mem_t)( ((double)DEFAULT_SLICE_SIZE / slowest) *
                           (ratedn + rateup + 1) );
       else upadd = m_piece_length * unchoked;
@@ -729,12 +736,12 @@ void btContent::CacheEval()
       dt_rate_t slowest = (dt_rate_t)( 1 +
         ratedn * ((double)m_piece_length / (cfg_cache_size*1024*1024)) );
       if( slowest = WORLD.GetSlowestUp(slowest) ){
-        // m_piece_length / (double)slowest * ratedn
-        // optimize, then round up a piece and add a piece
+        /* m_piece_length / (double)slowest * ratedn
+           optimize, then round up a piece and add a piece */
         upadd = m_piece_length * (ratedn / slowest + 2);
       }else{  // gimme 10 seconds worth (unchoke interval)
-        // Can't keep pieces in cache long enough to upload them.
-        // Rely on prefetching slices from disk instead.
+        /* Can't keep pieces in cache long enough to upload them.
+           Rely on prefetching slices from disk instead. */
         upadd = ratedn * WORLD.GetUnchokeInterval() +
                 DEFAULT_SLICE_SIZE * unchoked;
       }
@@ -754,8 +761,8 @@ void btContent::CacheEval()
 
   if(arg_verbose)
     CONSOLE.Debug("DL need: %dK  UL need: %dK  Cache: %dK  Used: %dK",
-    (int)((unflushed+dlnext)/1024), (int)(upadd/1024),
-    (int)(m_cache_size/1024), (int)(m_cache_used/1024));
+      (int)((unflushed+dlnext)/1024), (int)(upadd/1024),
+      (int)(m_cache_size/1024), (int)(m_cache_used/1024));
   m_cache_eval_time = now + interval;
 }
 
@@ -799,8 +806,8 @@ int btContent::FlushPiece(bt_index_t idx)
   p = m_cache[idx];
 
   for( ; p; p = p->bc_next ){
-    // Update the age if piece is complete, as this should mean we've just
-    // completed the piece and made it available.
+    /* Update the age if piece is complete, as this should mean we've just
+       completed the piece and made it available. */
     if( pBF->IsSet(idx) && m_cache_newest != p ){
       if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
       else p->age_prev->age_next = p->age_next;
@@ -843,7 +850,7 @@ void btContent::FlushEntry(BTCACHE *p)
       }
     }else{
       p->bc_f_flush = 0;
-      if(m_flush_failed){
+      if( m_flush_failed ){
         m_flush_failed = 0;
         CONSOLE.Warning(3, "Flushing cache succeeded%s.",
           Seeding() ? "" : "; resuming download");
@@ -946,9 +953,6 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
 {
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
-  //CONSOLE.Debug("Offset-write: %llu - Piece:%lu",
-  //  (unsigned long long)offset, (unsigned long)idx);
-
   if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 1);
   else{
     bt_length_t len2;
@@ -990,8 +994,8 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
       buf += len2;
       offset += len2;
       len -= len2;
-    }// end for;
-  
+    }  // end while
+
     if( len ) return CacheIO(buf, offset, len, 1);
   }
   return 0;
@@ -1000,8 +1004,8 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
 int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
 {
   BTCACHE *p;
-  BTCACHE *pp = (BTCACHE*) 0;
-  BTCACHE *pnew = (BTCACHE*) 0;
+  BTCACHE *pp = (BTCACHE *)0;
+  BTCACHE *pnew = (BTCACHE *)0;
   bt_index_t idx = off / m_piece_length;
 
   if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
@@ -1009,19 +1013,19 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
     else return 0;
   }
 
-  if(arg_verbose && 0==method)
+  if( arg_verbose && 0==method )
     CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
       (int)(idx), (int)(off % m_piece_length), (int)len);
 
   if( m_cache_size < m_cache_used + len ){
     if( 0==method && !pBF->IsSet(idx) ) CacheClean(len, idx);
     else CacheClean(len);
-    // Note, there is no failure code from CacheClean().  If nothing can be
-    // done to increase the cache size, we allocate what we need anyway.
+    /* Note, there is no failure code from CacheClean().  If nothing can be
+       done to increase the cache size, we allocate what we need anyway. */
   }
-  
+
   if( 0==method && buf && m_btfiles.IO(buf, off, len, method) < 0 ) return -1;
-  
+
   pnew = new BTCACHE;
 #ifndef WINDOWS
   if( !pnew )
@@ -1030,8 +1034,8 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
 
   pnew->bc_buf = new char[len];
 #ifndef WINDOWS
-  if( !(pnew->bc_buf) ){ 
-    delete pnew; 
+  if( !(pnew->bc_buf) ){
+    delete pnew;
     return (method && buf) ? m_btfiles.IO(buf, off, len, method) : 0;
   }
 #endif
@@ -1078,8 +1082,8 @@ int btContent::ReadPiece(char *buf, bt_index_t idx)
 
 bt_length_t btContent::GetPieceLength(bt_index_t idx)
 {
-  // Slight optimization to avoid division in every call.  The second test is
-  // still needed in case the torrent size is exactly n pieces.
+  /* Slight optimization to avoid division in every call.  The second test is
+     still needed in case the torrent size is exactly n pieces. */
   return (idx == m_npieces - 1 &&
           idx == m_btfiles.GetTotalLength() / m_piece_length) ?
     (bt_length_t)(m_btfiles.GetTotalLength() % m_piece_length) :
@@ -1164,55 +1168,57 @@ int btContent::CheckNextPiece()
   return 0;
 }
 
-char* btContent::_file2mem(const char *fname, size_t *psiz)
+char *btContent::_file2mem(const char *fname, size_t *psiz)
 {
-  char *b = (char*) 0;
+  char *b = (char *)0;
   struct stat sb;
-  FILE* fp;
-  fp = fopen(fname,"r");
+  FILE *fp;
+  fp = fopen(fname, "r");
   if( !fp ){
-    CONSOLE.Warning(1, "error, open \"%s\" failed:  %s",fname,strerror(errno));
-    return (char*) 0;
+    CONSOLE.Warning(1, "error, open \"%s\" failed:  %s", fname,
+      strerror(errno));
+    return (char *)0;
   }
 
-  if(stat(fname,&sb) < 0){
-    CONSOLE.Warning(1, "error, stat \"%s\" failed:  %s",fname,strerror(errno));
-    return (char*) 0;
+  if( stat(fname, &sb) < 0 ){
+    CONSOLE.Warning(1, "error, stat \"%s\" failed:  %s", fname,
+      strerror(errno));
+    return (char *)0;
   }
 
   if( sb.st_size > MAX_METAINFO_FILESIZ ){
-    CONSOLE.Warning(1, "error, \"%s\" is really a metainfo file???",fname);
-    return (char*) 0;
+    CONSOLE.Warning(1, "error, \"%s\" is really a metainfo file?", fname);
+    return (char *)0;
   }
 
   b = new char[sb.st_size];
 #ifndef WINDOWS
-  if( !b ) return (char*) 0;
+  if( !b ) return (char *)0;
 #endif
 
-  if(fread(b, sb.st_size, 1, fp) != 1){
+  if( fread(b, sb.st_size, 1, fp) != 1 ){
     if( ferror(fp) ){
       delete []b;
-      return (char*) 0;
+      return (char *)0;
     }
   }
   fclose(fp);
 
-  if(psiz) *psiz = sb.st_size;
+  if( psiz ) *psiz = sb.st_size;
   return b;
 }
 
 int btContent::APieceComplete(bt_index_t idx)
 {
   unsigned char md[20];
-  if(pBF->IsSet(idx)) return 1;
+  if( pBF->IsSet(idx) ) return 1;
   if( GetHashValue(idx, md) < 0 ){
     // error reading data
     Uncache(idx);
     return -1;
   }
 
-  if( memcmp(md,(m_hash_table + idx * 20), 20) != 0 ){
+  if( memcmp(md, (m_hash_table + idx * 20), 20) != 0 ){
     CONSOLE.Warning(3, "warn, piece %d hash check failed.", idx);
     Uncache(idx);
     CountHashFailure();
@@ -1248,8 +1254,8 @@ int btContent::GetHashValue(bt_index_t idx, unsigned char *md)
     global_piece_buffer = new char[m_piece_length];
     global_buffer_size = global_piece_buffer ? m_piece_length : 0;
   }
-  if( ReadPiece(global_piece_buffer,idx) < 0 ) return -1;
-  Sha1(global_piece_buffer,GetPieceLength(idx),md);
+  if( ReadPiece(global_piece_buffer, idx) < 0 ) return -1;
+  Sha1(global_piece_buffer, GetPieceLength(idx), md);
   return 0;
 }
 
@@ -1327,9 +1333,18 @@ void btContent::CompletionCommand()
   int nt=0, nd=0, nw=0;
 
   pt = pd = pw = arg_completion_exit;
-  while( pt = strstr(pt, "&t") ){ nt++; pt+=2; }
-  while( pd = strstr(pd, "&d") ){ nd++; pd+=2; }
-  while( pw = strstr(pw, "&w") ){ nw++; pw+=2; }
+  while( pt = strstr(pt, "&t") ){
+    nt++;
+    pt += 2;
+  }
+  while( pd = strstr(pd, "&d") ){
+    nd++;
+    pd+=2;
+  }
+  while( pw = strstr(pw, "&w") ){
+    nw++;
+    pw+=2;
+  }
 
   if( nt || nd || nw ){
     char wd[MAXPATHLEN], *ptmp, *parg = arg_completion_exit;
@@ -1391,7 +1406,7 @@ void btContent::CompletionCommand()
   }
   pid_t r;
   if( (r = fork()) < 0 ){
-    CONSOLE.Warning(2,"warn, fork failed running completion command:  %s",
+    CONSOLE.Warning(2, "warn, fork failed running completion command:  %s",
       strerror(errno));
   }else if( r==0 ){
     cfg_child_process = 1;
@@ -1418,7 +1433,7 @@ void btContent::CompletionCommand()
 
 void btContent::CheckFilter()
 {
-  BitField tmpBitfield;
+  Bitfield tmpBitfield;
   BFNODE *original = m_current_filter;
 
   if( !m_filters ) return;
@@ -1426,7 +1441,7 @@ void btContent::CheckFilter()
 
   while( m_current_filter ){
     tmpBitfield = *pBF;             // what I have...
-    tmpBitfield.Comb(GetFilter());  // ...plus what I don't want
+    tmpBitfield.Or(GetFilter());  // ...plus what I don't want
     if( !tmpBitfield.IsFull() ) break;
     m_current_filter = m_current_filter->next;
   }
@@ -1469,7 +1484,7 @@ void btContent::SetFilter()
   // Set up filter list
   char *list=(char *)0, *tok, *dash, *plus;
   dt_count_t start, end;
-  BitField tmpFilter, *pfilter;
+  Bitfield tmpFilter, *pfilter;
   BFNODE *node=m_filters, *pnode=(BFNODE *)0;
 
   if( arg_file_to_download ){
@@ -1564,7 +1579,7 @@ void btContent::SetFilter()
 }
 
 
-BitField *btContent::GetNextFilter(BitField *pfilter) const
+Bitfield *btContent::GetNextFilter(Bitfield *pfilter) const
 {
   static BFNODE *p = m_filters;
 
@@ -1573,12 +1588,12 @@ BitField *btContent::GetNextFilter(BitField *pfilter) const
     p = p->next;
   }else{
     for( p=m_filters; p && (&(p->bitfield) != pfilter); p = p->next );
-    if(p) p = p->next;
+    if( p ) p = p->next;
     else p = m_filters;
   }
 
-  if(p) return &(p->bitfield);
-  else return (BitField *) 0;
+  if( p ) return &(p->bitfield);
+  else return (Bitfield *)0;
 }
 
 
@@ -1590,14 +1605,14 @@ int btContent::Seeding() const
 }
 
 
-// Note, this functions assumes the program is exiting.
+// Note, this function assumes the program is exiting.
 void btContent::SaveBitfield()
 {
   if( arg_bitfield_file ){
     if( m_check_piece < m_npieces ){  // still checking
       // Anything unchecked needs to be checked next time.
       pBChecked->Invert();
-      pBF->Comb(*pBChecked);
+      pBF->Or(*pBChecked);
     }
     if( !pBF->IsFull() ) pBF->WriteToFile(arg_bitfield_file);
   }
@@ -1633,8 +1648,8 @@ void btContent::MergeNext()
 /* Opportunity to influence download piece selection by criteria unknown to
    the peer object.
 */
-bt_index_t btContent::ChoosePiece(const BitField &choices,
-  const BitField &available, bt_index_t preference) const
+bt_index_t btContent::ChoosePiece(const Bitfield &choices,
+  const Bitfield &available, bt_index_t preference) const
 {
   return m_btfiles.ChoosePiece(choices, available, preference);
 }

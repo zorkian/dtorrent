@@ -19,9 +19,9 @@ class Rate{
   time_t m_last_timestamp;
   time_t m_total_timeused;
   dt_datalen_t m_count_bytes;
-  // m_last:    tracks recent xfer(s) for timing & limit comparison
-  // m_recent:  the most recent measurable xfer
-  // m_prev:    the prior m_recent
+  // m_last_*:    tracks recent xfer[s] for timing & limit comparison
+  // m_recent_*:  the most recent measurable xfer
+  // m_prev_*:    the prior m_recent
   double m_last_realtime, m_recent_realtime, m_prev_realtime;
   bt_length_t m_last_size, m_recent_size, m_prev_size;
   double m_late;
@@ -64,10 +64,11 @@ class Rate{
   time_t TimeUsed();
   double LastRealtime() const { return m_last_realtime; }
   bt_length_t LastSize() const { return m_last_size; }
-  void SetSelf(Rate *rate) { m_selfrate = rate; }
+  void SetSelf(Rate *rate){ m_selfrate = rate; }
   double Late() const { return m_late; }
   int Ontime() const { return m_ontime ? 1 : 0; }
-  void Ontime(int yn) { m_ontime = yn ? 1 : 0; }
+  void Ontime(int yn){ m_ontime = yn ? 1 : 0; }
 };
 
-#endif
+#endif  // RATE_H
+

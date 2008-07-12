@@ -1,7 +1,7 @@
 #ifndef SETNONBLOCK_H
 #define SETNONBLOCK_H
 
-#include "./def.h"
+#include "def.h"
 #include <sys/types.h>
 
 #ifdef WINDOWS
@@ -14,4 +14,5 @@
 
 int setfd_nonblock(SOCKET socket);
 
-#endif
+#endif  // SETNONBLOCK_H
+

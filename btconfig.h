@@ -6,10 +6,10 @@
 
 extern bt_length_t cfg_req_slice_size;
 
-#define MAX_METAINFO_FILESIZ	(4*1024*1024)
+#define MAX_METAINFO_FILESIZ (4*1024*1024)
 #define DEFAULT_SLICE_SIZE (16*1024)
-// According to specs the max slice size is 128K.  While most clients now do
-// not accept a value that large, we want max compatibility.
+/* According to specs the max slice size is 128K.  While most clients now do
+   not accept a value that large, we want max compatibility. */
 #define cfg_max_slice_size (128*1024)
 extern dt_count_t cfg_req_queue_length;
 #define MAX_PF_LEN 8
@@ -20,7 +20,7 @@ extern dt_count_t cfg_req_queue_length;
    connections, etc? */
 extern int cfg_child_process;
 
-extern char *cfg_user_agent;	// HTTP header
+extern char *cfg_user_agent;  // HTTP header
 
 extern unsigned int cfg_cache_size;  // megabytes
 
@@ -43,7 +43,7 @@ extern dt_rate_t cfg_max_bandwidth_up;
 extern char *arg_metainfo_file;
 extern char *arg_bitfield_file;
 extern char *arg_save_as;
-extern char *arg_user_agent;	// BT peer ID, not HTTP header
+extern char *arg_user_agent;  // BT peer ID, not HTTP header
 
 extern unsigned char arg_flg_force_seed_mode;
 extern unsigned char arg_flg_check_only;
@@ -63,4 +63,6 @@ extern char *arg_comment;
 
 extern char *arg_ctcs;
 extern char *arg_completion_exit;
-#endif
+
+#endif  // BTCONFIG_H
+

@@ -33,5 +33,5 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX* context);
 }
 #endif
 
-#endif
+#endif  // SHA1_H
 

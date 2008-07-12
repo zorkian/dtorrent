@@ -1,10 +1,10 @@
 #ifndef TRACKER_H
 #define TRACKER_H
 
-#include "./def.h"
+#include "def.h"
 #include <sys/types.h>
 
-#include "./bufio.h"
+#include "bufio.h"
 
 #ifdef WINDOWS
 #include <Winsock2.h>
@@ -50,9 +50,9 @@ class btTracker
   unsigned char m_f_boguspeercnt:1;
   unsigned char m_reserved:3;
 
-  time_t m_interval;		// 与Tracker通信的时间间隔
-  time_t m_default_interval;		// interval that the tracker tells us to wait
-  time_t m_last_timestamp;	// 最后一次成功与Tracker通信的时间
+  time_t m_interval;          // time from previous to next tracker contact
+  time_t m_default_interval;  // interval that the tracker tells us to wait
+  time_t m_last_timestamp;    // time of last tracker contact attempt
   dt_count_t m_connect_refuse_click;
 
   dt_count_t m_ok_click;     // tracker ok response counter
@@ -63,17 +63,17 @@ class btTracker
   dt_datalen_t m_totaldl, m_totalul, m_report_dl, m_report_ul;
 
   SOCKET m_sock;
-  BufIo m_request_buffer, m_reponse_buffer;
-  
+  BufIo m_request_buffer, m_response_buffer;
+
   int _IPsin(char *h, int p, struct sockaddr_in *psin);
-  int _s2sin(char *h,int p,struct sockaddr_in *psin);
-  int _UpdatePeerList(char *buf,size_t bufsiz);
+  int _s2sin(char *h, int p, struct sockaddr_in *psin);
+  int _UpdatePeerList(char *buf, size_t bufsiz);
   int IsPrivateAddress(uint32_t addr);
 
   int BuildBaseRequest();
   int Connect();
   int SendRequest();
-  int CheckReponse();
+  int CheckResponse();
   void Restart();
 
  public:
@@ -84,19 +84,19 @@ class btTracker
 
   void Reset(time_t new_interval);
 
-  dt_trackerstatus_t GetStatus() { return m_status; }
-  void SetStatus(dt_trackerstatus_t s) { m_status = s; }
+  dt_trackerstatus_t GetStatus(){ return m_status; }
+  void SetStatus(dt_trackerstatus_t s){ m_status = s; }
 
-  SOCKET GetSocket() { return m_sock; }
+  SOCKET GetSocket(){ return m_sock; }
 
   void RestartTracker();
-  void SetRestart() { m_f_restart = 1; }
-  void ClearRestart() { m_f_restart = 0; }
+  void SetRestart(){ m_f_restart = 1; }
+  void ClearRestart(){ m_f_restart = 0; }
   int IsRestarting() const { return m_f_restart; }
   int IsQuitting() const { return m_f_stoped; }
   void SetStoped();
 
-  int IntervalCheck(fd_set* rfdp, fd_set *wfdp);
+  int IntervalCheck(fd_set *rfdp, fd_set *wfdp);
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
@@ -104,17 +104,19 @@ class btTracker
   dt_count_t GetOkClick() const { return m_ok_click; }
   dt_count_t GetPeersCount() const;
   dt_count_t GetSeedsCount() const;
-  void AdjustPeersCount() {
-    if(m_f_boguspeercnt && m_peers_count) m_peers_count--; }
+  void AdjustPeersCount(){
+    if( m_f_boguspeercnt && m_peers_count ) m_peers_count--;
+  }
   time_t GetInterval() const { return m_default_interval; }
 
   time_t GetReportTime() const { return m_report_time; }
   dt_datalen_t GetReportDL() const { return m_report_dl; }
   dt_datalen_t GetReportUL() const { return m_report_ul; }
-  void CountDL(bt_length_t nbytes) { m_totaldl += nbytes; }
-  void CountUL(bt_length_t nbytes) { m_totalul += nbytes; }
+  void CountDL(bt_length_t nbytes){ m_totaldl += nbytes; }
+  void CountUL(bt_length_t nbytes){ m_totalul += nbytes; }
 };
 
 extern btTracker Tracker;
 
-#endif
+#endif  // TRACKER_H
+

@@ -35,8 +35,6 @@
 #define PEER_IS_FAILED(peer) (DT_PEER_FAILED == (peer)->GetStatus())
 #define NEED_MORE_PEERS() (m_peers_count < cfg_max_peers)
 
-const char LIVE_CHAR[4] = {'-', '\\','|','/'};
-
 PeerList WORLD;
 
 PeerList::PeerList()
@@ -44,11 +42,11 @@ PeerList::PeerList()
   m_unchoke_check_timestamp =
     m_keepalive_check_timestamp =
     m_opt_timestamp =
-    m_interval_timestamp = time((time_t*) 0);
+    m_interval_timestamp = time((time_t *)0);
   m_unchoke_interval = MIN_UNCHOKE_INTERVAL;
   m_opt_interval = MIN_OPT_CYCLE * MIN_UNCHOKE_INTERVAL;
 
-  m_head = m_dead = m_next_dl = m_next_ul = (PEERNODE*) 0;
+  m_head = m_dead = m_next_dl = m_next_ul = (PEERNODE *)0;
   m_listen_sock = INVALID_SOCKET;
   m_peers_count = m_seeds_count = m_conn_count = m_downloads = 0;
   m_f_pause = m_endgame = 0;
@@ -62,36 +60,33 @@ PeerList::PeerList()
 
 PeerList::~PeerList()
 {
-  PEERNODE *p,*pnext;
-  for( p = m_head; p ; ){
+  PEERNODE *p, *pnext;
+  for( p = m_head; p; p = pnext ){
     pnext = p->next;
     delete p->peer;
     delete p;
-    p = pnext;
   }
-  for( p = m_dead; p ; ){
+  for( p = m_dead; p; p = pnext ){
     pnext = p->next;
     delete p->peer;
     delete p;
-    p = pnext;
   }
 }
 
 void PeerList::CloseAll()
 {
   PEERNODE *p;
-  for( p = m_head; p; ){
+  for( p = m_head; p; p = m_head ){
     m_head = p->next;
     delete (p->peer);
     delete p;
-    p = m_head;
   }
 }
 
 int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
 {
   PEERNODE *p, *pp, *pnext;
-  btPeer *peer = (btPeer*) 0;
+  btPeer *peer = (btPeer *)0;
   int r;
 
   if( m_peers_count >= cfg_max_peers ){
@@ -111,13 +106,14 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     if( !PEER_IS_FAILED(p->peer) && p->peer->IpEquiv(addr) ){
       if(arg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
         inet_ntoa(addr.sin_addr));
-      if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk); 
+      if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
       return -3;
     }
   }
 
-  // See if we've had this peer before, and maintain its stats.
-  // Do it here instead of later to insure we purge old entries periodically.
+  /* See if we've had this peer before, and maintain its stats.
+     Do it here instead of later to insure we purge old entries
+     periodically. */
   pp = (PEERNODE *)0;
   for( p = m_dead; p; p = pnext ){
     if( p->peer->IpEquiv(addr) ) break;
@@ -133,11 +129,11 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   }
 
   if( INVALID_SOCKET == sk ){
-    if( INVALID_SOCKET == (sk = socket(AF_INET,SOCK_STREAM,0)) ) return -1;
+    if( INVALID_SOCKET == (sk = socket(AF_INET, SOCK_STREAM, 0)) ) return -1;
 
-    if( setfd_nonblock(sk) < 0) goto err;
+    if( setfd_nonblock(sk) < 0 ) goto err;
 
-    if( -1 == (r = connect_nonb(sk,(struct sockaddr*)&addr)) ){
+    if( -1 == (r = connect_nonb(sk, (struct sockaddr *)&addr)) ){
       if(arg_verbose) CONSOLE.Debug("Connect to peer at %s:%hu failed:  %s",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), strerror(errno));
       return -1;
@@ -156,7 +152,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
 
   }else{
-    if( setfd_nonblock(sk) < 0) goto err;
+    if( setfd_nonblock(sk) < 0 ) goto err;
 
     peer = new btPeer;
 #ifndef WINDOWS
@@ -171,13 +167,14 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   }
 
   if( !BTCONTENT.Seeding() &&
-      peer->stream.in_buffer.SetSize(BUF_DEF_SIZ + cfg_req_slice_size) < 0 )
+      peer->stream.in_buffer.SetSize(BUF_DEF_SIZ + cfg_req_slice_size) < 0 ){
     goto err;
+  }
 
   if( DT_PEER_HANDSHAKE == peer->GetStatus() )
     if( peer->Send_ShakeInfo() != 0 ) goto err;
 
-  if( p ){   // resurrected! (reconnected with an old peer)
+  if( p ){  // resurrected! (reconnected with an old peer)
     if( pp ) pp->next = p->next;
     else m_dead = p->next;
     peer->CopyStats(p->peer);
@@ -211,9 +208,9 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
   // No pause check here--stay ready by continuing to acquire peers.
   if( !Tracker.IsQuitting() ){
     struct sockaddr_in addr;
-    for( ; NEED_MORE_PEERS() && !IPQUEUE.IsEmpty(); ){
-      if(IPQUEUE.Pop(&addr) < 0) break;
-      if(NewPeer(addr,INVALID_SOCKET) == -4) break;
+    while( NEED_MORE_PEERS() && !IPQUEUE.IsEmpty() ){
+      if( IPQUEUE.Pop(&addr) < 0 ) break;
+      if( NewPeer(addr, INVALID_SOCKET) == -4 ) break;
     }
   }
 
@@ -221,9 +218,10 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 
   // After seeding a while, disconnect uninterested peers & shrink in_buffers.
   if( now - BTCONTENT.GetSeedTime() <= 301 &&
-      now - BTCONTENT.GetSeedTime() >= 300 )
+      now - BTCONTENT.GetSeedTime() >= 300 ){
     CloseAllConnectionToSeed();
-    
+  }
+
   if( KEEPALIVE_INTERVAL <= now - m_keepalive_check_timestamp ){
     m_keepalive_check_timestamp = now;
     f_keepalive_check = 1;
@@ -261,7 +259,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     if( 0==cfg_max_bandwidth_up ) m_max_unchoke = MIN_UNCHOKES;
 
     UNCHOKER = new btPeer *[m_max_unchoke + 1];
-    if( UNCHOKER ) memset(UNCHOKER, 0, (m_max_unchoke + 1) * sizeof(btPeer*));
+    if( UNCHOKER ) memset(UNCHOKER, 0, (m_max_unchoke + 1) * sizeof(btPeer *));
     else CONSOLE.Warning(1, "warn, failed to allocate unchoke array.");
 
     SetUnchokeIntervals();
@@ -269,9 +267,9 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     if( now < m_unchoke_check_timestamp ) m_unchoke_check_timestamp = now;
     if( MIN_UNCHOKE_INTERVAL <= now - m_interval_timestamp ){
       m_interval_timestamp = now;
-      // If up bw limit has changed enough, recompute the intervals.
-      // This is primarily to prevent a low limit from delaying an unchoke for
-      // a long time even after the limit has been increased.
+      /* If up bw limit has changed enough, recompute the intervals.
+         This is primarily to prevent a low limit from delaying an unchoke for
+         a long time even after the limit has been increased. */
       if( !BandWidthLimitUp() ||
           ( m_prev_limit_up &&
             labs((long)cfg_max_bandwidth_up - (long)m_prev_limit_up) /
@@ -303,7 +301,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
     f_idle = IsIdle();
 
  again:
-  pp = (PEERNODE*) 0;
+  pp = (PEERNODE *)0;
   m_seeds_count = m_conn_count = m_downloads = 0;
   dt_count_t interested_count = 0;
   for( p = m_head; p; ){
@@ -311,17 +309,18 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
     sk = peer->stream.GetSocket();
     if( PEER_IS_FAILED(peer) ){
       if( sk != INVALID_SOCKET ){
-        FD_CLR(sk,rfdp);
-        FD_CLR(sk,wfdp);
+        FD_CLR(sk, rfdp);
+        FD_CLR(sk, wfdp);
       }
-      if( peer->CanReconnect() ){ // connect to this peer again
+      if( peer->CanReconnect() ){  // connect to this peer again
         if(arg_verbose) CONSOLE.Debug("Adding %p for reconnect", peer);
         peer->Retry();
         struct sockaddr_in addr;
         peer->GetAddress(&addr);
         IPQUEUE.Add(&addr);
       }
-      if( pp ) pp->next = p->next; else m_head = p->next;
+      if( pp ) pp->next = p->next;
+      else m_head = p->next;
       if( peer->TotalDL() || peer->TotalUL() ){  // keep stats
         peer->SetLastTimestamp();
         p->next = m_dead;
@@ -331,7 +330,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         delete p;
       }
       m_peers_count--;
-      if( pp ) p = pp->next; else p = m_head;
+      p = pp ? pp->next : m_head;
       continue;
     }else{
       if( !PEER_IS_SUCCESS(peer) ) m_conn_count++;
@@ -339,7 +338,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         if( peer->bitfield.IsFull() ) m_seeds_count++;
         if( peer->Is_Local_Interested() ){
           interested_count++;
-          if( peer->Is_Remote_UnChoked() ) m_downloads++;
+          if( peer->Is_Remote_Unchoked() ) m_downloads++;
         }
       }
       if( f_keepalive_check ){
@@ -348,7 +347,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
           peer->CloseConnection();
           goto skip_continue;
         }
-        if( PEER_IS_SUCCESS(peer) && 
+        if( PEER_IS_SUCCESS(peer) &&
             KEEPALIVE_INTERVAL <= now - peer->GetLastTimestamp() &&
             peer->AreYouOK() < 0 ){
           if(arg_verbose) CONSOLE.Debug("close: keepalive death");
@@ -358,9 +357,9 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       }
       if( f_unchoke_check && PEER_IS_SUCCESS(peer) ){
         if( peer->Is_Remote_Interested() && peer->Need_Local_Data() ){
-          if( UNCHOKER && UnChokeCheck(peer, UNCHOKER) < 0 )
+          if( UNCHOKER && UnchokeCheck(peer, UNCHOKER) < 0 )
             goto skip_continue;
-        }else if(peer->SetLocal(BT_MSG_CHOKE) < 0){
+        }else if( peer->SetLocal(BT_MSG_CHOKE) < 0 ){
           if(arg_verbose) CONSOLE.Debug("close: Can't choke peer");
           peer->CloseConnection();
           goto skip_continue;
@@ -368,11 +367,11 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       }
 
       if( PEER_IS_FAILED(peer) ) goto skip_continue;  // failsafe
-      if(maxfd < sk) maxfd = sk;
-      if( !FD_ISSET(sk,rfdp) && peer->NeedRead((int)m_f_limitd) )
-        FD_SET(sk,rfdp);
-      if( !FD_ISSET(sk,wfdp) && peer->NeedWrite((int)m_f_limitu) )
-        FD_SET(sk,wfdp);
+      if( maxfd < sk ) maxfd = sk;
+      if( !FD_ISSET(sk, rfdp) && peer->NeedRead((int)m_f_limitd) )
+        FD_SET(sk, rfdp);
+      if( !FD_ISSET(sk, wfdp) && peer->NeedWrite((int)m_f_limitu) )
+        FD_SET(sk, wfdp);
 
       if( cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
         if( peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval) ){
@@ -381,29 +380,30 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         }
       }
 
-    skip_continue: 
+    skip_continue:
       if( PEER_IS_FAILED(peer) ){
-        FD_CLR(sk,rfdp);
-        FD_CLR(sk,wfdp);
+        FD_CLR(sk, rfdp);
+        FD_CLR(sk, wfdp);
       }
       pp = p;
       p = p->next;
     }
-  } // end for
+  }  // end for
   if( (m_f_limitu && !(m_f_limitu = BandWidthLimitUp(Self.LateUL()))) ||
-      (m_f_limitd && !(m_f_limitd = BandWidthLimitDown(Self.LateDL()))) )
+      (m_f_limitd && !(m_f_limitd = BandWidthLimitDown(Self.LateDL()))) ){
     goto again;
+  }
 
   if( 0==interested_count ) Self.StopDLTimer();
 
-  if( INVALID_SOCKET != m_listen_sock && m_peers_count < cfg_max_peers){
+  if( INVALID_SOCKET != m_listen_sock && m_peers_count < cfg_max_peers ){
     FD_SET(m_listen_sock, rfdp);
     if( maxfd < m_listen_sock ) maxfd = m_listen_sock;
   }
 
   if( f_unchoke_check && UNCHOKER ){
     m_unchoke_check_timestamp = now;  // time of the last unchoke check
-    if (!m_opt_timestamp) m_opt_timestamp = now;
+    if( !m_opt_timestamp ) m_opt_timestamp = now;
 
     if( !UNCHOKER[0] ) Self.StopULTimer();
 
@@ -417,16 +417,16 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       if( UNCHOKER[i]->SetLocal(BT_MSG_UNCHOKE) < 0 ){
         if(arg_verbose) CONSOLE.Debug("close: Can't unchoke peer");
         UNCHOKER[i]->CloseConnection();
-        FD_CLR(sk,rfdp);
-        FD_CLR(sk,wfdp);
+        FD_CLR(sk, rfdp);
+        FD_CLR(sk, wfdp);
         continue;
       }
 
-      if( !FD_ISSET(sk,wfdp) && UNCHOKER[i]->NeedWrite((int)m_f_limitu) ){
-        FD_SET(sk,wfdp);
-        if( maxfd < sk) maxfd = sk;
+      if( !FD_ISSET(sk, wfdp) && UNCHOKER[i]->NeedWrite((int)m_f_limitu) ){
+        FD_SET(sk, wfdp);
+        if( maxfd < sk ) maxfd = sk;
       }
-    } // end for
+    }  // end for
     delete []UNCHOKER;
   }
 
@@ -476,22 +476,24 @@ void PeerList::SetUnchokeIntervals()
   m_prev_limit_up = cfg_max_bandwidth_up;
   m_interval_timestamp = now;
   if( arg_verbose && (m_unchoke_interval != old_unchoke_int ||
-      m_opt_interval != old_opt_int) )
+                      m_opt_interval != old_opt_int) ){
     CONSOLE.Debug("ulimit %d, unchoke interval %d, opt interval %d",
       (int)cfg_max_bandwidth_up, (int)m_unchoke_interval, (int)m_opt_interval);
+  }
 }
 
-btPeer* PeerList::Who_Can_Abandon(btPeer *proposer)
+btPeer *PeerList::Who_Can_Abandon(btPeer *proposer)
 {
   PEERNODE *p;
-  btPeer *peer = (btPeer*) 0;
+  btPeer *peer = (btPeer *)0;
   PSLICE ps;
   bt_index_t idx;
 
   for( p = m_head; p; p = p->next ){
-    if(!PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
-       p->peer->request_q.IsEmpty() ) continue;
-
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
+        p->peer->request_q.IsEmpty() ){
+      continue;
+    }
     if( (peer && p->peer->NominalDL() < peer->NominalDL()) ||
         (!peer && p->peer->NominalDL() * 1.5 < proposer->NominalDL()) ){
       idx = p->peer->request_q.GetRequestIdx();
@@ -510,17 +512,17 @@ btPeer* PeerList::Who_Can_Abandon(btPeer *proposer)
         }
       }
     }
-  } //end for
+  }  // end for
   if( peer && arg_verbose )
     CONSOLE.Debug("Abandoning %p (%d B/s) for %p (%d B/s)",
       peer, peer->NominalDL(), proposer, proposer->NominalDL());
   return peer;
 }
 
-// This takes an index parameter to facilitate modification of the function to
-// allow targeting of a specific piece.  It's currently only used as a flag to
-// specify endgame or initial-piece mode though.
-bt_index_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
+/* This takes an index parameter to facilitate modification of the function to
+   allow targeting of a specific piece.  It's currently only used as a flag to
+   specify endgame or initial-piece mode though. */
+bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
   bt_index_t idx)
 {
   struct qdata {
@@ -544,11 +546,11 @@ bt_index_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
   if( !data ) return BTCONTENT.GetNPieces();
 #endif
 
-  // In initial mode, only dup a piece with trade value.
-  // In endgame mode, dup any if there are no pieces with trade value.
+  /* In initial mode, only dup a piece with trade value.
+     In endgame mode, dup any if there are no pieces with trade value. */
   FindValuedPieces(bf, proposer, !endgame);
   if( bf.IsEmpty() ){
-    if(endgame) bf = proposer->bitfield;
+    if( endgame ) bf = proposer->bitfield;
     else return BTCONTENT.GetNPieces();
   }
 
@@ -562,15 +564,16 @@ bt_index_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
   // measure applicable piece request queues
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
-        p->peer->request_q.IsEmpty() )
+        p->peer->request_q.IsEmpty() ){
       continue;
-
+    }
     piece = BTCONTENT.GetNPieces();
     ps = p->peer->request_q.GetHead();
     for( ; ps; ps = ps->next ){
       if( piece == ps->index ||
-          !bf.IsSet(ps->index) || proposer->request_q.HasIdx(ps->index) )
+          !bf.IsSet(ps->index) || proposer->request_q.HasIdx(ps->index) ){
         continue;
+      }
       piece = ps->index;
       qsize = p->peer->request_q.Qlen(piece);
 
@@ -593,7 +596,7 @@ bt_index_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
         data[i].count++;
       }
     }
-  } // end of measurement loop
+  }  // end of measurement loop
 
   /* Find the best workload for initial/endgame.
      In endgame mode, request the piece that should take the longest.
@@ -611,14 +614,14 @@ bt_index_t PeerList::What_Can_Duplicate(BitField &bf, const btPeer *proposer,
   if( mark < slots && data[mark].count == 1 ) m_dup_req_pieces++;
   CONSOLE.Debug("%d dup req pieces", (int)m_dup_req_pieces);
   delete []data;
-  return (mark < slots) ? data[mark].idx : BTCONTENT.GetNPieces();
+  return ( mark < slots ) ? data[mark].idx : BTCONTENT.GetNPieces();
 }
 
-void PeerList::FindValuedPieces(BitField &bf, const btPeer *proposer,
+void PeerList::FindValuedPieces(Bitfield &bf, const btPeer *proposer,
   int initial) const
 {
   PEERNODE *p;
-  BitField bf_all_have = bf, bf_int_have = bf,
+  Bitfield bf_all_have = bf, bf_int_have = bf,
     bf_others_have, bf_only_he_has = bf, *pbf_prefer;
 
   for( p = m_head; p; p = p->next ){
@@ -628,7 +631,7 @@ void PeerList::FindValuedPieces(BitField &bf, const btPeer *proposer,
     bf_all_have.And(p->peer->bitfield);
     if( !initial && !p->peer->bitfield.IsFull() )
       bf_only_he_has.Except(p->peer->bitfield);
-    else bf_others_have.Comb(p->peer->bitfield);
+    else bf_others_have.Or(p->peer->bitfield);
   }
   /* bf_all_have is now pertinent pieces that all peers have
      bf_int_have is pertinent pieces that all peers in which I'm interested have
@@ -637,18 +640,18 @@ void PeerList::FindValuedPieces(BitField &bf, const btPeer *proposer,
   if( !bf_int_have.IsFull() )
     bf_all_have = bf_int_have;
   bf_all_have.Invert();
-  bf.And(bf_all_have); // bf is now pertinent pieces that not everyone has
+  bf.And(bf_all_have);  // bf is now pertinent pieces that not everyone has
 
   pbf_prefer = initial ? &bf_others_have : &bf_only_he_has;
 
-  BitField tmpBitField = bf;
-  tmpBitField.And(*pbf_prefer);
-  /* If initial mode, tmpBitField is now pertinent pieces that more than one
+  Bitfield tmpBitfield = bf;
+  tmpBitfield.And(*pbf_prefer);
+  /* If initial mode, tmpBitfield is now pertinent pieces that more than one
      peer has, but not everyone.
      Otherwise, it's pertinent pieces that only the proposer has (not
      considering what other seeders have).
      In either case if there are no such pieces, revert to the simple answer.*/
-  if( !tmpBitField.IsEmpty() ) bf = tmpBitField;
+  if( !tmpBitfield.IsEmpty() ) bf = tmpBitfield;
 }
 
 /* Find a peer with the given piece in its request queue.
@@ -657,7 +660,7 @@ void PeerList::FindValuedPieces(BitField &bf, const btPeer *proposer,
 btPeer *PeerList::WhoHas(bt_index_t idx) const
 {
   PEERNODE *p;
-  btPeer *peer = (btPeer*) 0;
+  btPeer *peer = (btPeer *)0;
 
   for( p = m_head; p; p = p->next ){
     if( p->peer->request_q.HasIdx(idx) ){
@@ -801,7 +804,7 @@ void PeerList::RecalcDupReqs()
   PEERNODE *p;
   PSLICE ps;
   bt_index_t idx;
-  BitField rqbf, dupbf;
+  Bitfield rqbf, dupbf;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
@@ -827,7 +830,7 @@ void PeerList::Tell_World_I_Have(bt_index_t idx)
   btPeer *peer;
   int r = 0, f_seed = 0;
 
-  if ( BTCONTENT.Seeding() ) f_seed = 1;
+  if( BTCONTENT.Seeding() ) f_seed = 1;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) ) continue;
@@ -856,7 +859,7 @@ void PeerList::Tell_World_I_Have(bt_index_t idx)
         peer->CloseConnection();
       }
     }
-  } // end for
+  }  // end for
 }
 
 int PeerList::Accepter()
@@ -865,7 +868,7 @@ int PeerList::Accepter()
   socklen_t addrlen;
   struct sockaddr_in addr;
   addrlen = sizeof(struct sockaddr_in);
-  newsk = accept(m_listen_sock,(struct sockaddr*) &addr,&addrlen);
+  newsk = accept(m_listen_sock, (struct sockaddr *)&addr, &addrlen);
 //  CONSOLE.Debug("incoming! %s:%hu",
 //    inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
@@ -881,33 +884,33 @@ int PeerList::Accepter()
     return -1;
   }
 
-  return NewPeer(addr,newsk);
+  return NewPeer(addr, newsk);
 }
 
 int PeerList::Initial_ListenPort()
 {
   int r = 0;
   struct sockaddr_in lis_addr;
-  memset(&lis_addr,0, sizeof(sockaddr_in));
+  memset(&lis_addr, 0, sizeof(sockaddr_in));
   lis_addr.sin_family = AF_INET;
   lis_addr.sin_addr.s_addr = INADDR_ANY;
   strcpy(m_listen, "n/a");
 
-  m_listen_sock = socket(AF_INET,SOCK_STREAM,0);
+  m_listen_sock = socket(AF_INET, SOCK_STREAM, 0);
 
   if( INVALID_SOCKET == m_listen_sock ) return -1;
 
-  if ( cfg_listen_ip != 0 )
+  if( cfg_listen_ip != 0 )
     lis_addr.sin_addr.s_addr = cfg_listen_ip;
 
-  if(cfg_listen_port){
+  if( cfg_listen_port ){
     int opt = 1;
     setsockopt(m_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     lis_addr.sin_port = htons(cfg_listen_port);
-    if( bind(m_listen_sock, (struct sockaddr*)&lis_addr,
-        sizeof(struct sockaddr_in)) == 0 ) 
+    if( bind(m_listen_sock, (struct sockaddr *)&lis_addr,
+             sizeof(struct sockaddr_in)) == 0 ){
       r = 1;
-    else{
+    }else{
       opt = 0;
       setsockopt(m_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
       CONSOLE.Warning(2, "warn, couldn't bind on specified port %d:  %s",
@@ -917,37 +920,37 @@ int PeerList::Initial_ListenPort()
 
   if( !r && (!cfg_listen_port || cfg_listen_port > 1025) ){
     r = -1;
-    if(cfg_listen_port){
+    if( cfg_listen_port ){
       cfg_min_listen_port = cfg_listen_port -
                             (cfg_max_listen_port - cfg_min_listen_port);
       if( cfg_min_listen_port < 1025 ) cfg_min_listen_port = 1025;
       cfg_max_listen_port = cfg_listen_port;
     }
     cfg_listen_port = cfg_max_listen_port;
-    for( ; r != 0; ){
+    while( r != 0 ){
       lis_addr.sin_port = htons(cfg_listen_port);
-      r = bind(m_listen_sock, (struct sockaddr*)&lis_addr,
+      r = bind(m_listen_sock, (struct sockaddr *)&lis_addr,
         sizeof(struct sockaddr_in));
-      if(r != 0){
+      if( r != 0 ){
         cfg_listen_port--;
-        if(cfg_listen_port < cfg_min_listen_port){
+        if( cfg_listen_port < cfg_min_listen_port ){
           CLOSE_SOCKET(m_listen_sock);
           CONSOLE.Warning(1, "error, couldn't bind port from %d to %d:  %s",
             cfg_min_listen_port, cfg_max_listen_port, strerror(errno));
           return -1;
         }
       }
-    } /* end for(; r != 0;) */
+    }  // end while
   }
 
-  if(listen(m_listen_sock,5) == -1){
+  if( listen(m_listen_sock, 5) == -1 ){
     CLOSE_SOCKET(m_listen_sock);
     CONSOLE.Warning(1, "error, couldn't listen on port %d: %s",
-      cfg_listen_port,strerror(errno));
+      cfg_listen_port, strerror(errno));
     return -1;
   }
 
-  if( setfd_nonblock(m_listen_sock) < 0){
+  if( setfd_nonblock(m_listen_sock) < 0 ){
     CLOSE_SOCKET(m_listen_sock);
     CONSOLE.Warning(1, "error, couldn't set socket to nonblock mode.");
     return -1;
@@ -962,44 +965,44 @@ int PeerList::Initial_ListenPort()
 
 bt_index_t PeerList::Pieces_I_Can_Get() const
 {
-  BitField tmpBitField;
-  return Pieces_I_Can_Get(&tmpBitField);
+  Bitfield tmpBitfield;
+  return Pieces_I_Can_Get(&tmpBitfield);
 }
 
-bt_index_t PeerList::Pieces_I_Can_Get(BitField *ptmpBitField) const
+bt_index_t PeerList::Pieces_I_Can_Get(Bitfield *ptmpBitfield) const
 {
   if( m_seeds_count > 0 || BTCONTENT.IsFull() )
-    ptmpBitField->SetAll();
+    ptmpBitfield->SetAll();
   else{
     PEERNODE *p;
 
-    *ptmpBitField = *BTCONTENT.pBF;
+    *ptmpBitfield = *BTCONTENT.pBF;
 
-    for( p = m_head; p && !ptmpBitField->IsFull(); p = p->next ){
+    for( p = m_head; p && !ptmpBitfield->IsFull(); p = p->next ){
       if( PEER_IS_SUCCESS(p->peer) )
-        ptmpBitField->Comb(p->peer->bitfield);
+        ptmpBitfield->Or(p->peer->bitfield);
     }
   }
-  return ptmpBitField->Count();
+  return ptmpBitfield->Count();
 }
 
 int PeerList::AlreadyRequested(bt_index_t idx) const
 {
   PEERNODE *p;
   for( p = m_head; p; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty()) continue;
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
     if( p->peer->request_q.HasIdx(idx) ) return 1;
   }
   return 0;
 }
 
-void PeerList::CheckBitField(BitField &bf)
+void PeerList::CheckBitfield(Bitfield &bf)
 {
   PEERNODE *p;
   PSLICE ps;
   bt_index_t idx;
-  for( p = m_head; p ; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty()) continue;
+  for( p = m_head; p; p = p->next ){
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
     ps = p->peer->request_q.GetHead();
     idx = BTCONTENT.GetNPieces();
     for( ; ps; ps = ps->next ){
@@ -1016,9 +1019,9 @@ void PeerList::PrintOut() const
   PEERNODE *p = m_head;
   struct sockaddr_in sin;
   CONSOLE.Print("PEER LIST");
-  for( ; p ; p = p->next ){
-        if(PEER_IS_FAILED(p->peer)) continue;
-        p->peer->dump();
+  for( ; p; p = p->next ){
+    if( PEER_IS_FAILED(p->peer) ) continue;
+    p->peer->dump();
   }
 }
 
@@ -1033,7 +1036,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   if( FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
     if( !Self.OntimeDL() && !Self.OntimeUL() ){
-      FD_CLR(m_listen_sock,rfdnextp);
+      FD_CLR(m_listen_sock, rfdnextp);
       Accepter();
     }
   }
@@ -1057,12 +1060,12 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     sk = peer->stream.GetSocket();
 
     if( DT_PEER_SUCCESS == peer->GetStatus() ){
-      if( FD_ISSET(sk,rfdp) ){
+      if( FD_ISSET(sk, rfdp) ){
         (*nready)--;
         if( !Self.OntimeUL() ){
           pready = 1;
           m_readycnt++;
-          FD_CLR(sk,rfdnextp);
+          FD_CLR(sk, rfdnextp);
           if( peer->RecvModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: receive");
             peer->CloseConnection();
@@ -1084,20 +1087,20 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         peer->CloseConnection();
       }
       if( PEER_IS_FAILED(peer) ){
-        if( FD_ISSET(sk,wfdp) ) (*nready)--;
-        FD_CLR(sk,wfdnextp);
+        if( FD_ISSET(sk, wfdp) ) (*nready)--;
+        FD_CLR(sk, wfdnextp);
       }
     }
     if( DT_PEER_SUCCESS == peer->GetStatus() ){
-      if( FD_ISSET(sk,wfdp) ){
+      if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
         if( !Self.OntimeDL() ){
           if( !pready ) m_readycnt++;
-          FD_CLR(sk,wfdnextp);
+          FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: send");
             peer->CloseConnection();
-            FD_CLR(sk,rfdnextp);
+            FD_CLR(sk, rfdnextp);
           }else if( !pready ){
             if( pcount > Rank(peer) )
               pmoved = 1;
@@ -1112,52 +1115,52 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       }
     }
     else if( DT_PEER_HANDSHAKE == peer->GetStatus() ){
-      if( FD_ISSET(sk,rfdp) ){
+      if( FD_ISSET(sk, rfdp) ){
         (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
-          FD_CLR(sk,rfdnextp);
+          FD_CLR(sk, rfdnextp);
           if( peer->HandShake() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: bad handshake");
             peer->CloseConnection();
-            FD_CLR(sk,wfdnextp);
+            FD_CLR(sk, wfdnextp);
           }
         }
       }
-      if( FD_ISSET(sk,wfdp) ){
+      if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
-          FD_CLR(sk,wfdnextp);
+          FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: send handshake");
             peer->CloseConnection();
-            FD_CLR(sk,rfdnextp);
+            FD_CLR(sk, rfdnextp);
           }
         }
       }
     }
     else if( DT_PEER_CONNECTING == peer->GetStatus() ){
-      if( FD_ISSET(sk,wfdp) ){
-        (*nready)--; 
+      if( FD_ISSET(sk, wfdp) ){
+        (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
-          FD_CLR(sk,wfdnextp);
+          FD_CLR(sk, wfdnextp);
           if( peer->Send_ShakeInfo() < 0 ){
             if(arg_verbose) CONSOLE.Debug("close: Sending handshake");
             peer->CloseConnection();
-            FD_CLR(sk,rfdnextp);
+            FD_CLR(sk, rfdnextp);
           }else peer->SetStatus(DT_PEER_HANDSHAKE);
         }
-        if( FD_ISSET(sk,rfdp) ) (*nready)--; 
-      }else if( FD_ISSET(sk,rfdp) ){  // connect failed.
-        (*nready)--; 
+        if( FD_ISSET(sk, rfdp) ) (*nready)--;
+      }else if( FD_ISSET(sk, rfdp) ){  // connect failed.
+        (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
-          FD_CLR(sk,rfdnextp);
+          FD_CLR(sk, rfdnextp);
           if(arg_verbose) CONSOLE.Debug("close: connect failed");
           peer->CloseConnection();
-          FD_CLR(sk,wfdnextp);
+          FD_CLR(sk, wfdnextp);
         }
       }
     }
-  }// end for
+  }  // end for
 
   if( !m_ul_limited && !BandWidthLimitUp() ) m_missed_count++;
 }
@@ -1180,144 +1183,146 @@ void PeerList::CloseAllConnectionToSeed()
   }
 }
 
-int PeerList::UnChokeCheck(btPeer* peer, btPeer *peer_array[])
+/* Find my 3 or 4 fastest peers.
+   The m_max_unchoke+1 (4th) slot is for the optimistic unchoke when it
+   happens. */
+int PeerList::UnchokeCheck(btPeer *peer, btPeer *peer_array[])
 {
   int i = 0;
   int cancel_idx = 0;
-  btPeer *loster = (btPeer*) 0;
+  btPeer *loser = (btPeer *)0;
   int f_seed = BTCONTENT.Seeding();
   int no_opt = 0;
   int retval = 0;
 
-  if(m_opt_timestamp) no_opt = 1;
-  if(f_seed) no_opt = 1 - no_opt;
-
-// Find my 3 or 4 fastest peers.
-// The m_max_unchoke+1 (4th) slot is for the optimistic unchoke when it happens.
+  if( m_opt_timestamp ) no_opt = 1;
+  if( f_seed ) no_opt = 1 - no_opt;
 
   // Find a slot for the candidate--the slowest peer, or an available slot.
   for( cancel_idx = i = 0; i < m_max_unchoke + no_opt; i++ ){
-    if((btPeer*) 0 == peer_array[i] ||
-        PEER_IS_FAILED(peer_array[i]) ){	// сп©ун╩
-      cancel_idx = i; 
+    if( (btPeer *)0 == peer_array[i] ||
+        PEER_IS_FAILED(peer_array[i]) ){
+      cancel_idx = i;
       break;
     }else{
-      if(cancel_idx == i) continue;
+      if( cancel_idx == i ) continue;
 
-      if(f_seed){
+      if( f_seed ){
         // compare time unchoked
-        if( (!peer_array[i]->Is_Local_UnChoked() &&
-            (peer_array[cancel_idx]->Is_Local_UnChoked() ||
+        if( (!peer_array[i]->Is_Local_Unchoked() &&
+            (peer_array[cancel_idx]->Is_Local_Unchoked() ||
               peer_array[cancel_idx]->GetLastUnchokeTime() <
                 peer_array[i]->GetLastUnchokeTime())) ||
-            (peer_array[i]->Is_Local_UnChoked() &&
-             peer_array[cancel_idx]->Is_Local_UnChoked() &&
+            (peer_array[i]->Is_Local_Unchoked() &&
+             peer_array[cancel_idx]->Is_Local_Unchoked() &&
              peer_array[i]->GetLastUnchokeTime() <
-               peer_array[cancel_idx]->GetLastUnchokeTime()) )
+               peer_array[cancel_idx]->GetLastUnchokeTime()) ){
           cancel_idx = i;
+        }
       }else{
         // compare download rate.
-        if( peer_array[cancel_idx]->RateDL() > peer_array[i]->RateDL()
-          //if equal, reciprocate to the peer we've sent less to, proportionally
-          ||(peer_array[cancel_idx]->RateDL() == peer_array[i]->RateDL()
-            && peer_array[cancel_idx]->TotalUL()
-                / (peer_array[cancel_idx]->TotalDL()+.001)
-              < peer_array[i]->TotalUL() / (peer_array[i]->TotalDL()+.001)) )
+        if( peer_array[cancel_idx]->RateDL() > peer_array[i]->RateDL() ||
+          // If equal reciprocate to the peer we've sent less to, proportionally
+            (peer_array[cancel_idx]->RateDL() == peer_array[i]->RateDL() &&
+             peer_array[cancel_idx]->TotalUL() /
+                 (peer_array[cancel_idx]->TotalDL()+.001) <
+               peer_array[i]->TotalUL() / (peer_array[i]->TotalDL()+.001)) ){
           cancel_idx = i;
+        }
       }
     }
-  } // end for
+  }  // end for
 
-  if( (btPeer*) 0 != peer_array[cancel_idx] &&
+  if( (btPeer *)0 != peer_array[cancel_idx] &&
       PEER_IS_SUCCESS(peer_array[cancel_idx]) ){
-    if(f_seed){
-      if( (!peer_array[cancel_idx]->Is_Local_UnChoked() &&
-           (peer->Is_Local_UnChoked() ||
+    if( f_seed ){
+      if( (!peer_array[cancel_idx]->Is_Local_Unchoked() &&
+           (peer->Is_Local_Unchoked() ||
              peer->GetLastUnchokeTime() <
                peer_array[cancel_idx]->GetLastUnchokeTime())) ||
-           (peer_array[cancel_idx]->Is_Local_UnChoked() &&
-            peer->Is_Local_UnChoked() &&
+           (peer_array[cancel_idx]->Is_Local_Unchoked() &&
+            peer->Is_Local_Unchoked() &&
             peer_array[cancel_idx]->GetLastUnchokeTime() <
               peer->GetLastUnchokeTime()) ){
-        loster = peer_array[cancel_idx];
+        loser = peer_array[cancel_idx];
         peer_array[cancel_idx] = peer;
       }else
-        loster = peer;
+        loser = peer;
     }else{
-      if( peer->RateDL() > peer_array[cancel_idx]->RateDL()
-        // If equal, reciprocate to the peer we've sent less to, proportionally
-        ||(peer_array[cancel_idx]->RateDL() == peer->RateDL()
-          && peer_array[cancel_idx]->TotalUL()
-                / (peer_array[cancel_idx]->TotalDL()+.001)
-            > peer->TotalUL() / (peer->TotalDL()+.001)) ){
-        loster = peer_array[cancel_idx];
+      if( peer->RateDL() > peer_array[cancel_idx]->RateDL() ||
+        // If equal reciprocate to the peer we've sent less to, proportionally
+          (peer_array[cancel_idx]->RateDL() == peer->RateDL() &&
+           peer_array[cancel_idx]->TotalUL() /
+               (peer_array[cancel_idx]->TotalDL()+.001) >
+             peer->TotalUL() / (peer->TotalDL()+.001)) ){
+        loser = peer_array[cancel_idx];
         peer_array[cancel_idx] = peer;
       }else
-        loster = peer;
+        loser = peer;
     }
 
     // opt unchoke
     if( no_opt ){
-      if( loster->SetLocal(BT_MSG_CHOKE) < 0 ){
-        loster->CloseConnection();
-        if( peer==loster ) retval = -1;
+      if( loser->SetLocal(BT_MSG_CHOKE) < 0 ){
+        loser->CloseConnection();
+        if( peer==loser ) retval = -1;
       }
     }
     else
     // The last slot is for the optimistic unchoke.
-    if( (btPeer*) 0 == peer_array[m_max_unchoke] ||
-        PEER_IS_FAILED(peer_array[m_max_unchoke]) )
-      peer_array[m_max_unchoke] = loster;
-    else {
-      // if loser is empty and current is not, loser gets 75% chance.
-      if( loster->IsEmpty() && !peer_array[m_max_unchoke]->IsEmpty()
-            && RandBits(2) ){
-        btPeer* tmp = peer_array[m_max_unchoke];
-        peer_array[m_max_unchoke] = loster;
-        loster = tmp;
-      } else
-        // This mess chooses the loser:
-        // if loser is choked and current is not
-        // OR if both are choked and loser has waited longer
-        // OR if both are unchoked and loser has had less time unchoked.
-      if( (!loster->Is_Local_UnChoked() &&
-            ( peer_array[m_max_unchoke]->Is_Local_UnChoked() ||
-              loster->GetLastUnchokeTime() <
+    if( (btPeer *)0 == peer_array[m_max_unchoke] ||
+        PEER_IS_FAILED(peer_array[m_max_unchoke]) ){
+      peer_array[m_max_unchoke] = loser;
+    }else{
+      // If loser is empty and current is not, loser gets 75% chance.
+      if( loser->IsEmpty() && !peer_array[m_max_unchoke]->IsEmpty() &&
+          RandBits(2) ){
+        btPeer *tmp = peer_array[m_max_unchoke];
+        peer_array[m_max_unchoke] = loser;
+        loser = tmp;
+      }else
+        /* This mess chooses the loser:
+           if loser is choked and current is not
+           OR if both are choked and loser has waited longer
+           OR if both are unchoked and loser has had less time unchoked. */
+      if( (!loser->Is_Local_Unchoked() &&
+            ( peer_array[m_max_unchoke]->Is_Local_Unchoked() ||
+              loser->GetLastUnchokeTime() <
                 peer_array[m_max_unchoke]->GetLastUnchokeTime() )) ||
-          (loster->Is_Local_UnChoked() &&
-            peer_array[m_max_unchoke]->Is_Local_UnChoked() &&
+          (loser->Is_Local_Unchoked() &&
+            peer_array[m_max_unchoke]->Is_Local_Unchoked() &&
             peer_array[m_max_unchoke]->GetLastUnchokeTime() <
-              loster->GetLastUnchokeTime()) ){
-        // if current is empty and loser is not, loser gets 25% chance;
-        //    else loser wins.
-        // transformed to: if loser is empty or current isn't, or 25% chance,
-        //    then loser wins.
-        if( !peer_array[m_max_unchoke]->IsEmpty() || loster->IsEmpty()
-            || !RandBits(2) ){
-          btPeer* tmp = peer_array[m_max_unchoke];
-          peer_array[m_max_unchoke] = loster;
-          loster = tmp;
+              loser->GetLastUnchokeTime()) ){
+        /* If current is empty and loser is not, loser gets 25% chance;
+              else loser wins.
+           transformed to: if loser is empty or current isn't, or 25% chance,
+              then loser wins. */
+        if( !peer_array[m_max_unchoke]->IsEmpty() || loser->IsEmpty() ||
+            !RandBits(2) ){
+          btPeer *tmp = peer_array[m_max_unchoke];
+          peer_array[m_max_unchoke] = loser;
+          loser = tmp;
         }
       }
-      if(loster->SetLocal(BT_MSG_CHOKE) < 0){
-        loster->CloseConnection();
-        if( peer==loster ) retval = -1;
+      if( loser->SetLocal(BT_MSG_CHOKE) < 0 ){
+        loser->CloseConnection();
+        if( peer==loser ) retval = -1;
       }
     }
-  }else //else if((btPeer*) 0 != peer_array[cancel_idx].....
+  }else  // else if( (btPeer *)0 != peer_array[cancel_idx] ...)
     peer_array[cancel_idx] = peer;
 
   return retval;
 }
 
-// When we change what we're going after, we need to evaluate & set our
-// interest with each peer appropriately.
+/* When we change what we're going after, we need to evaluate & set our
+   interest with each peer appropriately. */
 void PeerList::CheckInterest()
 {
   PEERNODE *p = m_head;
   for( ; p; p = p->next ){
-    // Don't shortcut by checking Is_Local_Interested(), as we need to let
-    // SetLocal() reset the m_standby flag.
+    /* Don't shortcut by checking Is_Local_Interested(), as we need to let
+       SetLocal() reset the m_standby flag. */
     if( p->peer->Need_Remote_Data() ){
       if( p->peer->SetLocal(BT_MSG_INTERESTED) < 0 )
         p->peer->CloseConnection();
@@ -1328,7 +1333,7 @@ void PeerList::CheckInterest()
   }
 }
 
-btPeer* PeerList::GetNextPeer(btPeer *peer) const
+btPeer *PeerList::GetNextPeer(btPeer *peer) const
 {
   static PEERNODE *p = m_head;
 
@@ -1336,35 +1341,36 @@ btPeer* PeerList::GetNextPeer(btPeer *peer) const
   else if( p && p->peer == peer ){
     p = p->next;
   }else{
-    for( p=m_head; p && (p->peer != peer); p = p->next );
-    if(p) p = p->next;
+    for( p = m_head; p && (p->peer != peer); p = p->next );
+    if( p ) p = p->next;
     else p = m_head;
   }
   for( ; p; p = p->next )
     if( p->peer && PEER_IS_SUCCESS(p->peer) ) break;
 
-  if(p) return p->peer;
-  else return (btPeer*) 0;
+  if( p ) return p->peer;
+  else return (btPeer *)0;
 }
 
 int PeerList::Endgame()
 {
-  BitField tmpBitfield;
+  Bitfield tmpBitfield;
   int endgame = 0;
 
   tmpBitfield = *BTCONTENT.pBF;
   tmpBitfield.Invert();                       // what I don't have...
   tmpBitfield.Except(BTCONTENT.GetFilter());  // ...that I want
   if( tmpBitfield.Count() > 0 &&
-      tmpBitfield.Count() < m_peers_count - m_conn_count )
+      tmpBitfield.Count() < m_peers_count - m_conn_count ){
     endgame = 1;
-  else{
+  }else{
     Pieces_I_Can_Get(&tmpBitfield);             // what's available...
     tmpBitfield.Except(BTCONTENT.GetFilter());  // ...that I want...
     tmpBitfield.Except(*BTCONTENT.pBF);         // ...that I don't have
     if( tmpBitfield.Count() > 0 &&
-        tmpBitfield.Count() < m_peers_count - m_conn_count)
+        tmpBitfield.Count() < m_peers_count - m_conn_count){
       endgame = 1;
+    }
   }
 
   if( endgame && !m_endgame ){
@@ -1394,7 +1400,7 @@ void PeerList::Pause()
   m_f_pause = 1;
   StopDownload();
   for( ; p; p = p->next ){
-    if( p->peer->Is_Local_UnChoked() && p->peer->SetLocal(BT_MSG_CHOKE) < 0 )
+    if( p->peer->Is_Local_Unchoked() && p->peer->SetLocal(BT_MSG_CHOKE) < 0 )
       p->peer->CloseConnection();
   }
 }
@@ -1422,7 +1428,7 @@ dt_count_t PeerList::GetUnchoked() const
   dt_count_t count = 0;
 
   for( p = m_head; p; p = p->next ){
-    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_UnChoked() ){
+    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_Unchoked() ){
       count++;
       if( count > m_max_unchoke ) break;
     }
@@ -1430,8 +1436,8 @@ dt_count_t PeerList::GetUnchoked() const
   return count;
 }
 
-// This function returns 0 if it could not find an upload faster than the
-// minimum and all peer upload rates are known (not zero).
+/* This function returns 0 if it could not find an upload faster than the
+   minimum and all peer upload rates are known (not zero). */
 dt_rate_t PeerList::GetSlowestUp(dt_rate_t minimum) const
 {
   PEERNODE *p;
@@ -1440,7 +1446,7 @@ dt_rate_t PeerList::GetSlowestUp(dt_rate_t minimum) const
   dt_count_t unchoked = 0;
 
   for( p = m_head; p; p = p->next ){
-    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_UnChoked() ){
+    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_Unchoked() ){
       unchoked++;
       rate = p->peer->RateUL();
       if( 0==rate ) zero = 1;
@@ -1626,7 +1632,7 @@ void PeerList::UnchokeIfFree(btPeer *peer)
 
   if( m_f_pause ) return;
   for( p = m_head; p; p = p->next ){
-    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_UnChoked() &&
+    if( PEER_IS_SUCCESS(p->peer) && p->peer->Is_Local_Unchoked() &&
         p->peer->Is_Remote_Interested() ){
       count++;
       if( m_max_unchoke < count ) return;

@@ -1,5 +1,5 @@
-#ifndef SLICE_H
-#define SLICE_H
+#ifndef BTREQUEST_H
+#define BTREQUEST_H
 
 #include "def.h"
 
@@ -16,7 +16,7 @@ typedef struct _slice{
    bt_length_t length;
    time_t reqtime;
    struct _slice *next;
-}SLICE,*PSLICE;
+}SLICE, *PSLICE;
 
 class RequestQueue
 {
@@ -31,7 +31,7 @@ class RequestQueue
   void Empty();
 
   void SetHead(PSLICE ps);
-  void SetNextSend(PSLICE ps) { rq_send = ps; }
+  void SetNextSend(PSLICE ps){ rq_send = ps; }
   PSLICE GetHead() const { return rq_head; }
   PSLICE NextSend() const { return rq_send; }
   bt_index_t GetRequestIdx() const { return rq_head ? rq_head->index :
@@ -58,7 +58,7 @@ class RequestQueue
   int HasIdx(bt_index_t idx) const;
   int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
   time_t GetReqTime(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
-  void SetReqTime(PSLICE n,time_t t);
+  void SetReqTime(PSLICE n, time_t t);
 
 
   int Pop(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen);
@@ -76,13 +76,13 @@ class PendingQueue
  private:
   PSLICE pending_array[PENDING_QUEUE_SIZE];
   dt_count_t pq_count;
-  
+
  public:
   PendingQueue();
   ~PendingQueue();
   void Empty();
   int Pending(RequestQueue *prq);
-  bt_index_t ReAssign(RequestQueue *prq, BitField &bf);
+  bt_index_t ReAssign(RequestQueue *prq, Bitfield &bf);
   int Exist(bt_index_t idx) const;
   int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int Delete(bt_index_t idx);
@@ -91,4 +91,5 @@ class PendingQueue
 
 extern PendingQueue PENDINGQUEUE;
 
-#endif
+#endif  // BTREQUEST_H
+

@@ -1,7 +1,7 @@
 #ifndef CTCS_H
 #define CTCS_H
 
-#include "./def.h"
+#include "def.h"
 #include <sys/types.h>
 
 #ifdef WINDOWS
@@ -59,9 +59,9 @@ class Ctcs
   int m_sent_ctstatus;
   int m_sent_ctbw;
 
-  int _s2sin(char *h,int p,struct sockaddr_in *psin);
+  int _s2sin(char *h, int p, struct sockaddr_in *psin);
   int SendMessage(const char *buf);
-  char *ConfigMsg(const char *name, const char *type, const char *range,    
+  char *ConfigMsg(const char *name, const char *type, const char *range,
     const char *value, const char *short_desc, const char *long_desc);
 
  public:
@@ -87,11 +87,11 @@ class Ctcs
   int SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
-  SOCKET GetSocket() { return m_sock; }
-  unsigned char GetStatus() { return m_status;}
+  SOCKET GetSocket(){ return m_sock; }
+  unsigned char GetStatus(){ return m_status; }
 };
 
 extern Ctcs CTCS;
 
-#endif
+#endif  // CTCS_H
 

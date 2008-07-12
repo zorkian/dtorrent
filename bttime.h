@@ -5,5 +5,5 @@
 
 extern time_t now;
 
-#endif
+#endif  // BTTIME_H
 

@@ -67,7 +67,7 @@ ssize_t btStream::Send_State(bt_msg_t state)
 
   put_bt_msglen(msg, BT_LEN_MSGID);
   msg[BT_LEN_PRE] = (char)state;
-  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_LEN_MSGID);
+  return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_LEN_MSGID);
 }
 
 ssize_t btStream::Send_Have(bt_index_t idx)
@@ -78,10 +78,10 @@ ssize_t btStream::Send_Have(bt_index_t idx)
   msg[BT_LEN_PRE] = (char)BT_MSG_HAVE;
   put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
 
-  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_HAVE);
+  return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_HAVE);
 }
 
-ssize_t btStream::Send_Bitfield(char *bit_buf,size_t len)
+ssize_t btStream::Send_Bitfield(char *bit_buf, size_t len)
 {
   char msg[BT_LEN_PRE + BT_LEN_MSGID];
   ssize_t r;
@@ -102,7 +102,7 @@ ssize_t btStream::Send_Cancel(bt_index_t idx, bt_offset_t off, bt_length_t len)
   put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
   put_bt_offset(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX, off);
   put_bt_length(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX + BT_LEN_OFF, len);
-  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_CANCEL);
+  return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_CANCEL);
 }
 
 ssize_t btStream::Send_Piece(bt_index_t idx, bt_offset_t off, char *piece_buf,
@@ -129,7 +129,7 @@ ssize_t btStream::Send_Request(bt_index_t idx, bt_offset_t off, bt_length_t len)
   put_bt_index(msg + BT_LEN_PRE + BT_LEN_MSGID, idx);
   put_bt_offset(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX, off);
   put_bt_length(msg + BT_LEN_PRE + BT_LEN_MSGID + BT_LEN_IDX + BT_LEN_OFF, len);
-  return out_buffer.Put(sock,msg,BT_LEN_PRE + BT_MSGLEN_REQUEST);
+  return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_REQUEST);
 }
 
 ssize_t btStream::Send_Keepalive()
@@ -137,17 +137,21 @@ ssize_t btStream::Send_Keepalive()
   return out_buffer.Put(sock, "", BT_LEN_PRE);
 }
 
+/* returns:
+    1 if buffer contains a complete message
+    0 if not
+   -1 if garbage in buffer
+*/
 int btStream::HaveMessage()
 {
-  // if message arrived.
   bt_msglen_t msglen;
   if( BT_LEN_PRE <= in_buffer.Count() ){
     msglen = get_bt_msglen(in_buffer.BasePointer());
     if( cfg_max_slice_size + BT_LEN_PRE + BT_MSGLEN_PIECE < msglen )
-      return -1;  //message too long
+      return -1;  // message too long
     if( msglen + BT_LEN_PRE <= in_buffer.Count() ) return 1;
   }
-  return 0; //no message arrived
+  return 0; // no message arrived
 }
 
 ssize_t btStream::Feed()
@@ -189,12 +193,12 @@ ssize_t btStream::Feed(size_t limit, Rate *rate)
 
 ssize_t btStream::PickMessage()
 {
-  return in_buffer.PickUp( get_bt_msglen(in_buffer.BasePointer()) + BT_LEN_PRE );
+  return in_buffer.PickUp(get_bt_msglen(in_buffer.BasePointer()) + BT_LEN_PRE);
 }
 
 ssize_t btStream::Send_Buffer(char *buf, bt_length_t len)
 {
-  return out_buffer.Put(sock,buf,len);
+  return out_buffer.Put(sock, buf, len);
 }
 
 // Does not distinguish between keepalive and no message.

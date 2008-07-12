@@ -1,13 +1,13 @@
 #ifndef PEERLIST_H
 #define PEERLIST_H
 
-#include "./def.h"
+#include "def.h"
 #include <sys/types.h>
 #include <time.h>
 
 #include "bttypes.h"
-#include "./peer.h"
-#include "./rate.h"
+#include "peer.h"
+#include "rate.h"
 
 enum dt_idle_t{
   DT_IDLE_NOTIDLE,
@@ -46,16 +46,16 @@ class PeerList
   unsigned char m_reserved:2;
 
   int Accepter();
-  int UnChokeCheck(btPeer* peer,btPeer *peer_array[]);
+  int UnchokeCheck(btPeer *peer, btPeer *peer_array[]);
   int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
     int f_unchoke_check, btPeer **UNCHOKER);
   void WaitBWQueue(PEERNODE **queue, btPeer *peer);
   void BWReQueue(PEERNODE **queue, btPeer *peer);
   void DontWaitBWQueue(PEERNODE **queue, btPeer *peer);
-  unsigned long Rank(btPeer *peer) {
+  unsigned long Rank(btPeer *peer){
     return (m_readycnt > peer->readycnt) ? m_readycnt - peer->readycnt : 3;
   }
-  
+
  public:
   PeerList();
   ~PeerList();
@@ -84,27 +84,29 @@ class PeerList
   int BandWidthLimitDown(double when=0) const;
   int BandWidthLimitDown(double when, dt_rate_t limit) const;
   double WaitBW() const;
-  void DontWaitBW() { Self.OntimeUL(0); Self.OntimeDL(0); }
+  void DontWaitBW(){ Self.OntimeUL(0); Self.OntimeDL(0); }
 
   // Rotation queue management
-  void WaitDL(btPeer *peer) { WaitBWQueue(&m_next_dl, peer); }
-  void WaitUL(btPeer *peer) { WaitBWQueue(&m_next_ul, peer); }
-  int IsNextDL(const btPeer *peer) const
-    { return (!m_next_dl || peer == m_next_dl->peer) ? 1 : 0; }
-  int IsNextUL(const btPeer *peer) const
-    { return (!m_next_ul || peer == m_next_ul->peer) ? 1 : 0; }
-  btPeer *GetNextDL() { return m_next_dl ? m_next_dl->peer : (btPeer *)0; }
-  btPeer *GetNextUL() { return m_next_ul ? m_next_ul->peer : (btPeer *)0; }
-  void ReQueueDL(btPeer *peer) { BWReQueue(&m_next_dl, peer); }
-  void ReQueueUL(btPeer *peer) { BWReQueue(&m_next_ul, peer); }
-  void DontWaitDL(btPeer *peer) { DontWaitBWQueue(&m_next_dl, peer); }
-  void DontWaitUL(btPeer *peer) { DontWaitBWQueue(&m_next_ul, peer); }
+  void WaitDL(btPeer *peer){ WaitBWQueue(&m_next_dl, peer); }
+  void WaitUL(btPeer *peer){ WaitBWQueue(&m_next_ul, peer); }
+  int IsNextDL(const btPeer *peer) const {
+    return (!m_next_dl || peer == m_next_dl->peer) ? 1 : 0;
+  }
+  int IsNextUL(const btPeer *peer) const {
+    return (!m_next_ul || peer == m_next_ul->peer) ? 1 : 0;
+  }
+  btPeer *GetNextDL(){ return m_next_dl ? m_next_dl->peer : (btPeer *)0; }
+  btPeer *GetNextUL(){ return m_next_ul ? m_next_ul->peer : (btPeer *)0; }
+  void ReQueueDL(btPeer *peer){ BWReQueue(&m_next_dl, peer); }
+  void ReQueueUL(btPeer *peer){ BWReQueue(&m_next_ul, peer); }
+  void DontWaitDL(btPeer *peer){ DontWaitBWQueue(&m_next_dl, peer); }
+  void DontWaitUL(btPeer *peer){ DontWaitBWQueue(&m_next_ul, peer); }
 
   void Tell_World_I_Have(bt_index_t idx);
-  btPeer* Who_Can_Abandon(btPeer *proposer);
-  bt_index_t What_Can_Duplicate(BitField &bf, const btPeer *proposer,
+  btPeer *Who_Can_Abandon(btPeer *proposer);
+  bt_index_t What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
     bt_index_t idx);
-  void FindValuedPieces(BitField &bf, const btPeer *proposer, int initial)
+  void FindValuedPieces(Bitfield &bf, const btPeer *proposer, int initial)
     const;
   btPeer *WhoHas(bt_index_t idx) const;
   int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
@@ -113,12 +115,12 @@ class PeerList
   int CancelPiece(bt_index_t idx);
   void CancelOneRequest(bt_index_t idx);
 
-  void CheckBitField(BitField &bf);
+  void CheckBitfield(Bitfield &bf);
   int AlreadyRequested(bt_index_t idx) const;
   bt_index_t Pieces_I_Can_Get() const;
-  bt_index_t Pieces_I_Can_Get(BitField *ptmpBitField) const;
+  bt_index_t Pieces_I_Can_Get(Bitfield *ptmpBitfield) const;
   void CheckInterest();
-  btPeer* GetNextPeer(btPeer *peer) const;
+  btPeer *GetNextPeer(btPeer *peer) const;
   int Endgame();
   void UnStandby();
 
@@ -135,13 +137,13 @@ class PeerList
   dt_count_t GetDownloads() const { return m_downloads; }
   time_t GetUnchokeInterval() const { return m_unchoke_interval; }
 
-  void Defer() { m_defer_count++; }
-  void Upload() { m_upload_count++; }
+  void Defer(){ m_defer_count++; }
+  void Upload(){ m_upload_count++; }
 
   dt_idle_t IdleState() const;
   int IsIdle() const;
   void SetIdled();
-  void ClearIdled() { m_f_idled = 0; }
+  void ClearIdled(){ m_f_idled = 0; }
   int Idled() const { return m_f_idled ? 1 : 0; }
   void Pause();
   void Resume();
@@ -153,4 +155,5 @@ class PeerList
 
 extern PeerList WORLD;
 
-#endif
+#endif  // PEERLIST_H
+

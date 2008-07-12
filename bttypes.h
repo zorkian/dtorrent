@@ -46,5 +46,5 @@ typedef uint32_t dt_mem_t;      // quantity of memory
 #define BT_MSGLEN_CANCEL   (BT_LEN_MSGID + BT_LEN_IDX + BT_LEN_OFF + BT_LEN_LEN)
 #define BT_MSGLEN_PORT     (BT_LEN_MSGID + BT_LEN_PORT)
 
-#endif
+#endif  // BTTYPES_H
 

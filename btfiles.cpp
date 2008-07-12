@@ -39,14 +39,14 @@ enum dt_alloc_t{
 
 btFiles::btFiles()
 {
-  m_btfhead = (BTFILE*) 0;
+  m_btfhead = (BTFILE *)0;
   m_nfiles = 0;
   m_file = (BTFILE **)0;
   m_total_files_length = 0;
   m_total_opened = 0;
   m_flag_automanage = 1;
   m_need_merge = 0;
-  m_directory = (char*)0;
+  m_directory = (char *)0;
   m_staging_path = m_stagedir = (char *)0;
   m_stagecount = 0;
 }
@@ -91,14 +91,14 @@ void btFiles::CloseFile(dt_count_t nfile)
 
 int btFiles::_btf_close_oldest()
 {
-  BTFILE *pbf_n,*pbf_close;
+  BTFILE *pbf_n, *pbf_close;
   pbf_close = (BTFILE *) 0;
-  for(pbf_n = m_btfhead; pbf_n; pbf_n = pbf_n->bf_next){
-    if(!pbf_n->bf_flag_opened) continue; // file not been opened.
-    if(!pbf_close || pbf_n->bf_last_timestamp < pbf_close->bf_last_timestamp)
+  for( pbf_n = m_btfhead; pbf_n; pbf_n = pbf_n->bf_next ){
+    if( !pbf_n->bf_flag_opened ) continue;
+    if( !pbf_close || pbf_n->bf_last_timestamp < pbf_close->bf_last_timestamp )
       pbf_close = pbf_n;
   }
-  if(!pbf_close) return -1;
+  if( !pbf_close ) return -1;
   return _btf_close(pbf_close);
 }
 
@@ -132,7 +132,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
     else return 0;  // already open in a usable mode
   }
 
-  if(m_flag_automanage && (m_total_opened >= MAX_OPEN_FILES)){  // close a file
+  if( m_flag_automanage && m_total_opened >= MAX_OPEN_FILES ){  // close a file
     if( _btf_close_oldest() < 0 ) return -1;
   }
 
@@ -178,7 +178,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
     if( !(pbf->bf_fp = fopen(fn, mode)) ) return -1;  // caller prints error
   }
   pbf->bf_buffer = new char[DEFAULT_SLICE_SIZE];
-  if(pbf->bf_buffer)
+  if( pbf->bf_buffer )
     setvbuf(pbf->bf_fp, pbf->bf_buffer, _IOFBF, DEFAULT_SLICE_SIZE);
 
   pbf->bf_flag_opened = 1;
@@ -193,7 +193,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
   size_t nio;
   BTFILE *pbf = m_btfhead, *pbfref, *pbfnext = (BTFILE *)0;
 
-  if( (off + (dt_datalen_t)len) > m_total_files_length ){
+  if( off + (dt_datalen_t)len > m_total_files_length ){
     CONSOLE.Warning(1, "error, data offset %llu length %lu out of range",
       (unsigned long long)off, (unsigned long)len);
     return -1;
@@ -298,10 +298,10 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
     }
 
     // Read or write current file
-    if(0 == iotype){
+    if( 0 == iotype ){
       nio = (len <= pbf->bf_size - pos) ? len : (pbf->bf_size - pos);
       errno = 0;
-      if( nio && 1 != fread(buf,nio,1,pbf->bf_fp) && ferror(pbf->bf_fp) ){
+      if( nio && 1 != fread(buf, nio, 1, pbf->bf_fp) && ferror(pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
@@ -316,7 +316,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
         nio = (len <= pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
       }
       errno = 0;
-      if( nio && 1 != fwrite(buf,nio,1,pbf->bf_fp) ){
+      if( nio && 1 != fwrite(buf, nio, 1, pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
@@ -490,10 +490,10 @@ int btFiles::FindAndMerge(int findall, int dostaging)
 /* Of the choices presented, select a piece that will help toward merging
    staged data.
 */
-bt_index_t btFiles::ChoosePiece(const BitField &choices,
-  const BitField &available, bt_index_t preference) const
+bt_index_t btFiles::ChoosePiece(const Bitfield &choices,
+  const Bitfield &available, bt_index_t preference) const
 {
-  BitField needs(BTCONTENT.GetNPieces()), needsnext(BTCONTENT.GetNPieces());
+  Bitfield needs(BTCONTENT.GetNPieces()), needsnext(BTCONTENT.GetNPieces());
   BTFILE *pbf = m_btfhead, *pbt;
   bt_index_t idx;
   int found;
@@ -510,7 +510,7 @@ bt_index_t btFiles::ChoosePiece(const BitField &choices,
       }
       if( choices.IsSet(preference) &&
           (dt_datalen_t)preference * BTCONTENT.GetPieceLength() >=
-            pbf->bf_offset && 
+            pbf->bf_offset &&
           (dt_datalen_t)preference * BTCONTENT.GetPieceLength() <
             pbf->bf_next->bf_offset ){
         // preference helps fill a merge gap
@@ -540,7 +540,7 @@ bt_index_t btFiles::ChoosePiece(const BitField &choices,
             }
           }
         }
-      }  // needs.IsEmpty()
+      }  // if needs.IsEmpty()
     }
   }
   return needs.IsEmpty() ?
@@ -551,13 +551,12 @@ bt_index_t btFiles::ChoosePiece(const BitField &choices,
 
 int btFiles::_btf_destroy()
 {
-  BTFILE *pbf,*pbf_next;
-  for(pbf = m_btfhead; pbf;){
+  BTFILE *pbf, *pbf_next;
+  for( pbf = m_btfhead; pbf; pbf = pbf_next ){
     pbf_next = pbf->bf_next;
     delete pbf;
-    pbf = pbf_next;
   }
-  m_btfhead = (BTFILE*) 0;
+  m_btfhead = (BTFILE *)0;
   m_total_files_length = 0;
   m_total_opened = 0;
   return 0;
@@ -611,7 +610,10 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
 
   if( arg_allocate == DT_ALLOC_FULL ){  // preallocate to disk (-a)
     char *c = new char[OPT_IO_SIZE];
-    if( !c ){ errno = ENOMEM; return -1; }
+    if( !c ){
+      errno = ENOMEM;
+      return -1;
+    }
     memset(c, 0, OPT_IO_SIZE);
     int r, wlen;
     dt_datalen_t len = 0;
@@ -626,7 +628,7 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
     return r;
   }
 
-  // create sparse file (-aa)
+  // create sparse file
 #ifdef WINDOWS
   char c = (char)0;
   if( lseek(fd, offset - 1, SEEK_SET) < 0 ) return -1;
@@ -634,7 +636,7 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
 #else
   // ftruncate() not allowed on [v]fat under linux
   int retval = ftruncate(fd, offset);
-  if( retval < 0 ) {
+  if( retval < 0 ){
     char c = (char)0;
     if( lseek(fd, offset - 1, SEEK_SET) < 0 ) return -1;
     return write(fd, &c, 1);
@@ -643,7 +645,7 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
 #endif
 }
 
-int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
+int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE **plastnode)
 {
   char full_cur[MAXPATHLEN];
   char fn[MAXPATHLEN];
@@ -652,7 +654,7 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
   DIR *dp;
   BTFILE *pbf;
 
-  if( !getcwd(full_cur,MAXPATHLEN) ) return -1;
+  if( !getcwd(full_cur, MAXPATHLEN) ) return -1;
 
   if( cur_path ){
     strcpy(fn, full_cur);
@@ -662,21 +664,21 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
       return -1;
     }
   }
-      
-  if( (DIR*) 0 == (dp = opendir(full_cur)) ){
+
+  if( !(dp = opendir(full_cur)) ){
     CONSOLE.Warning(1, "error, open directory \"%s\" failed:  %s",
       cur_path, strerror(errno));
     return -1;
   }
 
-  while( (struct dirent*) 0 != (dirp = readdir(dp)) ){
-    
+  while( dirp = readdir(dp) ){
     if( 0 == strcmp(dirp->d_name, ".") ||
-        0 == strcmp(dirp->d_name, "..") ) continue;
-
+        0 == strcmp(dirp->d_name, "..") ){
+      continue;
+    }
     if( cur_path ){
-      if(MAXPATHLEN < snprintf(fn, MAXPATHLEN, "%s%c%s", cur_path, PATH_SP,
-                               dirp->d_name)){
+      if( MAXPATHLEN < snprintf(fn, MAXPATHLEN, "%s%c%s", cur_path, PATH_SP,
+                               dirp->d_name) ){
         CONSOLE.Warning(1, "error, pathname too long");
         errno = ENAMETOOLONG;
         return -1;
@@ -686,21 +688,29 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
     }
 
     if( stat(fn, &sb) < 0 ){
-      CONSOLE.Warning(1, "error, stat \"%s\" failed:  %s",fn,strerror(errno));
+      CONSOLE.Warning(1, "error, stat \"%s\" failed:  %s", fn, strerror(errno));
       return -1;
     }
 
     if( S_IFREG & sb.st_mode ){
       pbf = new BTFILE;
 #ifndef WINDOWS
-      if( !pbf ){ errno = ENOMEM; return -1; }
+      if( !pbf ){
+        closedir(dp);
+        errno = ENOMEM;
+        return -1;
+      }
 #endif
       pbf->bf_filename = new char[strlen(fn) + 1];
 #ifndef WINDOWS
-      if( !pbf->bf_filename ){ closedir(dp); errno = ENOMEM; return -1; }
+      if( !pbf->bf_filename ){
+        closedir(dp);
+        errno = ENOMEM;
+        return -1;
+      }
 #endif
       strcpy(pbf->bf_filename, fn);
-      
+
       pbf->bf_length = pbf->bf_size = sb.st_size;
       m_total_files_length += sb.st_size;
 
@@ -711,14 +721,17 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE* *plastnode)
       *plastnode = pbf;
 
     }else if( S_IFDIR & sb.st_mode ){
-      if(_btf_recurses_directory(fn, plastnode) < 0){closedir(dp); return -1;}
+      if( _btf_recurses_directory(fn, plastnode) < 0 ){
+        closedir(dp);
+        return -1;
+      }
     }else{
       CONSOLE.Warning(1, "error, \"%s\" is not a directory or regular file.",
         fn);
       closedir(dp);
       return -1;
     }
-  } // end while
+  }  // end while
   closedir(dp);
   return 0;
 }
@@ -751,8 +764,8 @@ int btFiles::MkPath(const char *pathname)
 int btFiles::BuildFromFS(const char *pathname)
 {
   struct stat sb;
-  BTFILE *pbf = (BTFILE*) 0;
-  BTFILE *lastnode = (BTFILE*) 0;
+  BTFILE *pbf = (BTFILE *)0;
+  BTFILE *lastnode = (BTFILE *)0;
 
   if( stat(pathname, &sb) < 0 ){
     CONSOLE.Warning(1, "error, stat file \"%s\" failed:  %s",
@@ -775,20 +788,20 @@ int btFiles::BuildFromFS(const char *pathname)
     m_btfhead = pbf;
   }else if( S_IFDIR & sb.st_mode ){
     char wd[MAXPATHLEN];
-    if( !getcwd(wd,MAXPATHLEN) ) return -1;
+    if( !getcwd(wd, MAXPATHLEN) ) return -1;
     m_directory = new char[strlen(pathname) + 1];
 #ifndef WINDOWS
     if( !m_directory ) return -1;
 #endif
     strcpy(m_directory, pathname);
-    
-    if(chdir(m_directory) < 0){
+
+    if( chdir(m_directory) < 0 ){
       CONSOLE.Warning(1, "error, change work directory to \"%s\" failed:  %s",
         m_directory, strerror(errno));
       return -1;
     }
 
-    if(_btf_recurses_directory((const char*)0, &lastnode) < 0) return -1;
+    if( _btf_recurses_directory((const char *)0, &lastnode) < 0 ) return -1;
     if( chdir(wd) < 0) return -1;
   }else{
     CONSOLE.Warning(1, "error, \"%s\" is not a directory or regular file.",
@@ -798,39 +811,42 @@ int btFiles::BuildFromFS(const char *pathname)
   return 0;
 }
 
-int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const char *saveas)
+int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
+  const char *saveas)
 {
   char path[MAXPATHLEN];
   const char *s, *p;
-  size_t r,q,n;
+  size_t r, q, n;
   int64_t t;
   int f_warned = 0, i = 0;
   BTFILE *pbt;
 
-  if( !decode_query(metabuf, metabuf_len, "info|name", &s, &q, (int64_t*)0,
-      DT_QUERY_STR) || MAXPATHLEN <= q )
+  if( !decode_query(metabuf, metabuf_len, "info|name", &s, &q, (int64_t *)0,
+        DT_QUERY_STR) || MAXPATHLEN <= q ){
     return -1;
+  }
 
   memcpy(path, s, q);
   path[q] = '\0';
 
-  r = decode_query(metabuf, metabuf_len, "info|files", (const char**)0, &q,
-                   (int64_t*)0, DT_QUERY_POS);
+  r = decode_query(metabuf, metabuf_len, "info|files", (const char **)0, &q,
+                   (int64_t *)0, DT_QUERY_POS);
 
   if( r ){  // torrent contains multiple files
-    BTFILE *pbf_last = (BTFILE*) 0;
-    BTFILE *pbf = (BTFILE*) 0;
+    BTFILE *pbf_last = (BTFILE *)0;
+    BTFILE *pbf = (BTFILE *)0;
     size_t dl;
-    if( decode_query(metabuf,metabuf_len,"info|length",
-                    (const char**) 0,(size_t*) 0,(int64_t*) 0,DT_QUERY_INT) )
+    if( decode_query(metabuf, metabuf_len, "info|length", (const char **)0,
+                     (size_t *)0, (int64_t *)0, DT_QUERY_INT) ){
       return -1;
+    }
 
     if( saveas ){
       m_directory = new char[strlen(saveas) + 1];
 #ifndef WINDOWS
-      if(!m_directory) return -1;
+      if( !m_directory ) return -1;
 #endif
-      strcpy(m_directory,saveas);
+      strcpy(m_directory, saveas);
     }else{
       int f_conv;
       char *tmpfn = new char[strlen(path)*2+5];
@@ -846,7 +862,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
             return -1;
           }
 #endif
-          strcpy(m_directory,tmpfn);
+          strcpy(m_directory, tmpfn);
         }else{
           CONSOLE.Warning(3,
             "Dir name contains non-printable characters; use -T to convert.");
@@ -859,17 +875,19 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
 #ifndef WINDOWS
         if( !m_directory ) return -1;
 #endif
-        strcpy(m_directory,path);
+        strcpy(m_directory, path);
       }
     }
 
     /* now r saved the pos of files list. q saved list length */
     p = metabuf + r + 1;
     q--;
-    for(; q && 'e' != *p; p += dl, q -= dl){
-      if(!(dl = decode_dict(p, q, (const char*) 0)) ) return -1;
-      if( !decode_query(p, dl, "length", (const char**) 0,
-                       (size_t*) 0,&t,DT_QUERY_INT) ) return -1;
+    for( ; q && 'e' != *p; p += dl, q -= dl ){
+      if( !(dl = decode_dict(p, q, (const char *)0)) ) return -1;
+      if( !decode_query(p, dl, "length", (const char **)0,
+            (size_t *)0, &t, DT_QUERY_INT) ){
+        return -1;
+      }
       pbf = new BTFILE;
 #ifndef WINDOWS
       if( !pbf ) return -1;
@@ -878,10 +896,10 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
       pbf->bf_offset = m_total_files_length;
       pbf->bf_length = t;
       m_total_files_length += t;
-      r = decode_query(p, dl, "path", (const char **)0, &n, (int64_t*)0,
+      r = decode_query(p, dl, "path", (const char **)0, &n, (int64_t *)0,
                        DT_QUERY_POS);
       if( !r ) return -1;
-      if(!decode_list2path(p + r, n, path)) return -1;
+      if( !decode_list2path(p + r, n, path) ) return -1;
 
       int f_conv;
       char *tmpfn = new char[strlen(path)*2+5];
@@ -898,7 +916,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
           }
 #endif
           strcpy(pbf->bf_filename, tmpfn);
-        }else if(!f_warned){
+        }else if( !f_warned ){
           CONSOLE.Warning(3,
             "Filename contains non-printable characters; use -T to convert.");
           f_warned = 1;
@@ -912,15 +930,16 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
 #endif
         strcpy(pbf->bf_filename, path);
       }
-      if(pbf_last){
+      if( pbf_last ){
         pbf_last->bf_next = pbf_last->bf_nextreal = pbf;
       }else m_btfhead = pbf;
       pbf_last = pbf;
     }
   }else{  // torrent contains a single file
-    if( !decode_query(metabuf,metabuf_len,"info|length",
-                     (const char**) 0,(size_t*) 0,&t,DT_QUERY_INT) )
+    if( !decode_query(metabuf, metabuf_len, "info|length",
+                      (const char **)0, (size_t *)0, &t, DT_QUERY_INT) ){
       return -1;
+    }
     m_btfhead = new BTFILE;
 #ifndef WINDOWS
     if( !m_btfhead) return -1;
@@ -931,7 +950,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
     if( saveas ){
       m_btfhead->bf_filename = new char[strlen(saveas) + 1];
 #ifndef WINDOWS
-      if(!m_btfhead->bf_filename ) return -1;
+      if( !m_btfhead->bf_filename ) return -1;
 #endif
       strcpy(m_btfhead->bf_filename, saveas);
     }else if( arg_flg_convert_filenames ){
@@ -952,7 +971,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len, const ch
     }else{
       m_btfhead->bf_filename = new char[strlen(path) + 1];
 #ifndef WINDOWS
-      if(!m_btfhead->bf_filename ) return -1;
+      if( !m_btfhead->bf_filename ) return -1;
 #endif
       strcpy(m_btfhead->bf_filename, path);
     }
@@ -981,7 +1000,7 @@ int btFiles::SetupFiles(const char *torrentid)
 
   m_fsizelen = sprintf(fn, "%llu", (unsigned long long)m_total_files_length);
   if( !(m_torrent_id = new char[strlen(torrentid) + 1]) ||
-      !(pBFPieces = new BitField(BTCONTENT.GetNPieces())) ||
+      !(pBFPieces = new Bitfield(BTCONTENT.GetNPieces())) ||
       !(m_staging_path = new char[strlen(torrentid) + 10]) ||
       !(m_stagedir = new char[m_fsizelen + 1]) ){
     CONSOLE.Warning(1, "error, failed to allocate memory");
@@ -1003,8 +1022,9 @@ int btFiles::SetupFiles(const char *torrentid)
       if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
                                  m_staging_path, PATH_SP, dirp->d_name) ||
           stat(fn, &sb) < 0 || !S_ISDIR(sb.st_mode) ||
-          !(subdp = opendir(fn)) )
+          !(subdp = opendir(fn)) ){
         continue;
+      }
       m_stagecount = 0;
       strcpy(m_stagedir, dirp->d_name);
       while( dirp = readdir(subdp) ){
@@ -1040,7 +1060,7 @@ int btFiles::SetupFiles(const char *torrentid)
             pbf->bf_filename, (unsigned long long)pbf->bf_size);
           m_stagecount++;
           if( pbf->bf_size > 0 ) files_exist = 1;
-    
+
           for( pbt = m_btfhead; pbt->bf_next; pbt = pbt->bf_next ){
             if( pbf->bf_offset < pbt->bf_next->bf_offset ) break;
           }
@@ -1125,7 +1145,7 @@ int btFiles::CreateFiles()
     fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
     while( pbf && pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next) ){
       pbf = pbf->bf_next;
-      if(pbf) fend = pbf->bf_offset + pbf->bf_size - 1;
+      if( pbf ) fend = pbf->bf_offset + pbf->bf_size - 1;
     }
     if( !pbf || idxoff > fend ) break;  // no more files
 
@@ -1134,7 +1154,7 @@ int btFiles::CreateFiles()
       while( pbf && idxend > fend && pbf->bf_next &&
              pbf->bf_next->bf_offset <= fend + 1 ){
         pbf = pbf->bf_next;
-        if(pbf) fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
+        if( pbf ) fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
       }
       if( !pbf ) break;  // no more files
       if( idxend <= fend ) pBFPieces->Set(idx);
@@ -1150,7 +1170,7 @@ int btFiles::ExtendAll()
 {
   BTFILE *pbf = m_btfhead;
   int i = 0;
-  BitField tmpFilter;
+  Bitfield tmpFilter;
 
   for( ; pbf; pbf = pbf->bf_nextreal, i++ ){
     if( pbf->bf_size > 0 && pbf->bf_size >= pbf->bf_length ) continue;
@@ -1173,57 +1193,57 @@ void btFiles::PrintOut()
   dt_count_t id = 0;
   CONSOLE.Print("");
   CONSOLE.Print("FILES INFO");
-  BitField tmpBitField, tmpFilter;
-  if(m_directory) CONSOLE.Print("Directory: %s", m_directory);
-  for( ; p ; p = p->bf_nextreal ){
+  Bitfield tmpBitfield, tmpFilter;
+  if( m_directory ) CONSOLE.Print("Directory: %s", m_directory);
+  for( ; p; p = p->bf_nextreal ){
     ++id;
     CONSOLE.Print_n("");
     CONSOLE.Print_n("<%d> %s%s [%llu]", (int)id, m_directory ? " " : "",
       p->bf_filename, (unsigned long long)(p->bf_length));
     if( !arg_flg_exam_only ){
       BTCONTENT.SetTmpFilter(id, &tmpFilter);
-      tmpBitField = *BTCONTENT.pBF;
-      tmpBitField.Except(tmpFilter);
+      tmpBitfield = *BTCONTENT.pBF;
+      tmpBitfield.Except(tmpFilter);
       CONSOLE.Print_n(" %d/%d (%d%%)",
-        (int)(tmpBitField.Count()), (int)(GetFilePieces(id)),
+        (int)(tmpBitfield.Count()), (int)(GetFilePieces(id)),
         GetFilePieces(id) ?
-          (100 * tmpBitField.Count() / GetFilePieces(id)) : 100);
+          (100 * tmpBitfield.Count() / GetFilePieces(id)) : 100);
     }
   }
   CONSOLE.Print("Total: %lu MB",
     (unsigned long)(m_total_files_length/1024/1024));
 }
 
-int btFiles::FillMetaInfo(FILE* fp)
+int btFiles::FillMetaInfo(FILE *fp)
 {
   BTFILE *p;
   if( m_directory ){
-    // multi files
+    // multiple files
     if( bencode_str("files", fp) != 1 ) return 0;
 
-    if( bencode_begin_list(fp) != 1) return 0;
-    
-    for( p = m_btfhead; p; p = p->bf_next){
-      if( bencode_begin_dict(fp) != 1) return 0;
-      
-      if( bencode_str("length", fp) != 1 ) return 0;
-      if( bencode_int(p->bf_length, fp) != 1) return 0;
+    if( bencode_begin_list(fp) != 1 ) return 0;
 
-      if( bencode_str("path", fp) != 1) return 0;
+    for( p = m_btfhead; p; p = p->bf_next ){
+      if( bencode_begin_dict(fp) != 1 ) return 0;
+
+      if( bencode_str("length", fp) != 1 ) return 0;
+      if( bencode_int(p->bf_length, fp) != 1 ) return 0;
+
+      if( bencode_str("path", fp) != 1 ) return 0;
       if( bencode_path2list(p->bf_filename, fp) != 1 ) return 0;
-      
-      if( bencode_end_dict_list(fp) != 1) return 0;
+
+      if( bencode_end_dict_list(fp) != 1 ) return 0;
     }
-    
-    if(bencode_end_dict_list(fp) != 1 ) return 0;
-    
-    if(bencode_str("name", fp) != 1) return 0;
+
+    if( bencode_end_dict_list(fp) != 1 ) return 0;
+
+    if( bencode_str("name", fp) != 1 ) return 0;
     return bencode_str(m_directory, fp);
-    
+
   }else{
     if( bencode_str("length", fp) != 1 ) return 0;
-    if( bencode_int(m_btfhead->bf_length, fp) != 1) return 0;
-    
+    if( bencode_int(m_btfhead->bf_length, fp) != 1 ) return 0;
+
     if( bencode_str("name", fp) != 1 ) return 0;
     return bencode_str(m_btfhead->bf_filename, fp);
   }
@@ -1231,7 +1251,7 @@ int btFiles::FillMetaInfo(FILE* fp)
 }
 
 
-void btFiles::SetFilter(int nfile, BitField *pFilter, bt_length_t pieceLength)
+void btFiles::SetFilter(int nfile, Bitfield *pFilter, bt_length_t pieceLength)
 {
   BTFILE *p = m_btfhead;
   dt_count_t id = 0;
@@ -1244,8 +1264,8 @@ void btFiles::SetFilter(int nfile, BitField *pFilter, bt_length_t pieceLength)
   }
 
   pFilter->SetAll();
-  for( ; p ; p = p->bf_nextreal ){
-    if(++id == nfile){
+  for( ; p; p = p->bf_nextreal ){
+    if( ++id == nfile ){
       if( 0 == p->bf_length ){
         p->bf_npieces = 0;
         return;
@@ -1254,10 +1274,10 @@ void btFiles::SetFilter(int nfile, BitField *pFilter, bt_length_t pieceLength)
       start = sizeBuffer / pieceLength;
       stop  = (sizeBuffer + p->bf_length) / pieceLength;
       // calculation is off if file ends on a piece boundary
-      if(stop > start && 0 == (sizeBuffer + p->bf_length) % pieceLength)
+      if( stop > start && 0 == (sizeBuffer + p->bf_length) % pieceLength )
         --stop;
       p->bf_npieces = stop - start + 1;
-      for(index = start; index <= stop; index++) {
+      for( index = start; index <= stop; index++ ){
         pFilter->UnSet(index);
       }
       break;
@@ -1280,9 +1300,9 @@ dt_datalen_t btFiles::GetFileSize(dt_count_t nfile) const
   return 0;
 }
 
+// Returns the number of pieces in the file
 bt_index_t btFiles::GetFilePieces(dt_count_t nfile) const
 {
-  //returns the number of pieces in the file
   if( nfile && nfile <= m_nfiles )
     return m_file[nfile-1]->bf_npieces;
   return 0;
@@ -1292,16 +1312,22 @@ int btFiles::ConvertFilename(char *dst, const char *src, int size)
 {
   int retval=0, i, j, f_print=0, f_punct=0;
 
-  for(i=j=0; src[i] != '\0' && j < size-2; i++){
+  for( i = j = 0; src[i] != '\0' && j < size-2; i++ ){
     if( isprint(src[i]) ){
       if( ispunct(src[i]) ) f_punct = 1;
       else f_punct = 0;
-      if(j && !f_print && !f_punct){ sprintf(dst+j, "_"); j++; }
+      if( j && !f_print && !f_punct ){
+        sprintf(dst + j, "_");
+        j++;
+      }
       dst[j++] = src[i];
       f_print = 1;
     }else{
-      if(f_print && !f_punct){ sprintf(dst+j, "_"); j++; }
-      snprintf(dst+j, 3, "%.2X", (unsigned char)(src[i]));
+      if( f_print && !f_punct ){
+        sprintf(dst + j, "_");
+        j++;
+      }
+      snprintf(dst + j, 3, "%.2X", (unsigned char)(src[i]));
       j += 2;
       f_print = f_punct = 0;
       if( !retval ) retval = 1;

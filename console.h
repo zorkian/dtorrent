@@ -1,3 +1,6 @@
+#ifndef CONSOLE_H
+#define CONSOLE_H
+
 #include "def.h"
 #include <sys/types.h>  // fd_set
 #include <stdarg.h>
@@ -8,7 +11,7 @@
 #elif defined(USE_TERMIO)
 #include <termio.h>
 #elif defined(USE_SGTTY)
-#include <sgtty.h> 
+#include <sgtty.h>
 #endif
 
 #include "bttypes.h"
@@ -69,10 +72,10 @@ class ConStream
   int GetMode() const { return m_filemode ? 1 : 0; }
   int Fileno() const { return m_stream ? fileno(m_stream) : -1; }
   int GetNewline() const { return m_newline ? 1 : 0; }
-  void SyncNewline(ConStream *master) { m_newline = master->GetNewline(); }
-  void Suspend() { m_suspend = 1; }
-  void Resume() { m_suspend = 0; }
-  int IsSuspended() { return m_suspend ? 1 : 0; }
+  void SyncNewline(ConStream *master){ m_newline = master->GetNewline(); }
+  void Suspend(){ m_suspend = 1; }
+  void Resume(){ m_suspend = 0; }
+  int IsSuspended(){ return m_suspend ? 1 : 0; }
 
   int SameDev(ConStream *master) const;
   dt_conmode_t GetInputMode() const { return m_inputmode; }
@@ -152,4 +155,6 @@ class Console
 };
 
 extern Console CONSOLE;
+
+#endif  // CONSOLE_H
 

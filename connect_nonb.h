@@ -1,7 +1,7 @@
 #ifndef CONNECT_NONB_H
 #define CONNECT_NONB_H
 
-#include "./def.h"
+#include "def.h"
 
 #ifdef WINDOWS
 #include <Winsock2.h>
@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #endif
 
-int connect_nonb(SOCKET sk,struct sockaddr *psa);
+int connect_nonb(SOCKET sk, struct sockaddr *psa);
 
-#endif
+#endif  // CONNECT_NONB_H
+

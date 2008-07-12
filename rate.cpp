@@ -1,7 +1,7 @@
 #include "rate.h"  // def.h
 
 #include "btconfig.h"
-#include "bufio.h" // for BUF_DEF_SIZ
+#include "bufio.h"     // BUF_DEF_SIZ
 #include "bttime.h"
 #include "console.h"
 #include "util.h"
@@ -155,9 +155,9 @@ void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
   }
 
   if( m_history_last &&
-      (time_t)timestamp == (time_t)(m_history_last->timestamp) )
+      (time_t)timestamp == (time_t)(m_history_last->timestamp) ){
     m_history_last->bytes += nbytes;
-  else{
+  }else{
     if( BWSAMPLE *p = NewSample() ){
       p->timestamp = timestamp;
       p->bytes = nbytes;
@@ -182,12 +182,12 @@ void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
   }
 
   if( m_selfrate && bwlimit && m_last_realtime && m_selfrate->LastSize() /
-      (timestamp - m_selfrate->LastRealtime()) > bwlimit )
+      (timestamp - m_selfrate->LastRealtime()) > bwlimit ){
     m_last_size += nbytes;
-  else if( !m_selfrate && bwlimit && m_last_realtime &&
-           m_last_size / (timestamp - m_last_realtime) > bwlimit )
+  }else if( !m_selfrate && bwlimit && m_last_realtime &&
+           m_last_size / (timestamp - m_last_realtime) > bwlimit ){
     m_last_size += nbytes;
-  else{
+  }else{
     m_last_realtime = timestamp;
     m_last_size = nbytes;
   }
@@ -207,7 +207,7 @@ void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
     m_selfrate->RateAdd(nbytes, bwlimit, timestamp);
   }
 
-//if(!m_selfrate) CONSOLE.Debug("%p RateAdd %u @ %f next=%f", this,
+//if( !m_selfrate ) CONSOLE.Debug("%p RateAdd %u @ %f next=%f", this,
 //  nbytes, timestamp, m_last_realtime + (double)m_last_size / bwlimit);
 }
 
@@ -219,9 +219,9 @@ void Rate::operator=(const Rate &ra)
 
 dt_rate_t Rate::CurrentRate()
 {
-  // We can't make up for past slowness by overloading the line now/future.
-  // Look at only the most recent data sent/received.
-  if( !m_last_timestamp || !m_history ) return 0; // no current rate
+  /* We can't make up for past slowness by overloading the line now/future.
+     Look at only the most recent data sent/received. */
+  if( !m_last_timestamp || !m_history ) return 0;  // no current rate
 
   double timeused = PreciseTime() - m_last_realtime;
   if( timeused <= 0 ) return 0;
@@ -241,9 +241,9 @@ dt_rate_t Rate::NominalRate()
   return m_nominal;
 }
 
+// Calculate rate based on bandwidth history data
 dt_rate_t Rate::RateMeasure()
 {
-  // calculate rate based on bandwidth history data
   time_t timestamp = now;
   unsigned long countbytes = 0;
   double timeused = 0;
@@ -258,7 +258,7 @@ dt_rate_t Rate::RateMeasure()
   m_lastrate.lasttime = now;
   if( !m_last_timestamp || !m_history ){
     m_lastrate.value = 0;
-    return 0; // no current rate
+    return 0;  // no current rate
   }
 
   Cleanup();

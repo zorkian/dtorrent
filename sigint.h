@@ -15,4 +15,5 @@ RETSIGTYPE signals(int sig_no);
 
 void sig_setup();
 
-#endif
+#endif  // SIGINT_H
+

@@ -13,10 +13,10 @@
 typedef struct _btcache{
   dt_datalen_t bc_off;
   bt_length_t bc_len;
-  
+
   unsigned char bc_f_flush:1;
   unsigned char bc_f_reserved:7;
-  
+
   char *bc_buf;
 
   struct _btcache *bc_next;
@@ -32,7 +32,7 @@ typedef struct _btflush{
 
 typedef struct _bfnode{
   char *name;
-  BitField bitfield;
+  Bitfield bitfield;
   struct _bfnode *next;
 
   _bfnode(){
@@ -46,7 +46,7 @@ typedef struct _bfnode{
 
 class btContent
 {
-  //METAINFO³ÉÔ±
+  // torrent metainfo data
   char *m_announce;
   unsigned char *m_hash_table;
   unsigned char m_shake_buffer[68];
@@ -77,12 +77,12 @@ class btContent
   dt_count_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
 
   void _Set_InfoHash(unsigned char buf[20]);
-  char* _file2mem(const char *fname, size_t *psiz);
-  
+  char *_file2mem(const char *fname, size_t *psiz);
+
   void ReleaseHashTable(){
-    if(m_hash_table){
+    if( m_hash_table ){
       delete []m_hash_table;
-      m_hash_table = (unsigned char*) 0;
+      m_hash_table = (unsigned char *)0;
     }
   }
 
@@ -90,53 +90,53 @@ class btContent
   void CacheClean(bt_length_t need);
   void CacheClean(bt_length_t need, bt_index_t idx);
   void CacheEval();
-  dt_datalen_t max_datalen(dt_datalen_t a, dt_datalen_t b) {
+  dt_datalen_t max_datalen(dt_datalen_t a, dt_datalen_t b){
     return (a > b) ? a : b;
   }
-  dt_datalen_t min_datalen(dt_datalen_t a, dt_datalen_t b) {
+  dt_datalen_t min_datalen(dt_datalen_t a, dt_datalen_t b){
     return (a > b) ? b : a;
   }
   int CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
   void FlushEntry(BTCACHE *p);
 
  public:
-  BitField *pBF;
-  BitField *pBMasterFilter;
-  BitField *pBRefer;
-  BitField *pBChecked;
-  BitField *pBMultPeer;
+  Bitfield *pBF;
+  Bitfield *pBMasterFilter;
+  Bitfield *pBRefer;
+  Bitfield *pBChecked;
+  Bitfield *pBMultPeer;
   char *global_piece_buffer;
   bt_length_t global_buffer_size;
-  
+
   btContent();
   ~btContent();
-  
+
   void CacheConfigure();
   void FlushCache();
   int FlushPiece(bt_index_t idx);
   void Uncache(bt_index_t idx);
   void FlushQueue();
   int NeedFlush() const;
-  int FlushFailed() const { return m_flush_failed ? 1 : 0 ; }
+  int FlushFailed() const { return m_flush_failed ? 1 : 0; }
   int NeedMerge() const { return m_btfiles.NeedMerge(); }
   void MergeNext();
-  void MergeAll() { m_btfiles.MergeAll(); }
-  bt_index_t ChoosePiece(const BitField &choices, const BitField &available,
+  void MergeAll(){ m_btfiles.MergeAll(); }
+  bt_index_t ChoosePiece(const Bitfield &choices, const Bitfield &available,
     bt_index_t preference) const;
 
   int CreateMetainfoFile(const char *mifn);
   int InitialFromFS(const char *pathname, char *ann_url,
     bt_length_t piece_length);
-  int InitialFromMI(const char *metainfo_fname,const char *saveas);
+  int InitialFromMI(const char *metainfo_fname, const char *saveas);
 
   int CheckNextPiece();
   bt_index_t CheckedPieces() const { return m_check_piece; }
 
-  char* GetAnnounce() { return m_announce;}
+  char *GetAnnounce(){ return m_announce; }
 
-  unsigned char* GetShakeBuffer() {return m_shake_buffer;}
-  unsigned char* GetInfoHash() {return (m_shake_buffer + 28);}
-  unsigned char* GetPeerId() {return (m_shake_buffer + 48); }
+  unsigned char *GetShakeBuffer(){ return m_shake_buffer; }
+  unsigned char *GetInfoHash(){ return (m_shake_buffer + 28); }
+  unsigned char *GetPeerId(){ return (m_shake_buffer + 48); }
 
   bt_length_t GetPieceLength(bt_index_t idx);
   bt_length_t GetPieceLength() const { return m_piece_length; }
@@ -164,13 +164,13 @@ class btContent
 
   void CheckFilter();
   void SetFilter();
-  BitField *GetFilter() const {
-    return m_current_filter ? &(m_current_filter->bitfield) : (BitField *)0;
+  Bitfield *GetFilter() const {
+    return m_current_filter ? &(m_current_filter->bitfield) : (Bitfield *)0;
   }
-  BitField *GetNextFilter() const { return GetNextFilter((BitField *)0); }
-  BitField *GetNextFilter(BitField *pfilter) const;
+  Bitfield *GetNextFilter() const { return GetNextFilter((Bitfield *)0); }
+  Bitfield *GetNextFilter(Bitfield *pfilter) const;
   char *GetFilterName() const { return m_current_filter->name; }
-  void SetTmpFilter(int nfile, BitField *pFilter){
+  void SetTmpFilter(int nfile, Bitfield *pFilter){
     m_btfiles.SetFilter(nfile, pFilter, m_piece_length);
   }
 
@@ -191,9 +191,9 @@ class btContent
   dt_count_t GetHashFailures() const { return m_hash_failures; }
   dt_count_t GetDupBlocks() const { return m_dup_blocks; }
   dt_count_t GetUnwantedBlocks() const { return m_unwanted_blocks; }
-  void CountHashFailure() { m_hash_failures++; }
+  void CountHashFailure(){ m_hash_failures++; }
   void CountDupBlock(bt_length_t len);
-  void CountUnwantedBlock() { m_unwanted_blocks++; }
+  void CountUnwantedBlock(){ m_unwanted_blocks++; }
 
   int IsFull() const { return pBF->IsFull(); }
   int Seeding() const;
@@ -213,4 +213,5 @@ class btContent
 
 extern btContent BTCONTENT;
 
-#endif
+#endif  // BTCONTENT_H
+

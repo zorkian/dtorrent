@@ -1,7 +1,7 @@
 #ifndef PEER_H
 #define PEER_H
 
-#include "./def.h"
+#include "def.h"
 
 #ifdef WINDOWS
 #include <Winsock2.h>
@@ -40,8 +40,7 @@ typedef struct _btstatus{
   unsigned char remote_interested:1;
   unsigned char local_choked:1;
   unsigned char local_interested:1;
-
-  unsigned char reserved:4;		/* unused */
+  unsigned char reserved:4;  // unused
 }BTSTATUS;
 
 int TextPeerID(const unsigned char *peerid, char *txtid);
@@ -56,57 +55,57 @@ protected:
 private:
 
 public:
-  //IP地址相关函数
   int IpEquiv(struct sockaddr_in addr);
   void SetIp(struct sockaddr_in addr);
   void SetAddress(struct sockaddr_in addr);
   void GetAddress(struct sockaddr_in *psin) const {
-    memcpy(psin,&m_sin,sizeof(struct sockaddr_in));
+    memcpy(psin, &m_sin, sizeof(struct sockaddr_in));
   }
 
-  // 速率相关函数
   const Rate &GetDLRate() const { return rate_dl; }
   const Rate &GetULRate() const { return rate_ul; }
-  void SetDLRate(Rate rate) { rate_dl = rate; StopDLTimer(); }
-  void SetULRate(Rate rate) { rate_ul = rate; StopULTimer(); }
-  
+  void SetDLRate(Rate rate){ rate_dl = rate; StopDLTimer(); }
+  void SetULRate(Rate rate){ rate_ul = rate; StopULTimer(); }
+
   dt_datalen_t TotalDL() const { return rate_dl.Count(); }
   dt_datalen_t TotalUL() const { return rate_ul.Count(); }
 
-  void DataRecved(bt_length_t nby) { rate_dl.CountAdd(nby); }
-  void DataUnRec(bt_length_t nby) { rate_dl.UnCount(nby); }
-  void DataSended(bt_length_t nby, double timestamp) { rate_ul.CountAdd(nby);
-    rate_ul.RateAdd(nby, cfg_max_bandwidth_up, timestamp); }
+  void DataRecd(bt_length_t nby){ rate_dl.CountAdd(nby); }
+  void DataUnRec(bt_length_t nby){ rate_dl.UnCount(nby); }
+  void DataSent(bt_length_t nby, double timestamp){
+    rate_ul.CountAdd(nby);
+    rate_ul.RateAdd(nby, cfg_max_bandwidth_up, timestamp);
+  }
 
-  dt_rate_t CurrentDL() { return rate_dl.CurrentRate(); }
-  dt_rate_t CurrentUL() { return rate_ul.CurrentRate(); }
-  dt_rate_t RateDL() { return rate_dl.RateMeasure(); }
-  dt_rate_t RateUL() { return rate_ul.RateMeasure(); }
+  dt_rate_t CurrentDL(){ return rate_dl.CurrentRate(); }
+  dt_rate_t CurrentUL(){ return rate_ul.CurrentRate(); }
+  dt_rate_t RateDL(){ return rate_dl.RateMeasure(); }
+  dt_rate_t RateUL(){ return rate_ul.RateMeasure(); }
 
-  dt_rate_t NominalDL() { return rate_dl.NominalRate(); }
-  dt_rate_t NominalUL() { return rate_ul.NominalRate(); }
+  dt_rate_t NominalDL(){ return rate_dl.NominalRate(); }
+  dt_rate_t NominalUL(){ return rate_ul.NominalRate(); }
 
-  void StartDLTimer() { rate_dl.StartTimer(); }
-  void StartULTimer() { rate_ul.StartTimer(); }
-  void StopDLTimer() { rate_dl.StopTimer(); }
-  void StopULTimer() { rate_ul.StopTimer(); }
-  void ResetDLTimer() { rate_dl.Reset(); }
-  void ResetULTimer() { rate_ul.Reset(); }
+  void StartDLTimer(){ rate_dl.StartTimer(); }
+  void StartULTimer(){ rate_ul.StartTimer(); }
+  void StopDLTimer(){ rate_dl.StopTimer(); }
+  void StopULTimer(){ rate_ul.StopTimer(); }
+  void ResetDLTimer(){ rate_dl.Reset(); }
+  void ResetULTimer(){ rate_ul.Reset(); }
 
   double LastSendTime() const { return rate_ul.LastRealtime(); }
   double LastRecvTime() const { return rate_dl.LastRealtime(); }
   bt_length_t LastSizeSent() const { return rate_ul.LastSize(); }
   bt_length_t LastSizeRecv() const { return rate_dl.LastSize(); }
 
-  Rate *DLRatePtr() { return &rate_dl; }
-  Rate *ULRatePtr() { return &rate_ul; }
+  Rate *DLRatePtr(){ return &rate_dl; }
+  Rate *ULRatePtr(){ return &rate_ul; }
 
   double LateDL() const { return rate_dl.Late(); }
   double LateUL() const { return rate_ul.Late(); }
   int OntimeDL() const { return rate_dl.Ontime(); }
   int OntimeUL() const { return rate_ul.Ontime(); }
-  void OntimeDL(int yn) { rate_dl.Ontime(yn); }
-  void OntimeUL(int yn) { rate_ul.Ontime(yn); }
+  void OntimeDL(int yn){ rate_dl.Ontime(yn); }
+  void OntimeUL(int yn){ rate_ul.Ontime(yn); }
 };
 
 class btPeer:public btBasic
@@ -150,19 +149,19 @@ class btPeer:public btBasic
   int ReportComplete(bt_index_t idx, bt_length_t len);
   int RequestCheck();
   int SendRequest();
-  int ReponseSlice();
+  int RespondSlice();
   int RequestPiece();
   int MsgDeliver();
-  int CouldReponseSlice();
+  int CouldRespondSlice();
   int RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int PeerError(int weight, const char *message);
 
  public:
   unsigned char id[PEER_ID_LEN];
-  BitField bitfield;
+  Bitfield bitfield;
   btStream stream;
   RequestQueue request_q;
-  RequestQueue reponse_q;
+  RequestQueue respond_q;
   unsigned long readycnt;  // copy of peerlist m_readycnt at last ready time
 
   btPeer();
@@ -173,17 +172,16 @@ class btPeer:public btBasic
   int SendModule();
   int HealthCheck();
   void CheckSendStatus();
-  void UnStandby() { m_standby = 0; }
+  void UnStandby(){ m_standby = 0; }
 
-  time_t SetLastTimestamp() { return time(&m_last_timestamp); }
+  void SetLastTimestamp(){ time(&m_last_timestamp); }
   time_t GetLastTimestamp() const { return m_last_timestamp; }
-  time_t SetLastUnchokeTime() { return time(&m_unchoke_timestamp); }
   time_t GetLastUnchokeTime() const { return m_unchoke_timestamp; }
 
   int Is_Remote_Interested() const { return m_state.remote_interested ? 1 : 0; }
-  int Is_Remote_UnChoked() const { return m_state.remote_choked ? 0 : 1; }
-  int Is_Local_Interested() const { return m_state.local_interested ? 1 : 0;}
-  int Is_Local_UnChoked() const { return m_state.local_choked ? 0 : 1; }
+  int Is_Remote_Unchoked() const { return m_state.remote_choked ? 0 : 1; }
+  int Is_Local_Interested() const { return m_state.local_interested ? 1 : 0; }
+  int Is_Local_Unchoked() const { return m_state.local_choked ? 0 : 1; }
   int SetLocal(bt_msg_t s);
 
   int IsEmpty() const;
@@ -191,23 +189,25 @@ class btPeer:public btBasic
   int CancelRequest();
   int CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int CancelPiece(bt_index_t idx);
-  bt_index_t FindLastCommonRequest(BitField &proposerbf);
-  
+  bt_index_t FindLastCommonRequest(Bitfield &proposerbf);
+
   void SetStatus(dt_peerstatus_t s){ m_status = s; }
   dt_peerstatus_t GetStatus() const { return m_status; }
   int NeedWrite(int limited);
   int NeedRead(int limited);
-  
+
   void CloseConnection();
-  int CanReconnect() const { return (m_connect && m_want_again && !m_retried) ? 1 : 0; }
+  int CanReconnect() const {
+    return (m_connect && m_want_again && !m_retried) ? 1 : 0;
+  }
   int WantAgain() const { return m_want_again ? 1 : 0; }
-  void DontWantAgain() { m_want_again = 0; }
-  void SetConnect() { m_connect = 1; }
-  void Retry() { m_retried = 1; }
+  void DontWantAgain(){ m_want_again = 0; }
+  void SetConnect(){ m_connect = 1; }
+  void Retry(){ m_retried = 1; }
   int Retried() const { return m_retried ? 1 : 0; }
 
   int ConnectedWhileSeed() const { return m_connect_seed ? 1 : 0; }
-  
+
   int AreYouOK();
   int Send_ShakeInfo();
   int HandShake();
@@ -220,8 +220,8 @@ class btPeer:public btBasic
   int NeedPrefetch() const;
   int Prefetch(time_t deadline);
 
-  void DeferDL() { m_deferred_dl = 1; }
-  void DeferUL() { m_deferred_ul = 1; }
+  void DeferDL(){ m_deferred_dl = 1; }
+  void DeferUL(){ m_deferred_ul = 1; }
 
   ssize_t SendHaves();
   int QueueHave(bt_index_t idx);
@@ -231,4 +231,5 @@ class btPeer:public btBasic
 
 extern btBasic Self;
 
-#endif
+#endif  // PEER_H
+

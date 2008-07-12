@@ -5,5 +5,5 @@ void RandomInit(void);
 unsigned long RandBits(int nbits);
 double PreciseTime(void);
 
-#endif
+#endif  // UTIL_H
 

@@ -34,7 +34,7 @@
 
 // console.cpp:  Copyright 2007-2008 Dennis Holmes  (dholmes@rahul.net)
 
-const char LIVE_CHAR[4] = {'-', '\\','|','/'};
+const char LIVE_CHAR[4] = { '-', '\\', '|', '/' };
 
 Console CONSOLE;
 static int g_console_ready = 0;
@@ -94,14 +94,14 @@ int ConStream::SameDev(ConStream *master) const
   else if( Fileno() < 0 || master->Fileno() < 0 ) return 0;
 
   if( !fstat(Fileno(), &sbone) && !fstat(master->Fileno(), &sbtwo) )
-    return (sbone.st_dev==sbtwo.st_dev && sbone.st_ino==sbtwo.st_ino) ? 1 : 0;
+    return ( sbone.st_dev==sbtwo.st_dev && sbone.st_ino==sbtwo.st_ino ) ? 1 : 0;
   else return 0;
 }
 
 
 int ConStream::IsTTY() const
 {
-  return (Fileno() >= 0) ? isatty(Fileno()) : 0;
+  return ( Fileno() >= 0 ) ? isatty(Fileno()) : 0;
 }
 
 
@@ -163,8 +163,8 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
   gtty(Fileno(), &termset);
 #endif
 
-  switch(keymode) {
-  case DT_CONMODE_CHARS:     // read a char at a time, no echo
+  switch( keymode ){
+  case DT_CONMODE_CHARS:  // read a char at a time, no echo
 #if defined(USE_TERMIOS)
     termset.c_lflag &= ~(ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
@@ -182,7 +182,7 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
 #endif
     break;
 
-  case DT_CONMODE_LINES:     // read a line at a time (allow terminal editing)
+  case DT_CONMODE_LINES:  // read a line at a time (allow terminal editing)
 #if defined(USE_TERMIOS)
     termset.c_lflag |= (ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
@@ -215,7 +215,7 @@ int ConStream::Output(const char *message, va_list ap)
   _convprintf(message, ap);
   _newline();
   fflush(m_stream);
-  return (old_newline==m_newline) ? 0 : 1;
+  return ( old_newline==m_newline ) ? 0 : 1;
 }
 
 
@@ -227,7 +227,7 @@ int ConStream::Output_n(const char *message, va_list ap)
   if( !message || !*message ) _newline();
   else _convprintf(message, ap);
   fflush(m_stream);
-  return (old_newline==m_newline) ? 0 : 1;
+  return ( old_newline==m_newline ) ? 0 : 1;
 }
 
 
@@ -236,10 +236,10 @@ int ConStream::Update(const char *message, va_list ap)
   if( m_suspend ) return 0;
 
   int old_newline = m_newline;
-  if( !m_newline) fprintf(m_stream, IsTTY() ? "\r" : "\n");
+  if( !m_newline ) fprintf(m_stream, IsTTY() ? "\r" : "\n");
   _convprintf(message, ap);
   fflush(m_stream);
-  return (old_newline==m_newline) ? 0 : 1;
+  return ( old_newline==m_newline ) ? 0 : 1;
 }
 
 
@@ -314,7 +314,7 @@ Console::Console()
   if( STATUSLINES > i ){
     fprintf(stderr, "Unassigned status line in Console() constructor!\n");
     exit(1);
-  }else if ( STATUSLINES < i ){
+  }else if( STATUSLINES < i ){
     fprintf(stderr, "Value of STATUSLINES is too small!\n");
     exit(1);
   }
@@ -386,7 +386,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }else{
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
           if( *param ) switch( pending ){
-          case 'n':				// get1file
+          case 'n':  // get1file
             if( arg_file_to_download ) delete []arg_file_to_download;
             arg_file_to_download = new char[strlen(param) + 1];
             if( !arg_file_to_download )
@@ -394,14 +394,14 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
             else strcpy(arg_file_to_download, param);
             BTCONTENT.SetFilter();
             break;
-          case 'S':				// CTCS server
+          case 'S':  // CTCS server
             if( !strchr(param, ':') )
               Interact("Invalid input");
             else{
               if( arg_ctcs ) delete []arg_ctcs;
-              if(0==strcmp(":", param)){
+              if( 0==strcmp(":", param) ){
                 if(arg_ctcs) CTCS.Reset(1);
-                arg_ctcs = (char*) 0;
+                arg_ctcs = (char *)0;
               }else{
                 arg_ctcs = new char[strlen(param) + 1];
                 if( !arg_ctcs )
@@ -414,14 +414,14 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
               }
             }
             break;
-          case 'X':				// completion command (user exit)
+          case 'X':  // completion command (user exit)
             if( arg_completion_exit ) delete []arg_completion_exit;
             arg_completion_exit = new char[strlen(param) + 1];
             if( !arg_completion_exit )
               Warning(1, "error, failed to allocate memory for option");
             else strcpy(arg_completion_exit, param);
             break;
-          case 'Q':				// quit
+          case 'Q':  // quit
             if( 'y'==*param || 'Y'==*param ){
               Tracker.ClearRestart();
               Tracker.SetStoped();
@@ -436,7 +436,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           Interact("End of input reached.");
           if( ChangeChannel(O_INPUT, "off") < 0 )
             m_streams[O_INPUT]->Suspend();
-        }else if(errno){
+        }else if( errno ){
           if( ENODEV==errno || ENOTTY==errno ) m_streams[O_INPUT]->Suspend();
           else Interact("Input error:  %s", strerror(errno));
         }else Interact("Input error!");
@@ -446,7 +446,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           Status(1);
       }
 
-    }else{     // command character received
+    }else{  // command character received
 
       m_skip_status = 1;
       if( (c = m_streams[O_INPUT]->CharIn()) == EOF ){
@@ -454,7 +454,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           Interact("End of input reached.");
           if( ChangeChannel(O_INPUT, "off") < 0 )
             m_streams[O_INPUT]->Suspend();
-        }else if(errno){
+        }else if( errno ){
           if( ENODEV==errno || ENOTTY==errno ) m_streams[O_INPUT]->Suspend();
           else Interact("Input error:  %s", strerror(errno));
         }else Interact("Input error!");
@@ -462,8 +462,8 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       }
       if( c!='+' && c!='-' ) pending = c;
       switch( c ){
-      case 'h':				// help
-      case '?':				// help
+      case 'h':  // help
+      case '?':  // help
         Interact("Available commands:");
         Interact(" %-9s%-30s %-9s%s", "[Esc/0]", "Operator menu",
           "m[+/-]", "Adjust min peers count");
@@ -480,18 +480,19 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         Interact(" %-9s%-30s %-9s%s", "X", "Completion command",
           "", "");
         break;
-      case 'd':				// download bw limit
-      case 'u':				// upload bw limit
+      case 'd':  // download bw limit
+      case 'u':  // upload bw limit
         if(arg_ctcs) Interact("Note, changes may be overridden by CTCS.");
-      case 'e':				// seed time
-      case 'E':				// seed ratio
-      case 'm':				// min peers
-      case 'M':				// max peers
-      case 'C':				// max cache size
-        inc = 1; count = 0;
+      case 'e':  // seed time
+      case 'E':  // seed ratio
+      case 'm':  // min peers
+      case 'M':  // max peers
+      case 'C':  // max cache size
+        inc = 1;
+        count = 0;
         Interact_n("");
         break;
-      case 'n':				// get1file
+      case 'n':  // get1file
         if( BTCONTENT.IsFull() )
           Interact("Download is already complete.");
         else{
@@ -504,7 +505,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           else Interact_n("Get file number/list: ");
         }
         break;
-      case 'S':				// CTCS server
+      case 'S':  // CTCS server
         m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
         Interact_n("");
         if( arg_ctcs ){
@@ -513,7 +514,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }
         else Interact_n("CTCS server:port: ");
         break;
-      case 'X':				// completion command (user exit)
+      case 'X':  // completion command (user exit)
         if( BTCONTENT.IsFull() )
           Interact("Download is already complete.");
         else{
@@ -524,52 +525,59 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           Interact_n(">");
         }
         break;
-      case 'v':				// verbose
+      case 'v':  // verbose
         if( arg_verbose && !m_streams[O_INPUT]->SameDev(m_streams[O_DEBUG]) )
           Debug("Verbose output off");
         arg_verbose = !arg_verbose;
         Interact("Verbose output %s", arg_verbose ? "on" : "off");
         break;
-      case 'Q':				// quit
+      case 'Q':  // quit
         if( !Tracker.IsQuitting() ){
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           Interact_n("");
           Interact_n("Quit:  Are you sure? ");
         }
         break;
-      case '+':				// increase value
-      case '-':				// decrease value
+      case '+':  // increase value
+      case '-':  // decrease value
         if( ('+'==c && inc<0) || ('-'==c && inc>0) ) inc *= -1;
         switch( pending ){
           int64_t value;
-        case 'd': value = (int64_t)cfg_max_bandwidth_down;
+        case 'd':
+          value = (int64_t)cfg_max_bandwidth_down;
           value += (int64_t)
             ( (cfg_max_bandwidth_down * (abs(inc)/100.0) < 1) ? inc :
                 (cfg_max_bandwidth_down * (inc/100.0)) );
           cfg_max_bandwidth_down = (value < 0) ? 0 : (dt_rate_t)value;
           break;
-        case 'u': value = (int64_t)cfg_max_bandwidth_up;
+        case 'u':
+          value = (int64_t)cfg_max_bandwidth_up;
           value += (int64_t)
             ( (cfg_max_bandwidth_up * (abs(inc)/100.0) < 1) ? inc :
                 (cfg_max_bandwidth_up * (inc/100.0)) );
           cfg_max_bandwidth_up = (value < 0) ? 0 : (dt_rate_t)value;
           break;
-        case 'e': value = (int64_t)cfg_seed_hours; value += inc;
+        case 'e':
+          value = (int64_t)cfg_seed_hours + inc;
           cfg_seed_hours = (value < 0) ? 0 : (time_t)value;
           break;
-        case 'E': cfg_seed_ratio += inc / 10.0;
+        case 'E':
+          cfg_seed_ratio += inc / 10.0;
           if( cfg_seed_ratio < 0 ) cfg_seed_ratio = 0;
           break;
-        case 'm': value = (int64_t)cfg_min_peers; value += inc;
+        case 'm':
+          value = (int64_t)cfg_min_peers + inc;
           cfg_min_peers = (value < 1) ? 1 : (dt_count_t)value;
           if( cfg_min_peers > cfg_max_peers ) cfg_min_peers = cfg_max_peers;
           break;
-        case 'M': value = (int64_t)cfg_max_peers; value += inc;
+        case 'M':
+          value = (int64_t)cfg_max_peers + inc;
           cfg_max_peers = (value < (int64_t)cfg_min_peers) ?
                           cfg_min_peers : (dt_count_t)value;
           if( cfg_max_peers > 1000 ) cfg_max_peers = 1000;
           break;
-        case 'C': value = (int64_t)cfg_cache_size; value += inc;
+        case 'C':
+          value = (int64_t)cfg_cache_size + inc;
           cfg_cache_size = (value < 0) ? 0 : (dt_mem_t)value;
           BTCONTENT.CacheConfigure();
           break;
@@ -584,8 +592,8 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           else CTCS.Send_Config();
         }
         break;
-      case '0':				// operator menu
-      case 0x1b:				// Escape key
+      case '0':  // operator menu
+      case 0x1b:  // Escape key
         pending = '0';
         OperatorMenu("");
         break;
@@ -595,21 +603,28 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       }
 
       switch( pending ){
-      case 'd': InteractU("DL Limit: %d B/s ", (int)cfg_max_bandwidth_down);
+      case 'd':
+        InteractU("DL Limit: %d B/s ", (int)cfg_max_bandwidth_down);
         break;
-      case 'u': InteractU("UL Limit: %d B/s ", (int)cfg_max_bandwidth_up);
+      case 'u':
+        InteractU("UL Limit: %d B/s ", (int)cfg_max_bandwidth_up);
         break;
-      case 'e': InteractU("Seed time: %.1f hours ", BTCONTENT.GetSeedTime() ?
+      case 'e':
+        InteractU("Seed time: %.1f hours ", BTCONTENT.GetSeedTime() ?
           (cfg_seed_hours - (now - BTCONTENT.GetSeedTime())/(double)3600) :
           (double)cfg_seed_hours);
         break;
-      case 'E': InteractU("Seed ratio: %.2f ", (double)cfg_seed_ratio);
+      case 'E':
+        InteractU("Seed ratio: %.2f ", (double)cfg_seed_ratio);
         break;
-      case 'm': InteractU("Minimum peers: %d ", (int)cfg_min_peers);
+      case 'm':
+        InteractU("Minimum peers: %d ", (int)cfg_min_peers);
         break;
-      case 'M': InteractU("Maximum peers: %d ", (int)cfg_max_peers);
+      case 'M':
+        InteractU("Maximum peers: %d ", (int)cfg_max_peers);
         break;
-      case 'C': InteractU("Maximum cache: %d MB ", (int)cfg_cache_size);
+      case 'C':
+        InteractU("Maximum cache: %d MB ", (int)cfg_cache_size);
         break;
       default:
         break;
@@ -661,9 +676,13 @@ int Console::OperatorMenu(const char *param)
     return 0;
   }
   else if( 1==oper_mode ){
-    if( !*param ){ oper_mode = 0; Interact("Exiting menu"); return 1; }
+    if( !*param ){
+      oper_mode = 0;
+      Interact("Exiting menu");
+      return 1;
+    }
     int sel = atoi(param);
-    if( sel < 1 || sel > n_opt ){ 
+    if( sel < 1 || sel > n_opt ){
       Interact_n("Enter selection: ");
       return 0;
     }
@@ -810,7 +829,7 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
       else if( O_INPUT==channel ) m_streams[O_INPUT]->RestoreMode();
     }
     if( notify && (!arg_daemon || !m_streams[channel]->IsTTY()) ){
-      switch(channel){
+      switch( channel ){
       case O_NORMAL:
         Print("Output channel is now %s", dest->GetName());
         break;
@@ -840,18 +859,18 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
 void Console::ShowFiles()
 {
   BTFILE *file = 0;
-  BitField tmpFilter;
+  Bitfield tmpFilter;
   int n = 0;
 
   Interact("Files in this torrent:");
   while( ++n <= BTCONTENT.GetNFiles() ){
     BTCONTENT.SetTmpFilter(n, &tmpFilter);
-    BitField tmpBitField = *BTCONTENT.pBF;
-    tmpBitField.Except(tmpFilter);
+    Bitfield tmpBitfield = *BTCONTENT.pBF;
+    tmpBitfield.Except(tmpFilter);
     Interact("%d) %s [%llu] %d%%", n, BTCONTENT.GetFileName(n),
       (unsigned long long)(BTCONTENT.GetFileSize(n)),
-      BTCONTENT.GetFilePieces(n) ? 
-        (int)(100 * tmpBitField.Count() / BTCONTENT.GetFilePieces(n)) : 0);
+      BTCONTENT.GetFilePieces(n) ?
+        (int)(100 * tmpBitfield.Count() / BTCONTENT.GetFilePieces(n)) : 0);
   }
 }
 
@@ -915,10 +934,10 @@ void Console::StatusLine0(char buffer[], size_t length)
 {
   char partial[30] = "";
   if( BTCONTENT.GetFilter() && !BTCONTENT.GetFilter()->IsEmpty() ){
-    BitField tmpBitField = *BTCONTENT.pBF;
-    tmpBitField.Except(BTCONTENT.GetFilter());
+    Bitfield tmpBitfield = *BTCONTENT.pBF;
+    tmpBitfield.Except(BTCONTENT.GetFilter());
     sprintf( partial, "P:%d/%d ",
-      (int)(tmpBitField.Count()),
+      (int)(tmpBitfield.Count()),
       (int)(BTCONTENT.GetNPieces() - BTCONTENT.GetFilter()->Count()) );
   }
 
@@ -969,7 +988,7 @@ void Console::StatusLine1(char buffer[], size_t length)
     int have, avail, all;
     long premain = -1;
     char ptime[20] = "";
-    BitField tmpBitfield = *BTCONTENT.pBF;
+    Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(BTCONTENT.GetFilter());
     have = tmpBitfield.Count();
 
@@ -981,9 +1000,10 @@ void Console::StatusLine1(char buffer[], size_t length)
 
     if( Self.RateDL() ){
       premain = (all - have) * BTCONTENT.GetPieceLength() / Self.RateDL() / 60;
-      if( premain < 60000 )  // 1000 hours
+      if( premain < 60000 ){  // 1000 hours
         snprintf(ptime, sizeof(ptime), " %d:%2.2d",
           (int)(premain / 60), (int)(premain % 60));
+      }
     }
     sprintf(partial, "P:%d/%d%%%s ",
       100 * have / all, 100 * avail / all, ptime);
@@ -1004,7 +1024,7 @@ void Console::StatusLine1(char buffer[], size_t length)
       100 * BTCONTENT.pBF->Count() / BTCONTENT.GetNPieces());
   else{
     int have, avail, all;
-    BitField tmpBitfield = *BTCONTENT.pBF;
+    Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
     have = tmpBitfield.Count();
 
@@ -1025,30 +1045,30 @@ void Console::StatusLine1(char buffer[], size_t length)
         remain = BTCONTENT.GetLeftBytes() / Self.RateDL() / 60;
       else remain = 99999;
     }
-  }else{  //seeding
+  }else{  // seeding
     if( cfg_seed_hours )
       remain = (long)cfg_seed_hours * 60 - (now - BTCONTENT.GetSeedTime()) / 60;
     else if( Self.RateUL() ){
       // don't overflow remain
       if( cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
-          Self.TotalUL() < (dt_datalen_t)Self.RateUL() << 22 )
+          Self.TotalUL() < (dt_datalen_t)Self.RateUL() << 22 ){
         remain = (long)( cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
           Self.TotalUL() ) / Self.RateUL() / 60;
-      else remain = 99999;
+      }else remain = 99999;
     }
   }
   if( remain >= 0 ){
-    if( remain < 60000 )  // 1000 hours
+    if( remain < 60000 ){  // 1000 hours
       snprintf(timeleft, sizeof(timeleft), "%d:%2.2d",
         (int)(remain / 60), (int)(remain % 60));
-    else strcpy(timeleft, ">999hr");
+    }else strcpy(timeleft, ">999hr");
   }else if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
     // Don't say stalled if still checking and nothing to download yet.
-    BitField tmpBitfield = *BTCONTENT.pBChecked;
+    Bitfield tmpBitfield = *BTCONTENT.pBChecked;
     tmpBitfield.Except(BTCONTENT.pBF);
-    if(tmpBitfield.IsEmpty()) strcpy(timeleft, "unknown");
+    if( tmpBitfield.IsEmpty() ) strcpy(timeleft, "unknown");
     else strcpy(timeleft, "stalled");
   }else strcpy(timeleft, "stalled");
 
@@ -1181,7 +1201,7 @@ void Console::Warning(int sev, const char *message, ...)
     va_end(ap);
   }
 
-  if(sev && arg_ctcs){
+  if( sev && arg_ctcs ){
     char cmsg[CTCS_BUFSIZE];
     va_start(ap, message);
     vsnprintf(cmsg, CTCS_BUFSIZE, message, ap);
@@ -1206,7 +1226,10 @@ void Console::Debug(const char *message, ...)
        !m_streams[O_DEBUG]->SameDev(m_streams[O_INPUT])) ){
     size_t need = strlen(message)+1 + 10*sizeof(unsigned long)/4;
     if( need > sizeof(buffer) && (format = new char[need]) ) buflen = need;
-    else{ format = buffer; buflen = sizeof(buffer); }
+    else{
+      format = buffer;
+      buflen = sizeof(buffer);
+    }
 
     snprintf(format, buflen, "%lu %s", (unsigned long)now, message);
 
@@ -1244,7 +1267,10 @@ void Console::Debug_n(const char *message, ...)
       size_t buflen;
       size_t need = strlen(message)+1 + 10*sizeof(unsigned long)/4;
       if( need > sizeof(buffer) && (format = new char[need]) ) buflen = need;
-      else{ format = buffer; buflen = sizeof(buffer); }
+      else{
+        format = buffer;
+        buflen = sizeof(buffer);
+      }
 
       snprintf(format, buflen, "%lu %s", (unsigned long)now, message);
 
@@ -1394,7 +1420,7 @@ void Console::Daemonize()
     Warning(2, "warn, fork to background failed:  %s", strerror(errno));
     arg_daemon = 0;
     goto restorecache;
-  }else if(r) exit(EXIT_SUCCESS);
+  }else if( r ) exit(EXIT_SUCCESS);
   if( !arg_daemon ) arg_daemon = 1;
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
@@ -1417,7 +1443,7 @@ void Console::Daemonize()
       "warn, final fork failed (continuing in background):  %s",
       strerror(errno));
     goto restorecache;
-  }else if(r) exit(EXIT_SUCCESS);
+  }else if( r ) exit(EXIT_SUCCESS);
   else if(arg_verbose) Debug("Running in daemon (background) mode.");
 
  restorecache:

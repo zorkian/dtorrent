@@ -46,5 +46,6 @@ void srandom(unsigned long seed);
 #ifdef __cplusplus
 }
 #endif
+
 #endif  // COMPAT_H
 

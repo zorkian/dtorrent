@@ -24,10 +24,10 @@ unsigned long cfg_seed_hours = 72;
 double cfg_seed_ratio = 0;
 
 // arguments global value
-char *arg_metainfo_file = (char*) 0;
-char *arg_bitfield_file = (char*) 0;
-char *arg_save_as = (char*) 0;
-char *arg_user_agent = (char*) 0;
+char *arg_metainfo_file = (char *)0;
+char *arg_bitfield_file = (char *)0;
+char *arg_save_as = (char *)0;
+char *arg_user_agent = (char *)0;
 
 unsigned char arg_flg_force_seed_mode = 0;
 unsigned char arg_flg_check_only = 0;
@@ -41,11 +41,11 @@ unsigned char arg_allocate = 0;
 unsigned char arg_daemon = 0;
 
 bt_length_t arg_piece_length = 262144;
-char *arg_announce = (char*) 0;
-char *arg_comment = (char*) 0;
+char *arg_announce = (char *)0;
+char *arg_comment = (char *)0;
 
-char *arg_ctcs = (char*) 0;
-char *arg_completion_exit = (char*) 0;
+char *arg_ctcs = (char *)0;
+char *arg_completion_exit = (char *)0;
 
-char *cfg_user_agent = (char*) 0;
+char *cfg_user_agent = (char *)0;
 
