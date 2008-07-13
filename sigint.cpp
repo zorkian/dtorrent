@@ -21,7 +21,7 @@ RETSIGTYPE sig_catch(int sig_no)
   }
 }
 
-static RETSIGTYPE sig_catch2(int sig_no)
+RETSIGTYPE sig_catch2(int sig_no)
 {
   if( SIGINT == sig_no || SIGTERM == sig_no ){
     if( cfg_cache_size ) BTCONTENT.FlushCache();

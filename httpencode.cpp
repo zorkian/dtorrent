@@ -86,8 +86,8 @@ size_t Http_split(char *b, size_t n, char **pd, size_t *dlen)
   if( strncasecmp(b, "HTTP/", 5) != 0 ){
     return 0;  // no HTTP header
   }else{
-    if( p = strnstr(b, "\r\n\r\n", n) ) addition = 4;
-    else if( p = strnstr(b, "\n\n", n) ) addition = 2;
+    if( (p = strnstr(b, "\r\n\r\n", n)) ) addition = 4;
+    else if( (p = strnstr(b, "\n\n", n)) ) addition = 2;
 
     if( p ){
       hlen = p - b;

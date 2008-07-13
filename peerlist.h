@@ -52,7 +52,7 @@ class PeerList
   void WaitBWQueue(PEERNODE **queue, btPeer *peer);
   void BWReQueue(PEERNODE **queue, btPeer *peer);
   void DontWaitBWQueue(PEERNODE **queue, btPeer *peer);
-  unsigned long Rank(btPeer *peer){
+  dt_count_t Rank(btPeer *peer){
     return (m_readycnt > peer->readycnt) ? m_readycnt - peer->readycnt : 3;
   }
 

@@ -244,8 +244,7 @@ dt_rate_t Rate::NominalRate()
 // Calculate rate based on bandwidth history data
 dt_rate_t Rate::RateMeasure()
 {
-  time_t timestamp = now;
-  unsigned long countbytes = 0;
+  bt_length_t countbytes = 0;
   double timeused = 0;
   BWSAMPLE *p;
 

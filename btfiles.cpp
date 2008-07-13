@@ -63,7 +63,7 @@ btFiles::~btFiles()
   if( !cfg_child_process &&
       0==stat(m_staging_path, &sb) && S_ISDIR(sb.st_mode) &&
       (dp = opendir(m_staging_path)) ){
-    while( dirp = readdir(dp) ){
+    while( (dirp = readdir(dp)) ){
       if( 0!=strcmp(dirp->d_name, ".") && 0!=strcmp(dirp->d_name, "..") ){
         f_remove = 0;
         break;
@@ -191,7 +191,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
 {
   off_t pos;
   size_t nio;
-  BTFILE *pbf = m_btfhead, *pbfref, *pbfnext = (BTFILE *)0;
+  BTFILE *pbf = m_btfhead, *pbfref = (BTFILE *)0, *pbfnext = (BTFILE *)0;
 
   if( off + (dt_datalen_t)len > m_total_files_length ){
     CONSOLE.Warning(1, "error, data offset %llu length %lu out of range",
@@ -246,7 +246,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
         // Create new staging file
         if( m_stagecount >= MAX_STAGEDIR_FILES || !m_stagedir[0] ){
           char fn[MAXPATHLEN], tmpdir[m_fsizelen+1];
-          sprintf(tmpdir, "%.*llu", m_fsizelen, off);
+          sprintf(tmpdir, "%.*llu", (int)m_fsizelen, (unsigned long long)off);
           snprintf(fn, MAXPATHLEN, "%s%c%s", m_staging_path, PATH_SP, tmpdir);
           if(arg_verbose) CONSOLE.Debug("Create dir \"%s\"", fn);
           if( mkdir(fn, 0755) < 0 ){
@@ -266,7 +266,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
           return -1;
         }
         sprintf(pbf->bf_filename, "%s%c%s-%.*llu", m_stagedir, PATH_SP,
-          m_torrent_id, m_fsizelen, off);
+          m_torrent_id, (int)m_fsizelen, (unsigned long long)off);
         pbf->bf_offset = off;
         pbf->bf_flag_staging = 1;
         pbf->bf_next = pbfref->bf_next;
@@ -326,7 +326,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
       }
-      if( pos + nio > pbf->bf_size )
+      if( (dt_datalen_t)pos + nio > pbf->bf_size )
         pbf->bf_size = pos + nio;
       if( !pbf->bf_flag_staging && pbf->bf_size < pbf->bf_length &&
           pbf->bf_next && pbf->bf_next->bf_flag_staging &&
@@ -417,7 +417,7 @@ int btFiles::MergeStaging(BTFILE *dst)
     }
     remain -= nio;
     pos += nio;
-    if( pos > dst->bf_size )
+    if( (dt_datalen_t)pos > dst->bf_size )
       dst->bf_size = pos;
   }
 
@@ -446,7 +446,7 @@ int btFiles::MergeStaging(BTFILE *dst)
     sprintf(buf, "%s%c", m_staging_path, PATH_SP);
     strncat(buf, src->bf_filename, m_fsizelen);
     if( 0==stat(buf, &sb) && S_ISDIR(sb.st_mode) && (dp = opendir(buf)) ){
-      while( dirp = readdir(dp) ){
+      while( (dirp = readdir(dp)) ){
         if( 0!=strcmp(dirp->d_name, ".") && 0!=strcmp(dirp->d_name, "..") ){
           f_remove = 0;
           break;
@@ -463,6 +463,7 @@ int btFiles::MergeStaging(BTFILE *dst)
   }
 
   delete src;
+  return 0;
 }
 
 // Identify a file that can be merged, and do it
@@ -615,7 +616,7 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
       return -1;
     }
     memset(c, 0, OPT_IO_SIZE);
-    int r, wlen;
+    int r = 0, wlen;
     dt_datalen_t len = 0;
     for( int i=0; len < length; i++ ){
       if( len + OPT_IO_SIZE > length ) wlen = (int)(length - len);
@@ -671,7 +672,7 @@ int btFiles::_btf_recurses_directory(const char *cur_path, BTFILE **plastnode)
     return -1;
   }
 
-  while( dirp = readdir(dp) ){
+  while( (dirp = readdir(dp)) ){
     if( 0 == strcmp(dirp->d_name, ".") ||
         0 == strcmp(dirp->d_name, "..") ){
       continue;
@@ -853,7 +854,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
 #ifndef WINDOWS
       if( !tmpfn ) return -1;
 #endif
-      if( f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5) ){
+      if( (f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5)) ){
         if( arg_flg_convert_filenames ){
           m_directory = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
@@ -906,7 +907,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
 #ifndef WINDOWS
       if( !tmpfn ) return -1;
 #endif
-      if( f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5) ){
+      if( (f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5)) ){
         if( arg_flg_convert_filenames ){
           pbf->bf_filename = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
@@ -1027,7 +1028,7 @@ int btFiles::SetupFiles(const char *torrentid)
       }
       m_stagecount = 0;
       strcpy(m_stagedir, dirp->d_name);
-      while( dirp = readdir(subdp) ){
+      while( (dirp = readdir(subdp)) ){
         if( 0==strncmp(m_torrent_id, dirp->d_name, strlen(m_torrent_id)) &&
             dirp->d_name[strlen(m_torrent_id)] == '-' &&
             MAXPATHLEN > snprintf(fn, MAXPATHLEN, "%s%c%s%c%s",
@@ -1095,7 +1096,7 @@ int btFiles::SetupFiles(const char *torrentid)
         CONSOLE.Warning(1, "error, file \"%s\" is not a regular file.", fn);
         return -1;
       }
-      if( sb.st_size > pbt->bf_length ){
+      if( (dt_datalen_t)(sb.st_size) > pbt->bf_length ){
         CONSOLE.Warning(1, "error, file \"%s\" size is too big; should be %llu",
           fn, (unsigned long long)(pbt->bf_length));
         return -1;
@@ -1251,14 +1252,15 @@ int btFiles::FillMetaInfo(FILE *fp)
 }
 
 
-void btFiles::SetFilter(int nfile, Bitfield *pFilter, bt_length_t pieceLength)
+void btFiles::SetFilter(dt_count_t nfile, Bitfield *pFilter,
+  bt_length_t pieceLength)
 {
   BTFILE *p = m_btfhead;
   dt_count_t id = 0;
   dt_datalen_t sizeBuffer=0;
   bt_index_t index;
 
-  if( nfile==0 || nfile>m_nfiles ){
+  if( nfile == 0 || nfile > m_nfiles ){
     pFilter->Clear();
     return;
   }

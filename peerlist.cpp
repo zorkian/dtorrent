@@ -203,8 +203,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   int f_keepalive_check = 0;
   int f_unchoke_check = 0;
-  int i = 0;
-  btPeer **UNCHOKER;
+  btPeer **UNCHOKER = (btPeer **)0;
 
   // No pause check here--stay ready by continuing to acquire peers.
   if( !Tracker.IsQuitting() ){
@@ -293,7 +292,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 {
   PEERNODE *p, *pp;
   btPeer *peer;
-  int maxfd = -1, f_idle;
+  int maxfd = -1, f_idle = 0;
   SOCKET sk = INVALID_SOCKET;
 
   m_f_limitu = BandWidthLimitUp(Self.LateUL());
@@ -408,7 +407,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
     if( !UNCHOKER[0] ) Self.StopULTimer();
 
-    for( int i = 0; i < m_max_unchoke + 1; i++ ){
+    for( dt_count_t i = 0; i < m_max_unchoke + 1; i++ ){
       if( !UNCHOKER[i] ) break;
 
       if( PEER_IS_FAILED(UNCHOKER[i]) ) continue;
@@ -440,8 +439,8 @@ void PeerList::SetUnchokeIntervals()
 
   // Unchoke peers long enough to have a chance at getting some data.
   if( BandWidthLimitUp() && BTCONTENT.Seeding() ){
-    int optx = (int)( 1 / (1 - (double)MIN_UNCHOKE_INTERVAL *
-                               cfg_max_bandwidth_up / cfg_req_slice_size) );
+    dt_count_t optx = (dt_count_t)(1 / (1 - (double)MIN_UNCHOKE_INTERVAL *
+                                   cfg_max_bandwidth_up / cfg_req_slice_size));
     if( optx < 0 ) optx = 0;
     if( optx < MIN_OPT_CYCLE ){
       optx = MIN_OPT_CYCLE;
@@ -454,9 +453,9 @@ void PeerList::SetUnchokeIntervals()
     }else{
       // Allow each peer at least 60 seconds unchoked.
       m_unchoke_interval = MIN_UNCHOKE_INTERVAL;
-      if( m_max_unchoke+1 < 60 / m_unchoke_interval ){
-        int maxopt = (int)( 1 / (1 - (double)(m_max_unchoke+1) *
-                                     m_unchoke_interval / 60) );
+      if( m_max_unchoke+1 < (dt_count_t)(60 / m_unchoke_interval) ){
+        dt_count_t maxopt = (dt_count_t)(1 / (1 - (double)(m_max_unchoke+1) *
+                                                  m_unchoke_interval / 60));
         if( maxopt > MIN_OPT_CYCLE && optx > maxopt ) optx = maxopt;
       }
       if( optx > m_max_unchoke+2 ) optx = m_max_unchoke+2;
@@ -531,11 +530,11 @@ bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
     dt_count_t qlen, count;
   };
   struct qdata *data;
-  int endgame, pass, i, mark;
+  int endgame, pass;
   PEERNODE *p;
   PSLICE ps;
   bt_index_t piece;
-  dt_count_t slots, qsize;
+  dt_count_t slots, qsize, i, mark;
   double work, best;
 
   endgame = idx < BTCONTENT.GetNPieces();  // else initial-piece mode
@@ -759,7 +758,8 @@ void PeerList::CancelOneRequest(bt_index_t idx)
   PEERNODE *p;
   PSLICE ps;
   btPeer *peer = (btPeer *)0;
-  int count, max=0, dupcount=0, pending = 0;
+  int pending = 0;
+  dt_count_t count, max = 0, dupcount = 0;
 
   if( PENDINGQUEUE.Exist(idx) ){
     pending = 1;
@@ -957,7 +957,7 @@ int PeerList::Initial_ListenPort()
     return -1;
   }
 
-  snprintf(m_listen, sizeof(m_listen), "%s:%d",
+  snprintf(m_listen, sizeof(m_listen), "%s:%hu",
     inet_ntoa(lis_addr.sin_addr), ntohs(lis_addr.sin_port));
   CONSOLE.Print("Listening on %s", m_listen);
 
@@ -1018,7 +1018,6 @@ void PeerList::CheckBitfield(Bitfield &bf)
 void PeerList::PrintOut() const
 {
   PEERNODE *p = m_head;
-  struct sockaddr_in sin;
   CONSOLE.Print("PEER LIST");
   for( ; p; p = p->next ){
     if( PEER_IS_FAILED(p->peer) ) continue;
@@ -1032,7 +1031,8 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   PEERNODE *p, *pp = (PEERNODE *)0, *pnext;
   btPeer *peer;
   SOCKET sk;
-  int pready, pmoved, pcount=0;
+  int pready, pmoved;
+  dt_count_t pcount = 0;
 
   if( FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
@@ -1189,8 +1189,7 @@ void PeerList::CloseAllConnectionToSeed()
    happens. */
 int PeerList::UnchokeCheck(btPeer *peer, btPeer *peer_array[])
 {
-  int i = 0;
-  int cancel_idx = 0;
+  dt_count_t i = 0, cancel_idx = 0;
   btPeer *loser = (btPeer *)0;
   int f_seed = BTCONTENT.Seeding();
   int no_opt = 0;
@@ -1654,7 +1653,7 @@ void PeerList::WaitBWQueue(PEERNODE **queue, btPeer *peer)
   for( ; p; pp = p, p = p->next ){
     if( peer == p->peer ) return;
   }
-  if( node = new PEERNODE ){
+  if( (node = new PEERNODE) ){
     node->next = (PEERNODE *)0;
     node->peer = peer;
     if( pp ) pp->next = node;

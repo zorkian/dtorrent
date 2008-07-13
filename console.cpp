@@ -80,7 +80,7 @@ void ConStream::Associate(FILE *stream, const char *name, int mode)
 {
   m_stream = stream;
   m_filemode = mode;
-  if( m_name = new char[strlen(name)+1] )
+  if( (m_name = new char[strlen(name)+1]) )
     strcpy(m_name, name);
   else Error(1, "Failed to allocate memory for output filename.");
 }
@@ -380,7 +380,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
     if( DT_CONMODE_LINES == m_streams[O_INPUT]->GetInputMode() ){  // cmd param
       SyncNewlines(O_INPUT);
       if( m_streams[O_INPUT]->Input(param, sizeof(param)) ){
-        if( s = strchr(param, '\n') ) *s = '\0';
+        if( (s = strchr(param, '\n')) ) *s = '\0';
         if( '0'==pending ){
           if( OperatorMenu(param) ) pending = '\0';
         }else{
@@ -802,12 +802,12 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
     }
     if( !dest ){
       FILE *stream;
-      if( dest = new ConStream ){
+      if( (dest = new ConStream) ){
         if( 0==strcmp(param, m_streams[channel]->GetName()) ){
           delete m_streams[channel];
           m_streams[channel] = &m_off;
         }
-        if( stream = fopen(param, (channel==O_INPUT) ? "r" : "a") )
+        if( (stream = fopen(param, (channel==O_INPUT) ? "r" : "a")) )
           dest->Associate(stream, param, (channel==O_INPUT) ? 0 : 1);
         else{
           Interact("Error opening file: %s", strerror(errno));
@@ -858,16 +858,15 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
 
 void Console::ShowFiles()
 {
-  BTFILE *file = 0;
   Bitfield tmpFilter;
-  int n = 0;
+  dt_count_t n = 0;
 
   Interact("Files in this torrent:");
   while( ++n <= BTCONTENT.GetNFiles() ){
     BTCONTENT.SetTmpFilter(n, &tmpFilter);
     Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(tmpFilter);
-    Interact("%d) %s [%llu] %d%%", n, BTCONTENT.GetFileName(n),
+    Interact("%d) %s [%llu] %d%%", (int)n, BTCONTENT.GetFileName(n),
       (unsigned long long)(BTCONTENT.GetFileSize(n)),
       BTCONTENT.GetFilePieces(n) ?
         (int)(100 * tmpBitfield.Count() / BTCONTENT.GetFilePieces(n)) : 0);
@@ -921,7 +920,8 @@ void Console::Status(int immediate)
           (int)(BTCONTENT.CacheHits()), (int)(BTCONTENT.CacheMiss()),
           BTCONTENT.CacheHits() ? (int)(100 * BTCONTENT.CacheHits() /
             (BTCONTENT.CacheHits()+BTCONTENT.CacheMiss())) : 0,
-          BTCONTENT.CachePre(), (int)(Self.TotalUL() / DEFAULT_SLICE_SIZE));
+          (int)BTCONTENT.CachePre(),
+            (int)(Self.TotalUL() / DEFAULT_SLICE_SIZE));
     }
 
     m_pre_dlrate = Self.GetDLRate();
@@ -944,7 +944,7 @@ void Console::StatusLine0(char buffer[], size_t length)
   char checked[14] = "";
   if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
     sprintf( checked, "Checking: %d%%",
-      100 * BTCONTENT.CheckedPieces() / BTCONTENT.GetNPieces() );
+      (int)(100 * BTCONTENT.CheckedPieces() / BTCONTENT.GetNPieces()) );
   }
 
   snprintf(buffer, length,
@@ -985,7 +985,7 @@ void Console::StatusLine1(char buffer[], size_t length)
 {
   char partial[30] = "";
   if( BTCONTENT.GetFilter() && !BTCONTENT.GetFilter()->IsEmpty() ){
-    int have, avail, all;
+    bt_index_t have, avail, all;
     long premain = -1;
     char ptime[20] = "";
     Bitfield tmpBitfield = *BTCONTENT.pBF;
@@ -1006,23 +1006,23 @@ void Console::StatusLine1(char buffer[], size_t length)
       }
     }
     sprintf(partial, "P:%d/%d%%%s ",
-      100 * have / all, 100 * avail / all, ptime);
+      (int)(100 * have / all), (int)(100 * avail / all), ptime);
   }
 
 
   char checked[14] = "";
   if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() ){
-    sprintf( checked, "Checking: %d%%",
-      100 * BTCONTENT.CheckedPieces() / BTCONTENT.GetNPieces() );
+    sprintf(checked, "Checking: %d%%",
+      (int)(100 * BTCONTENT.CheckedPieces() / BTCONTENT.GetNPieces()));
   }
 
   char complete[8];
   if( BTCONTENT.IsFull() )
     sprintf(complete, "seeding");
-  else if( BTCONTENT.Seeding() )
+  else if( BTCONTENT.Seeding() ){
     sprintf(complete, "seed%d%%",
-      100 * BTCONTENT.pBF->Count() / BTCONTENT.GetNPieces());
-  else{
+      (int)(100 * BTCONTENT.pBF->Count() / BTCONTENT.GetNPieces()));
+  }else{
     int have, avail, all;
     Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
@@ -1033,7 +1033,8 @@ void Console::StatusLine1(char buffer[], size_t length)
     avail = tmpBitfield.Count();
 
     all = BTCONTENT.GetNPieces() - BTCONTENT.pBMasterFilter->Count();
-    sprintf(complete, "%d/%d%%", 100 * have / all, 100 * avail / all);
+    sprintf(complete, "%d/%d%%",
+      (int)(100 * have / all), (int)(100 * avail / all));
   }
 
   long remain = -1;

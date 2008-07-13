@@ -162,7 +162,7 @@ class btPeer:public btBasic
   btStream stream;
   RequestQueue request_q;
   RequestQueue respond_q;
-  unsigned long readycnt;  // copy of peerlist m_readycnt at last ready time
+  dt_count_t readycnt;  // copy of peerlist m_readycnt at last ready time
 
   btPeer();
 

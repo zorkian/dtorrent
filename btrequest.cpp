@@ -100,7 +100,7 @@ int RequestQueue::Copy(const RequestQueue *prq, bt_index_t idx)
 
 int RequestQueue::CopyShuffle(const RequestQueue *prq, bt_index_t idx)
 {
-  PSLICE n, u, ps, prev, end, psnext, temp;
+  PSLICE n, u, ps, prev, end = (PSLICE)0, psnext, temp;
   SLICE dummy;
   int len, shuffle, setsend=0;
   bt_offset_t firstoff;
@@ -314,7 +314,7 @@ int RequestQueue::Remove(bt_index_t idx, bt_offset_t off, bt_length_t len)
    returns -1 if failed, 1 if request needs to be sent. */
 int RequestQueue::Requeue(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
-  int f_send, retval;
+  int f_send = 0, retval;
   PSLICE n = rq_head;
   PSLICE u = (PSLICE) 0;
   PSLICE save_send = rq_send;
@@ -498,7 +498,9 @@ void PendingQueue::Empty()
 
 int PendingQueue::Exist(bt_index_t idx) const
 {
-  int i, j = 0;
+  int i;
+  dt_count_t j = 0;
+
   for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
     if( pending_array[i] ){
       j++;
@@ -510,7 +512,9 @@ int PendingQueue::Exist(bt_index_t idx) const
 
 int PendingQueue::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
-  int i, j = 0;
+  int i;
+  dt_count_t j = 0;
+
   for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
     if( pending_array[i] ){
       j++;
@@ -615,7 +619,9 @@ bt_index_t PendingQueue::ReAssign(RequestQueue *prq, Bitfield &bf)
 
 int PendingQueue::Delete(bt_index_t idx)
 {
-  int i, j = 0, r = 0;
+  int i, r = 0;
+  dt_count_t j = 0;
+
   for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
     if( pending_array[i] ){
       j++;
@@ -632,7 +638,9 @@ int PendingQueue::Delete(bt_index_t idx)
 
 int PendingQueue::DeleteSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
 {
-  int i, j = 0, r = 0;
+  int i, r = 0;
+  dt_count_t j = 0;
+
   RequestQueue rq;
   for( i = 0; i < PENDING_QUEUE_SIZE && j < pq_count; i++ ){
     if( pending_array[i] ){

@@ -127,14 +127,14 @@ int Ctcs::CheckMessage()
     *s = '\0';
     if( arg_verbose && s!=msgbuf ) CONSOLE.Debug("CTCS: %s", msgbuf);
     if( !strncmp("SETDLIMIT", msgbuf, 9) ){
-      int arg = (int)strtod(msgbuf+10, NULL);
+      dt_rate_t arg = (dt_rate_t)strtod(msgbuf+10, NULL);
       if( !BTCONTENT.IsFull() || arg < cfg_max_bandwidth_down ){
         cfg_max_bandwidth_down = arg;
-        if(arg_verbose) CONSOLE.Debug("DLimit=%d", cfg_max_bandwidth_down);
+        if(arg_verbose) CONSOLE.Debug("DLimit=%d", (int)cfg_max_bandwidth_down);
       }
     }else if( !strncmp("SETULIMIT", msgbuf, 9) ){
-      cfg_max_bandwidth_up = (int)(strtod(msgbuf+10, NULL));
-      if(arg_verbose) CONSOLE.Debug("ULimit=%d", cfg_max_bandwidth_up);
+      cfg_max_bandwidth_up = (dt_rate_t)(strtod(msgbuf+10, NULL));
+      if(arg_verbose) CONSOLE.Debug("ULimit=%d", (int)cfg_max_bandwidth_up);
     }else if( !strncmp("SENDPEERS", msgbuf, 9) ){
       Send_Peers();
     }else if( !strncmp("SENDSTATUS", msgbuf, 10) ){
@@ -494,18 +494,19 @@ int Ctcs::Set_Config(const char *origmsg)
       double arg = atof(valstr);
       if( arg < 0 ) goto err;
       if( 0==BTCONTENT.GetSeedTime() ||
-          cfg_seed_hours > (now - BTCONTENT.GetSeedTime()) / 3600 ||
-          arg > (double) Self.TotalUL() /
+          cfg_seed_hours >
+            (unsigned long)(now - BTCONTENT.GetSeedTime()) / 3600 ||
+          arg > (double)Self.TotalUL() /
             (Self.TotalDL() ?
              Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) ){
         cfg_seed_ratio = arg;
       }
     }else if( 0==strcmp(name, "max_peers") ){
-      int arg = atoi(valstr);
+      dt_count_t arg = (dt_count_t)atoi(valstr);
       if( arg > 1000 || arg < 20 ) goto err;
       cfg_max_peers = arg;
     }else if( 0==strcmp(name, "min_peers") ){
-      int arg = atoi(valstr);
+      dt_count_t arg = (dt_count_t)atoi(valstr);
       if( arg > 1000 || arg < 1 ) goto err;
       cfg_min_peers = arg;
     }else if( 0==strcmp(name, "file_list") ){
@@ -575,9 +576,9 @@ int Ctcs::Set_Config(const char *origmsg)
     if( !(msgbuf = strchr(msgbuf+11, ' ')) ) goto err;
     if( *++msgbuf != '.' ) cfg_seed_ratio = atof(msgbuf);
     if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ) cfg_max_peers = atoi(msgbuf);
+    if( *++msgbuf != '.' ) cfg_max_peers = (dt_count_t)atoi(msgbuf);
     if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ) cfg_min_peers = atoi(msgbuf);
+    if( *++msgbuf != '.' ) cfg_min_peers = (dt_count_t)atoi(msgbuf);
     if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
     if( *++msgbuf != '.' ){
       char *p = strchr(msgbuf, ' ');
@@ -628,12 +629,11 @@ int Ctcs::Send_Detail()
   char message[CTCS_BUFSIZE];
   int r=0, priority, current=0;
   dt_count_t n=0;
-  BTFILE *file=0;
   Bitfield tmpBitfield, fileFilter, availbf, tmpavail, allFilter, tmpFilter,
     *pfilter;
 
   snprintf( message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
-    BTCONTENT.GetTotalFilesLength(),
+    (unsigned long long)BTCONTENT.GetTotalFilesLength(),
     (int)(BTCONTENT.GetPieceLength()), (long)now,
     (long)(BTCONTENT.GetSeedTime()) );
   r = SendMessage(message);
@@ -663,7 +663,7 @@ int Ctcs::Send_Detail()
         fileFilter.Invert();
         allFilter.SetAll();
         pfilter = (Bitfield *)0;
-        while( pfilter = BTCONTENT.GetNextFilter(pfilter) ){
+        while( (pfilter = BTCONTENT.GetNextFilter(pfilter)) ){
           priority++;
           allFilter.And(*pfilter);    // cumulation of filters
           tmpFilter = allFilter;
@@ -744,8 +744,8 @@ int Ctcs::Initial()
 
   strncpy(m_host, arg_ctcs, MAXHOSTNAMELEN-1);
   m_host[MAXHOSTNAMELEN-1] = '\0';
-  if( s = strchr(m_host, ':') ) *s='\0';
-  m_port = atoi(s=(strchr(arg_ctcs, ':')+1));
+  if( (s = strchr(m_host, ':')) ) *s='\0';
+  m_port = atoi(s = (strchr(arg_ctcs, ':')+1));
   if( strchr(s, ':') )
     CONSOLE.Input("Enter CTCS password: ", m_pass, CTCS_PASS_SIZE);
   else *m_pass = '\0';

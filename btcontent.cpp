@@ -294,12 +294,12 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   m_announce[bsiz] = '\0';
 
   // announce-list
-  if( bsiz = meta_pos("announce-list") ){
+  if( (bsiz = meta_pos("announce-list")) ){
     const char *sptr;
     size_t slen;
     int n = 0;
-    if( q = decode_list(b+bsiz, flen-bsiz, (char *)0) ){
-      int alend = bsiz + q;
+    if( (q = decode_list(b+bsiz, flen-bsiz, (char *)0)) ){
+      size_t alend = bsiz + q;
       bsiz++;  // 'l'
       while( bsiz < alend && *(b+bsiz) != 'e' && n < 9 ){  // each list
         if( !(q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ) break;
@@ -322,13 +322,13 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 
   if( meta_int("creation date", &bint) ) m_create_date = (time_t)bint;
   if( meta_str("comment", &s, &bsiz) && bsiz ){
-    if( m_comment = new char[bsiz + 1] ){
+    if( (m_comment = new char[bsiz + 1]) ){
       memcpy(m_comment, s, bsiz);
       m_comment[bsiz] = '\0';
     }
   }
   if( meta_str("created by", &s, &bsiz) && bsiz ){
-    if( m_created_by = new char[bsiz + 1] ){
+    if( (m_created_by = new char[bsiz + 1]) ){
       memcpy(m_created_by, s, bsiz);
       m_created_by[bsiz] = '\0';
     }
@@ -497,11 +497,10 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   memset(m_cache, 0, m_npieces * sizeof(BTCACHE *));
   CacheConfigure();
 
-  *ptr++ = (unsigned char)19;                         // protocol string length
-  memcpy(ptr, "BitTorrent protocol", 19);             // protocol string
+  *ptr++ = (unsigned char)19;              // protocol string length
+  memcpy(ptr, "BitTorrent protocol", 19);  // protocol string
   ptr += 19;
-  memset(ptr, 0, 8);                                  // reserved bytes
-  ptr += 8;  //dnh don't really need ptr??
+  memset(ptr, 0, 8);                       // reserved bytes
 
   { // peer id
     char *sptr = arg_user_agent;
@@ -713,7 +712,7 @@ void btContent::CacheEval()
                                  ((double)cfg_cache_size*1024*1024 / rateup) );
       /* Lead cache: data we need to cache to keep the slowest up's data cached
          Add a slice per up for timing uncertainty */
-      if( slowest = WORLD.GetSlowestUp(slowest) )
+      if( (slowest = WORLD.GetSlowestUp(slowest)) )
         upadd = DEFAULT_SLICE_SIZE * ( rateup / slowest + unchoked-1 );
       else upadd = DEFAULT_SLICE_SIZE * unchoked;
 
@@ -726,7 +725,7 @@ void btContent::CacheEval()
       dt_rate_t slowest = (dt_rate_t)( 1 +
         cfg_req_slice_size * ((double)ratedn / cfg_cache_size*1024*1024) +
         DEFAULT_SLICE_SIZE * ((double)rateup / cfg_cache_size*1024*1024) );
-      if( slowest = WORLD.GetSlowestUp(slowest) )
+      if( (slowest = WORLD.GetSlowestUp(slowest)) )
         /* lead cache is how much we'll use while uploading a slice to slowest
            (default_slice_size / slowest) * (ratedn + rateup) */
         upadd = (dt_mem_t)( ((double)DEFAULT_SLICE_SIZE / slowest) *
@@ -737,7 +736,7 @@ void btContent::CacheEval()
       // same as m_piece_length / (cfg_cache_size*1024*1024 / (double)ratedn)
       dt_rate_t slowest = (dt_rate_t)( 1 +
         ratedn * ((double)m_piece_length / (cfg_cache_size*1024*1024)) );
-      if( slowest = WORLD.GetSlowestUp(slowest) ){
+      if( (slowest = WORLD.GetSlowestUp(slowest)) ){
         /* m_piece_length / (double)slowest * ratedn
            optimize, then round up a piece and add a piece */
         upadd = m_piece_length * (ratedn / slowest + 2);
@@ -794,7 +793,7 @@ int btContent::NeedFlush() const
 void btContent::FlushCache()
 {
   if(arg_verbose) CONSOLE.Debug("Flushing all cache");
-  for( int i=0; i < m_npieces; i++ ){
+  for( bt_index_t i=0; i < m_npieces; i++ ){
     if( m_cache[i] ) FlushPiece(i);
     if( m_flush_failed ) break;
   }
@@ -1317,7 +1316,7 @@ int btContent::SeedTimeout()
     dl = (Self.TotalDL() > 0) ? Self.TotalDL() : GetTotalFilesLength();
     if( (cfg_seed_ratio == 0 && cfg_seed_hours == 0) ||
         (cfg_seed_hours > 0 &&
-          (now - m_seed_timestamp) >= (cfg_seed_hours * 60 * 60)) ||
+          (now - m_seed_timestamp) >= (time_t)(cfg_seed_hours * 60 * 60)) ||
         (cfg_seed_ratio > 0 &&
           cfg_seed_ratio <= (double) Self.TotalUL() / dl) ){
       if( m_flush_failed ){
@@ -1351,15 +1350,15 @@ void btContent::CompletionCommand()
   int nt=0, nd=0, nw=0;
 
   pt = pd = pw = arg_completion_exit;
-  while( pt = strstr(pt, "&t") ){
+  while( (pt = strstr(pt, "&t")) ){
     nt++;
     pt += 2;
   }
-  while( pd = strstr(pd, "&d") ){
+  while( (pd = strstr(pd, "&d")) ){
     nd++;
     pd+=2;
   }
-  while( pw = strstr(pw, "&w") ){
+  while( (pw = strstr(pw, "&w")) ){
     nw++;
     pw+=2;
   }
@@ -1548,14 +1547,14 @@ void btContent::SetFilter()
       }
       pfilter->SetAll();
       do{
-        start = atoi(tok);
+        start = (dt_count_t)atoi(tok);
         m_btfiles.SetFilter(start, &tmpFilter, m_piece_length);
         pfilter->And(tmpFilter);
 
         plus = strchr(tok, '+');
 
         if( (dash = strchr(tok, '-')) && (!plus || dash < plus) ){
-          end = atoi(dash + 1);
+          end = (dt_count_t)atoi(dash + 1);
           while( ++start <= end ){
             m_btfiles.SetFilter(start, &tmpFilter, m_piece_length);
             pfilter->And(tmpFilter);

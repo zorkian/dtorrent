@@ -56,7 +56,7 @@ int main(int argc, char **argv)
   if( !cfg_user_agent ) return -1;
 #endif
   sprintf(cfg_user_agent, "%s/%s", PACKAGE_NAME, PACKAGE_VERSION);
-  while( s = strchr(cfg_user_agent, ' ') ) *s = '-';
+  while( (s = strchr(cfg_user_agent, ' ')) ) *s = '-';
 
   if( argc < 2 ){
     usage();
@@ -129,7 +129,6 @@ int param_check(int argc, char **argv)
 {
   const char *opts;
   int c, l;
-  char *s;
 
   if( 0==strncmp(argv[1], "-t", 2) )
     opts = "tc:l:ps:u:";

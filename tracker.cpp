@@ -248,7 +248,7 @@ int btTracker::_UpdatePeerList(char *buf, size_t bufsiz)
 
 int btTracker::CheckResponse()
 {
-  char *pdata, *format;
+  char *pdata;
   ssize_t r;
   size_t q, hlen, dlen;
 
@@ -284,8 +284,7 @@ int btTracker::CheckResponse()
   r = Http_response_code(m_response_buffer.BasePointer(), hlen);
   if( r != 200 ){
     if( r == 301 || r == 302 ){
-      char redirect[MAXPATHLEN], ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1],
-           tmppath[MAXPATHLEN];
+      char redirect[MAXPATHLEN];
 
       if( Http_get_header(m_response_buffer.BasePointer(), hlen, "Location",
                           redirect) < 0 ){
@@ -369,7 +368,7 @@ int btTracker::Initial()
 
     if( gethostname(hostname, MAXHOSTNAMELEN) >= 0 ){
 //    CONSOLE.Debug("hostname: %s", hostname);
-      if( h = gethostbyname(hostname) ){
+      if( (h = gethostbyname(hostname)) ){
 //      CONSOLE.Debug("Host name: %s", h->h_name);
 //      CONSOLE.Debug("Address: %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
         if( !IsPrivateAddress(((struct in_addr *)(h->h_addr))->s_addr) ||

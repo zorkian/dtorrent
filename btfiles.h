@@ -59,7 +59,7 @@ class btFiles
   dt_datalen_t m_total_files_length;
   dt_count_t m_total_opened;  // already opened
   dt_count_t m_nfiles;
-  int m_fsizelen;
+  size_t m_fsizelen;
   BTFILE **m_file;
   char *m_torrent_id;         // unique torrent identifier (ASCII)
   char *m_staging_path;       // main staging directory
@@ -103,7 +103,7 @@ class btFiles
   int IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype);
   int FillMetaInfo(FILE *fp);
 
-  void SetFilter(int nfile, Bitfield *pFilter, bt_length_t pieceLength);
+  void SetFilter(dt_count_t nfile, Bitfield *pFilter, bt_length_t pieceLength);
 
   dt_count_t GetNFiles() const { return m_nfiles; }
   char *GetFileName(dt_count_t nfile) const;

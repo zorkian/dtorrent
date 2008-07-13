@@ -193,7 +193,6 @@ int btPeer::RequestPiece()
 {
   bt_index_t idx;
   Bitfield tmpBitfield, *pfilter;
-  int endgame = 0;
 
   dt_count_t qsize = request_q.Qsize();
   bt_length_t psize = BTCONTENT.GetPieceLength() / cfg_req_slice_size;
@@ -577,23 +576,22 @@ int btPeer::RespondSlice()
     CONSOLE.Debug("Sending %d/%d/%d to %p", (int)idx, (int)off, (int)len, this);
   // project the time to send another slice
   if( 0==currentrate ){  // don't know peer's rate; use best guess
-    // These are "int" for signed calculations below.
-    int rate = (int)(Self.RateUL());
-    int unchoked = (int)(WORLD.GetUnchoked());  // can't be 0 here
-    if( cfg_max_bandwidth_up < unchoked || cfg_max_bandwidth_up <= rate ){
-      if( rate < unchoked || rate < (unchoked*len)/3600 )
+    dt_rate_t rate = Self.RateUL();
+    dt_count_t unchoked = WORLD.GetUnchoked();  // can't be 0 here
+    if( cfg_max_bandwidth_up < unchoked ||
+        cfg_max_bandwidth_up <= rate ){
+      if( rate < unchoked || rate < (dt_rate_t)(unchoked*len/3600) )
         m_next_send_time = now;
-      else m_next_send_time = now + len / (rate / unchoked);
+      else m_next_send_time = now + (time_t)(len / ((double)rate / unchoked));
     }else{
-      m_next_send_time = now + len /
-        ( ((int)cfg_max_bandwidth_up - rate >
-           (int)cfg_max_bandwidth_up / unchoked) ?
-        (cfg_max_bandwidth_up - rate) :
-        ((cfg_max_bandwidth_up + unchoked-1) / unchoked) );
+      m_next_send_time = now + (time_t)(len /
+        ( (cfg_max_bandwidth_up - rate > cfg_max_bandwidth_up / unchoked) ?
+            cfg_max_bandwidth_up - rate :
+            (double)cfg_max_bandwidth_up / unchoked ));
     }
-  }else m_next_send_time = now + len /
+  }else m_next_send_time = now + (time_t)(len /
     ( (currentrate < cfg_max_bandwidth_up || 0==cfg_max_bandwidth_up) ?
-        currentrate : cfg_max_bandwidth_up );
+        currentrate : cfg_max_bandwidth_up ));
 
   m_prefetch_time = (time_t)0;
 
@@ -691,7 +689,6 @@ int btPeer::CancelPiece(bt_index_t idx)
 int btPeer::CancelRequest()
 {
   PSLICE ps;
-  int retval;
 
   ps = request_q.GetHead();
   for( ; ps; ps = ps->next ){
@@ -1249,7 +1246,7 @@ int btPeer::RecvModule()
     return -1;
   }
 
-  while( r = stream.HaveMessage() ){
+  while( (r = stream.HaveMessage()) ){
     if( r < 0 ) return -1;
     if( (r = MsgDeliver()) == -2 ){
       if(arg_verbose) CONSOLE.Debug("%p seed<->seed detected", this);
@@ -1434,7 +1431,8 @@ int btPeer::Prefetch(time_t deadline)
   if( !BTCONTENT.IsFull() && Is_Remote_Unchoked() &&
       m_prefetch_completion < 2 && request_q.LastSlice() && RateDL() > 0 &&
       request_q.Peek(&idx, &off, &len)==0 &&
-      m_last_timestamp + len / RateDL() < now + WORLD.GetUnchokeInterval() &&
+      m_last_timestamp + (time_t)(len / RateDL()) <
+        now + WORLD.GetUnchokeInterval() &&
       Self.RateDL() > 0 &&
       m_last_timestamp + len / RateDL() <
         now + (cfg_cache_size*1024*1024 - BTCONTENT.GetPieceLength(idx)) /
@@ -1479,12 +1477,13 @@ int btPeer::Prefetch(time_t deadline)
     else predict = m_next_send_time;
 
     // Don't prefetch if it will expire from cache before being sent.
-    if( predict < deadline && (0==Self.RateDL() ||
-        predict <= now + cfg_cache_size*1024*1024 / Self.RateDL()) ){
+    if( predict < deadline &&
+        (0==Self.RateDL() ||
+         predict <= now + (time_t)(cfg_cache_size*1024*1024 / Self.RateDL())) ){
       // This allows re-prefetch if it might have expired from the cache.
       if( !m_prefetch_time || (0==Self.RateDL() && 0==Self.RateUL()) ||
           now - m_prefetch_time >
-            BTCONTENT.CacheSize() / (Self.RateDL() + Self.RateUL()) ){
+            (time_t)(BTCONTENT.CacheSize() / (Self.RateDL() + Self.RateUL())) ){
         retval = BTCONTENT.ReadSlice(NULL, idx, off, len);
         m_prefetch_time = now;
       }
