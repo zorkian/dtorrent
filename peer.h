@@ -223,7 +223,7 @@ class btPeer:public btBasic
   void DeferDL(){ m_deferred_dl = 1; }
   void DeferUL(){ m_deferred_ul = 1; }
 
-  ssize_t SendHaves();
+  int SendHaves();
   int QueueHave(bt_index_t idx);
 
   void dump();

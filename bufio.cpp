@@ -27,7 +27,7 @@ BufIo::BufIo()
   n = BUF_DEF_SIZ;
 }
 
-ssize_t BufIo::_realloc_buffer()
+inline ssize_t BufIo::_realloc_buffer()
 {
   return SetSize(n + BUF_INC_SIZ);
 }
@@ -106,8 +106,12 @@ ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
   if( _left_buffer_size < len ){  // not enough space in buffer
     r = FlushOut(sk);
     if( r < 0 ) return r;
-    while( _left_buffer_size < len )  // still not enough space
-      if( _realloc_buffer() < 0 ) return -3;
+    while( _left_buffer_size < len ){  // still not enough space
+      if( _realloc_buffer() < 0 ){
+        errno = ENOMEM;
+        return -3;
+      }
+    }
   }
   memcpy(b + p, buf, len);
   p += len;
@@ -123,8 +127,10 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
 {
   ssize_t r;
 
-  if( !_left_buffer_size && _realloc_buffer() < 0 )
-    return (ssize_t)-2;
+  if( !_left_buffer_size && _realloc_buffer() < 0 ){
+    errno = ENOMEM;
+    return (ssize_t)(-2);
+  }
 
   if( 0==limit || limit > _left_buffer_size )
     limit = _left_buffer_size;
@@ -143,8 +149,12 @@ ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
     if( FlushOut(sk) < 0 ) return -1;
   }
 
-  while( _left_buffer_size < len )
-    if( _realloc_buffer() < 0 ) return -3;
+  while( _left_buffer_size < len ){
+    if( _realloc_buffer() < 0 ){
+      errno = ENOMEM;
+      return -3;
+    }
+  }
 
   memcpy(b + p, buf, len);
   p += len;

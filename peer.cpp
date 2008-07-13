@@ -182,7 +182,11 @@ int btPeer::SetLocal(bt_msg_t s)
     CONSOLE.Warning(1, "error, invalid state %d in SetLocal", (int)s);
     return -1;  // invalid state (bug)
   }
-  return stream.Send_State(s);
+
+  if( stream.Send_State(s) < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  }else return 0;
 }
 
 int btPeer::RequestPiece()
@@ -357,7 +361,10 @@ int btPeer::MsgDeliver()
   // Don't require keepalives if we're receiving other messages.
   m_last_timestamp = now;
   if( 0 == msglen ){
-    if( !m_f_keepalive ) if( stream.Send_Keepalive() < 0 ) return -1;
+    if( !m_f_keepalive && stream.Send_Keepalive() < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      return -1;
+    }
     m_f_keepalive = 0;
     return 0;
   }else{
@@ -463,7 +470,10 @@ int btPeer::MsgDeliver()
         if( m_last_timestamp - m_unchoke_timestamp >
               (m_latency ? (m_latency*2) : 60) ){
           if( PeerError(1, "choked request") < 0 ) return -1;
-          if( stream.Send_State(BT_MSG_CHOKE) < 0 ) return -1;
+          if( stream.Send_State(BT_MSG_CHOKE) < 0 ){
+            if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+            return -1;
+          }
           /* This will mess with the unchoke rotation (to this peer's
              disadvantage), but otherwise we may spam them with choke msgs. */
           m_unchoke_timestamp = m_last_timestamp;
@@ -547,7 +557,7 @@ int btPeer::RespondSlice()
   bt_length_t len = 0;
   double rightnow;
 
-  ssize_t retval;
+  int r;
   bt_index_t idx;
   bt_offset_t off;
   respond_q.Pop(&idx, &off, &len);
@@ -557,9 +567,9 @@ int btPeer::RespondSlice()
     BTCONTENT.global_piece_buffer = new char[len];
     BTCONTENT.global_buffer_size = BTCONTENT.global_piece_buffer ? len : 0;
   }
-  retval = BTCONTENT.ReadSlice(BTCONTENT.global_piece_buffer, idx, off, len);
-  if( retval < 0 ) return -1;
-  else if( retval && cfg_cache_size ) Self.OntimeUL(0);  // disk read delay
+  r = BTCONTENT.ReadSlice(BTCONTENT.global_piece_buffer, idx, off, len);
+  if( r < 0 ) return -1;
+  else if( r && cfg_cache_size ) Self.OntimeUL(0);  // disk read delay
   // If not using cache, need to always allow time for a disk read.
 
   dt_rate_t currentrate = CurrentUL();
@@ -588,15 +598,16 @@ int btPeer::RespondSlice()
   m_prefetch_time = (time_t)0;
 
   rightnow = PreciseTime();
-  retval = stream.Send_Piece(idx, off, BTCONTENT.global_piece_buffer, len);
-  if( retval >= 0 ){
+  if( stream.Send_Piece(idx, off, BTCONTENT.global_piece_buffer, len) < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  }else{
     WORLD.Upload();
     DataSent(len, rightnow);
     if( !m_want_again && BTCONTENT.Seeding() )
       m_want_again = 1;
-  }else if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
-
-  return (int)retval;
+  }
+  return 0;
 }
 
 int btPeer::SendRequest()
@@ -622,8 +633,10 @@ int btPeer::SendRequest()
         first = 0;
       }else request_q.SetReqTime(ps, (time_t)0);
       if(arg_verbose) CONSOLE.Debug_n(".");
-      if( stream.Send_Request(ps->index, ps->offset, ps->length) < 0 )
+      if( stream.Send_Request(ps->index, ps->offset, ps->length) < 0 ){
+        if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
         return -1;
+      }
       m_last_req_piece = ps->index;
       request_q.SetNextSend(ps->next);
       m_req_out++;
@@ -651,8 +664,10 @@ int btPeer::CancelPiece(bt_index_t idx)
     if( cancel ){
       if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
         (int)(ps->index), (int)(ps->offset), (int)(ps->length), this);
-      if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 )
+      if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
+        if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
         return -1;
+      }
       m_req_out--;
       if( m_req_out > cfg_req_queue_length ){
         if(arg_verbose)
@@ -683,8 +698,10 @@ int btPeer::CancelRequest()
     if( ps == request_q.NextSend() ) break;
     if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
       (int)(ps->index), (int)(ps->offset), (int)(ps->length), this);
-    if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 )
+    if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
+    }
     m_req_out--;
     if( m_req_out > cfg_req_queue_length ){
       if(arg_verbose)
@@ -716,7 +733,10 @@ int btPeer::CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len)
         if( cancel ){
           if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
             (int)idx, (int)off, (int)len, this);
-          if( stream.Send_Cancel(idx, off, len) < 0 ) return -1;
+          if( stream.Send_Cancel(idx, off, len) < 0 ){
+            if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+            return -1;
+          }
           m_req_out--;
           if( m_req_out > cfg_req_queue_length ){
             if(arg_verbose)
@@ -943,7 +963,10 @@ int btPeer::RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
   r = request_q.Requeue(idx, off, len);
   if( r < 0 ) return -1;
   else if( r ){
-    if( stream.Send_Request(idx, off, len) < 0 ) return -1;
+    if( stream.Send_Request(idx, off, len) < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      return -1;
+    }
     m_req_out++;
     m_receive_time = now;
   }
@@ -1000,13 +1023,14 @@ void btPeer::CloseConnection()
 int btPeer::HandShake()
 {
   char txtid[PEER_ID_LEN*2+3];
-  ssize_t r = stream.Feed();
-  if( r < 0 ){
+  ssize_t r;
+
+  if( (r = stream.Feed()) < 0 ){
     if(arg_verbose) CONSOLE.Debug("%p: %s", this,
       (r==-2) ? "remote closed" : strerror(errno));
     return -1;
   }
-  if( (r=stream.in_buffer.Count()) < 68 ){
+  if( (r = stream.in_buffer.Count()) < 68 ){
     // If it's not BitTorrent, don't wait around for a complete handshake.
     if( r > 20 ){  // ignore 8 reserved bytes following protocol ID
       if( memcmp(stream.in_buffer.BasePointer()+20,
@@ -1027,6 +1051,7 @@ int btPeer::HandShake()
     if( r && memcmp(stream.in_buffer.BasePointer(), BTCONTENT.GetShakeBuffer(),
                     (r<48) ? r : 48) != 0 ){
       if(arg_verbose){
+        CONSOLE.Debug("%p: handshake mismatch", this);
         CONSOLE.Debug_n("");
         CONSOLE.Debug_n("mine: 0x");
         for( int i=0; i < r && i < 48; i++ ){
@@ -1076,6 +1101,7 @@ int btPeer::HandShake()
   if( memcmp(stream.in_buffer.BasePointer(),
              BTCONTENT.GetShakeBuffer(), 48) != 0 ){
     if(arg_verbose){
+      CONSOLE.Debug("%p: handshake mismatch", this);
       CONSOLE.Debug_n("");
       CONSOLE.Debug_n("mine: 0x");
       for( int i=0; i < 48; i++ ){
@@ -1121,12 +1147,15 @@ int btPeer::HandShake()
     }
     if( stream.HaveMessage() ) return RecvModule();
   }
-  return r;
+  return (r < 0) ? -1 : 0;
 }
 
 int btPeer::Send_ShakeInfo()
 {
-  return stream.Send_Buffer((char *)BTCONTENT.GetShakeBuffer(), 68);
+  if( stream.Send_Buffer((char *)BTCONTENT.GetShakeBuffer(), 68) < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  } else return 0;
 }
 
 int btPeer::NeedWrite(int limited)
@@ -1181,7 +1210,10 @@ int btPeer::CouldRespondSlice()
 int btPeer::AreYouOK()
 {
   m_f_keepalive = 1;
-  return stream.Send_Keepalive();
+  if( stream.Send_Keepalive() < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  }else return 0;
 }
 
 int btPeer::RecvModule()
@@ -1280,14 +1312,19 @@ int btPeer::SendModule()
     m_deferred_ul = 0;
   }else if( this == WORLD.GetNextUL() ) WORLD.DontWaitUL(this);
 
-  return f_flushed ? 0 : stream.Flush();
+  if( !f_flushed && stream.Flush() < 0 ){
+    if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    return -1;
+  }else return 0;
 }
 
-ssize_t btPeer::SendHaves()
+int btPeer::SendHaves()
 {
-  ssize_t r;
   for( int i=0; i < HAVEQ_SIZE && m_haveq[i] < BTCONTENT.GetNPieces(); i++ ){
-    if( (r = stream.Send_Have(m_haveq[i])) < 0 ) return r;
+    if( stream.Send_Have(m_haveq[i]) < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      return -1;
+    }
     m_haveq[i] = BTCONTENT.GetNPieces();
   }
   return 0;
@@ -1296,8 +1333,11 @@ ssize_t btPeer::SendHaves()
 int btPeer::QueueHave(bt_index_t idx)
 {
   if( m_haveq[HAVEQ_SIZE - 1] < BTCONTENT.GetNPieces() ){
-    if( SendHaves() < 0 || stream.Send_Have(idx) < 0 )
+    if( SendHaves() < 0 ) return -1;
+    if( stream.Send_Have(idx) < 0 ){
+      if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
+    }
   }else{
     int i;
     for( i=0; m_haveq[i] < BTCONTENT.GetNPieces(); i++ );

@@ -128,7 +128,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     }
   }
 
-  if( INVALID_SOCKET == sk ){
+  if( INVALID_SOCKET == sk ){  // outbound connection
     if( INVALID_SOCKET == (sk = socket(AF_INET, SOCK_STREAM, 0)) ) return -1;
 
     if( setfd_nonblock(sk) < 0 ) goto err;
@@ -148,10 +148,11 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus( (-2 == r) ? DT_PEER_CONNECTING : DT_PEER_HANDSHAKE );
-    if(arg_verbose) CONSOLE.Debug("Connecting to %s:%hu (peer %p)",
+    if(arg_verbose)
+      CONSOLE.Debug("Connect%s to %s:%hu (peer %p)", (-2==r) ? "ing" : "ed",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
 
-  }else{
+  }else{  // inbound connection
     if( setfd_nonblock(sk) < 0 ) goto err;
 
     peer = new btPeer;
@@ -1120,7 +1121,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, rfdnextp);
           if( peer->HandShake() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: bad handshake");
+            if(arg_verbose) CONSOLE.Debug("close: receiving handshake");
             peer->CloseConnection();
             FD_CLR(sk, wfdnextp);
           }
@@ -1131,7 +1132,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: send handshake");
+            if(arg_verbose) CONSOLE.Debug("close: flushing handshake");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
           }
@@ -1144,7 +1145,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, wfdnextp);
           if( peer->Send_ShakeInfo() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: Sending handshake");
+            if(arg_verbose) CONSOLE.Debug("close: sending handshake");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
           }else peer->SetStatus(DT_PEER_HANDSHAKE);
