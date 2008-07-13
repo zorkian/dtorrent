@@ -63,7 +63,10 @@ class btContent
 
   btFiles m_btfiles;
 
-  time_t m_flush_failed, m_flush_tried;
+  unsigned char m_flush_failed:1;
+  unsigned char m_reserved:7;
+
+  time_t m_flush_tried;
 
   BTCACHE **m_cache, *m_cache_oldest, *m_cache_newest;
   dt_mem_t m_cache_size, m_cache_used;
@@ -97,7 +100,9 @@ class btContent
     return (a > b) ? b : a;
   }
   int CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
+  int FileIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
   void FlushEntry(BTCACHE *p);
+  int WriteFail();
 
  public:
   Bitfield *pBF;

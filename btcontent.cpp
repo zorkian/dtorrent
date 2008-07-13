@@ -38,6 +38,8 @@
 #include "bttime.h"
 #include "util.h"
 
+#define FLUSH_RETRY_INTERVAL 300  // seconds to retry after disk write error
+
 #define meta_str(keylist, pstr, psiz) \
   decode_query(b, flen, (keylist), (pstr), (psiz), (int64_t *)0, DT_QUERY_STR)
 #define meta_int(keylist, pint) \
@@ -92,7 +94,8 @@ btContent::btContent()
   time(&m_start_timestamp);
   m_cache_oldest = m_cache_newest = (BTCACHE *)0;
   m_cache_size = m_cache_used = 0;
-  m_flush_failed = m_flush_tried = (time_t) 0;
+  m_flush_failed = 0;
+  m_flush_tried = (time_t)0;
   m_check_piece = 0;
   m_flushq = (BTFLUSH *)0;
   m_filters = m_current_filter = (BFNODE *)0;
@@ -545,7 +548,7 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
   int retval = 0;
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
-  if( !m_cache_size ) return buf ? m_btfiles.IO(buf, offset, len, 0) : 0;
+  if( !m_cache_size ) return buf ? FileIO(buf, offset, len, 0) : 0;
   else{
     bt_length_t len2;
     BTCACHE *p;
@@ -622,14 +625,13 @@ void btContent::CacheClean(bt_length_t need, bt_index_t idx)
   BTCACHE *p, *pnext;
   int f_flush = 0;
 
-  if( m_flush_failed ) FlushCache();  // try again
+  if( m_flush_failed && now >= m_flush_tried + FLUSH_RETRY_INTERVAL && need )
+    FlushCache();  // try again
 
   again:
   for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
     pnext = p->age_next;
-    if( f_flush && p->bc_f_flush ){
-      if(arg_verbose)
-        CONSOLE.Debug("Flushing piece #%d", (int)(p->bc_off / m_piece_length));
+    if( f_flush && p->bc_f_flush && !m_flush_failed ){
       if( FlushPiece(p->bc_off / m_piece_length) ){
         pnext = m_cache_oldest;
         continue;
@@ -780,12 +782,13 @@ void btContent::CacheConfigure()
 int btContent::NeedFlush() const
 {
   if( m_flush_failed ){
-    if( now > m_flush_tried ) return 1;
-  }else
+    return (now >= m_flush_tried + FLUSH_RETRY_INTERVAL) ? 1 : 0;
+  }else{
     return (m_flushq ||
             (m_cache_oldest && m_cache_oldest->bc_f_flush &&
              m_cache_used >= cfg_cache_size*1024*1024-cfg_req_slice_size+1)) ?
            1 : 0;
+  }
 }
 
 void btContent::FlushCache()
@@ -798,11 +801,17 @@ void btContent::FlushCache()
   if( !NeedMerge() && !m_flushq && Seeding() ) CloseAllFiles();
 }
 
+// Returns 1 if cache aging changed.
 int btContent::FlushPiece(bt_index_t idx)
 {
   BTCACHE *p;
   int retval = 0;
 
+  if(arg_verbose){
+    if( pBF->IsSet(idx) )
+      CONSOLE.Debug("Writing piece #%d to disk", (int)idx);
+    else CONSOLE.Debug("Flushing piece #%d", (int)idx);
+  }
   p = m_cache[idx];
 
   for( ; p; p = p->bc_next ){
@@ -826,39 +835,44 @@ int btContent::FlushPiece(bt_index_t idx)
 
 void btContent::FlushEntry(BTCACHE *p)
 {
-  if( p->bc_f_flush ){
-    if( m_btfiles.IO(p->bc_buf, p->bc_off, p->bc_len, 1) < 0 ){
-      m_flush_tried = now;
-      if( now >= m_flush_failed + 300 ){
-        if( !m_flush_failed )
-          m_cache_size += cfg_req_slice_size * WORLD.GetDownloads() * 2;
-        CONSOLE.Warning(1, "warn, write file failed while flushing cache.");
-        CONSOLE.Warning(1,
-          "You need to have at least %llu bytes free on this filesystem!",
-          (unsigned long long)(m_left_bytes + m_cache_used));
-        CONSOLE.Warning(1,
-          "This could also be caused by a conflict or disk error.");
-        if( !IsFull() ||
-            (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ){
-          CONSOLE.Warning(1, "Temporarily %s%s...",
-            IsFull() ? "" : "suspending download",
-            (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ?
-              (IsFull() ? " and increasing cache" : "increasing cache") : "");
-        }
-        m_flush_failed = now;
-        WORLD.StopDownload();
-      }
-    }else{
-      p->bc_f_flush = 0;
-      if( m_flush_failed ){
-        m_flush_failed = 0;
-        CONSOLE.Warning(3, "Flushing cache succeeded%s.",
-          Seeding() ? "" : "; resuming download");
-        CacheConfigure();
-        WORLD.CheckInterest();
-      }
+  if( m_flush_failed && now < m_flush_tried + FLUSH_RETRY_INTERVAL ){
+    // Delay until next retry.
+    return;
+  }
+  if( p->bc_f_flush && FileIO(p->bc_buf, p->bc_off, p->bc_len, 1) == 0 ){
+    p->bc_f_flush = 0;
+    if( m_flush_failed ){
+      m_flush_failed = 0;
+      CONSOLE.Warning(3, "Flushing cache succeeded%s.",
+        Seeding() ? "" : "; resuming download");
+      CacheConfigure();
+      WORLD.CheckInterest();
     }
   }
+}
+
+// Returns -1 for convenience (can return this function's value)
+int btContent::WriteFail()
+{
+  m_flush_tried = now;
+  if( !m_flush_failed )
+    m_cache_size += cfg_req_slice_size * WORLD.GetDownloads() * 2;
+  CONSOLE.Warning(1, "warn, write file failed while flushing data.");
+  CONSOLE.Warning(1,
+    "You need to have at least %llu bytes free on this filesystem!",
+    (unsigned long long)(m_left_bytes + m_cache_used));
+  CONSOLE.Warning(1,
+    "This could also be caused by a conflict or disk error.");
+  if( !IsFull() ||
+      (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ){
+    CONSOLE.Warning(1, "Temporarily %s%s...",
+      IsFull() ? "" : "suspending download",
+      (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ?
+        (IsFull() ? "increasing cache" : " and increasing cache") : "");
+  }
+  m_flush_failed = 1;
+  WORLD.StopDownload();
+  return -1;
 }
 
 void btContent::Uncache(bt_index_t idx)
@@ -883,19 +897,14 @@ void btContent::Uncache(bt_index_t idx)
 void btContent::FlushQueue()
 {
   if( m_flushq ){
-    if(arg_verbose)
-      CONSOLE.Debug("Writing piece #%d to disk", (int)(m_flushq->idx));
     FlushPiece(m_flushq->idx);
     if( !m_flush_failed ){
       BTFLUSH *goner = m_flushq;
       m_flushq = m_flushq->next;
       delete goner;
     }
-  }else{
-    if(arg_verbose) CONSOLE.Debug("Flushing piece #%d",
-      (int)(m_cache_oldest->bc_off / m_piece_length));
-    FlushPiece(m_cache_oldest->bc_off / m_piece_length);
-  }
+  }else FlushPiece(m_cache_oldest->bc_off / m_piece_length);
+
   if( !NeedMerge() && !m_flushq && Seeding() ){
       CloseAllFiles();
       CONSOLE.Print("Finished flushing data.");
@@ -919,9 +928,7 @@ int btContent::CachePrep(bt_index_t idx)
     for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
       pnext = p->age_next;
       if( p->bc_off / m_piece_length == idx ) continue;
-      if( p->bc_f_flush ){
-        if(arg_verbose) CONSOLE.Debug("Flushing piece #%d",
-          (int)(p->bc_off / m_piece_length));
+      if( p->bc_f_flush && !m_flush_failed ){
         retval = 1;
         if( FlushPiece(p->bc_off / m_piece_length) ){
           pnext = m_cache_oldest;
@@ -953,8 +960,10 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
 {
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
-  if( !m_cache_size ) return m_btfiles.IO(buf, offset, len, 1);
-  else{
+  if( !m_cache_size && FileIO(buf, offset, len, 1) == 0 ){
+    return 0;
+    // save it in cache if write failed
+  }else{
     bt_length_t len2;
     BTCACHE *p;
 
@@ -1001,6 +1010,7 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
   return 0;
 }
 
+// Put data into the cache (receiving data, or need to read from disk).
 int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
 {
   BTCACHE *p;
@@ -1009,7 +1019,7 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
   bt_index_t idx = off / m_piece_length;
 
   if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
-    if( buf ) return m_btfiles.IO(buf, off, len, method);
+    if( buf ) return FileIO(buf, off, len, method);
     else return 0;
   }
 
@@ -1024,24 +1034,24 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
        done to increase the cache size, we allocate what we need anyway. */
   }
 
-  if( 0==method && buf && m_btfiles.IO(buf, off, len, method) < 0 ) return -1;
+  if( 0==method && buf && FileIO(buf, off, len, method) < 0 ) return -1;
 
   pnew = new BTCACHE;
 #ifndef WINDOWS
   if( !pnew )
-    return (method && buf) ? m_btfiles.IO(buf, off, len, method) : 0;
+    return (method && buf) ? FileIO(buf, off, len, method) : 0;
 #endif
 
   pnew->bc_buf = new char[len];
 #ifndef WINDOWS
   if( !(pnew->bc_buf) ){
     delete pnew;
-    return (method && buf) ? m_btfiles.IO(buf, off, len, method) : 0;
+    return (method && buf) ? FileIO(buf, off, len, method) : 0;
   }
 #endif
 
   if( buf ) memcpy(pnew->bc_buf, buf, len);
-  else if( 0==method && m_btfiles.IO(pnew->bc_buf, off, len, method) < 0 ){
+  else if( 0==method && FileIO(pnew->bc_buf, off, len, method) < 0 ){
     delete []pnew->bc_buf;
     delete pnew;
     return -1;
@@ -1073,6 +1083,14 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
     m_cache[idx] = pnew;
 
   return 0;
+}
+
+// Perform file I/O, handling failures.
+inline int btContent::FileIO(char *buf, dt_datalen_t off, bt_length_t len,
+  int method)
+{
+  return ( m_btfiles.IO(buf, off, len, method) < 0 ) ?
+             (method ? WriteFail() : -1) : 0;
 }
 
 int btContent::ReadPiece(char *buf, bt_index_t idx)
