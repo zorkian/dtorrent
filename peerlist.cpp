@@ -1468,46 +1468,30 @@ dt_rate_t PeerList::GetSlowestUp(dt_rate_t minimum) const
   }
 }
 
-int PeerList::BandwidthLimitUp(double when) const
+inline int PeerList::BandwidthLimitUp(double grace) const
 {
-  return BandwidthLimitUp(when, cfg_max_bandwidth_up);
+  return BandwidthLimited(Self.LastSendTime(), Self.LastSizeSent(),
+                          cfg_max_bandwidth_up, grace);
 }
 
-int PeerList::BandwidthLimitUp(double when, dt_rate_t limit) const
+inline int PeerList::BandwidthLimitDown(double grace) const
+{
+  return BandwidthLimited(Self.LastRecvTime(), Self.LastSizeRecv(),
+                          cfg_max_bandwidth_down, grace);
+}
+
+int PeerList::BandwidthLimited(double lasttime, bt_length_t lastsize,
+  dt_rate_t limit, double grace) const
 {
   int limited = 0;
   double nexttime;
 
   if( limit == 0 ) return 0;
 
-  nexttime = Self.LastSendTime() +
-             (double)Self.LastSizeSent() / limit;
-  if( nexttime >= now + 1 + when ) limited = 1;
-  else if( nexttime < now + when ) limited = 0;
-  else if( nexttime <= PreciseTime() + when ) limited = 0;
-  else limited = 1;
-
-  return limited;
-}
-
-int PeerList::BandwidthLimitDown(double when) const
-{
-  return BandwidthLimitDown(when, cfg_max_bandwidth_down);
-}
-
-int PeerList::BandwidthLimitDown(double when, dt_rate_t limit) const
-{
-  int limited = 0;
-  double nexttime;
-
-  // Don't check SeedOnly() here--need to let the input stream drain.
-  if( limit == 0 ) return 0;
-
-  nexttime = Self.LastRecvTime() +
-             (double)Self.LastSizeRecv() / limit;
-  if( nexttime >= now + 1 + when ) limited = 1;
-  else if( nexttime < now + when ) limited = 0;
-  else if( nexttime <= PreciseTime() + when ) limited = 0;
+  nexttime = lasttime + (double)lastsize / limit - grace;
+  if( nexttime >= (double)(now + 1) ) limited = 1;
+  else if( nexttime <= (double)now ) limited = 0;
+  else if( nexttime <= PreciseTime() ) limited = 0;
   else limited = 1;
 
   return limited;
