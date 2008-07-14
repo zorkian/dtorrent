@@ -214,7 +214,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     }
   }
 
-  m_ul_limited = BandWidthLimitUp(Self.LateUL());
+  m_ul_limited = BandwidthLimitUp(Self.LateUL());
 
   // After seeding a while, disconnect uninterested peers & shrink in_buffers.
   if( now - BTCONTENT.GetSeedTime() <= 301 &&
@@ -270,7 +270,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       /* If up bw limit has changed enough, recompute the intervals.
          This is primarily to prevent a low limit from delaying an unchoke for
          a long time even after the limit has been increased. */
-      if( !BandWidthLimitUp() ||
+      if( !BandwidthLimitUp() ||
           ( m_prev_limit_up &&
             labs((long)cfg_max_bandwidth_up - (long)m_prev_limit_up) /
                  (double)m_prev_limit_up  >
@@ -295,8 +295,8 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   int maxfd = -1, f_idle = 0;
   SOCKET sk = INVALID_SOCKET;
 
-  m_f_limitu = BandWidthLimitUp(Self.LateUL());
-  m_f_limitd = BandWidthLimitDown(Self.LateDL());
+  m_f_limitu = BandwidthLimitUp(Self.LateUL());
+  m_f_limitd = BandwidthLimitDown(Self.LateDL());
   if( cfg_cache_size && !m_f_pause )
     f_idle = IsIdle();
 
@@ -389,8 +389,8 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       p = p->next;
     }
   }  // end for
-  if( (m_f_limitu && !(m_f_limitu = BandWidthLimitUp(Self.LateUL()))) ||
-      (m_f_limitd && !(m_f_limitd = BandWidthLimitDown(Self.LateDL()))) ){
+  if( (m_f_limitu && !(m_f_limitu = BandwidthLimitUp(Self.LateUL()))) ||
+      (m_f_limitd && !(m_f_limitd = BandwidthLimitDown(Self.LateDL()))) ){
     goto again;
   }
 
@@ -438,7 +438,7 @@ void PeerList::SetUnchokeIntervals()
   time_t old_unchoke_int = m_unchoke_interval, old_opt_int = m_opt_interval;
 
   // Unchoke peers long enough to have a chance at getting some data.
-  if( BandWidthLimitUp() && BTCONTENT.Seeding() ){
+  if( BandwidthLimitUp() && BTCONTENT.Seeding() ){
     dt_count_t optx = (dt_count_t)(1 / (1 - (double)MIN_UNCHOKE_INTERVAL *
                                    cfg_max_bandwidth_up / cfg_req_slice_size));
     if( optx < 0 ) optx = 0;
@@ -461,7 +461,7 @@ void PeerList::SetUnchokeIntervals()
       if( optx > m_max_unchoke+2 ) optx = m_max_unchoke+2;
     }
     m_opt_interval = optx * m_unchoke_interval;
-  }else if( BandWidthLimitUp() && !BTCONTENT.Seeding() ){
+  }else if( BandwidthLimitUp() && !BTCONTENT.Seeding() ){
     // Need to be able to upload a slice per interval.
     double interval = cfg_req_slice_size / (double)cfg_max_bandwidth_up;
     m_unchoke_interval = (time_t)interval;
@@ -605,7 +605,7 @@ bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
   mark = slots;
   for( i = 0; i < slots; i++ ){
     if( data[i].idx == BTCONTENT.GetNPieces() ) continue;
-    work = data[i].qlen / (double)(data[i].count);
+    work = data[i].qlen / (double)data[i].count;
     if( work > 1 && (endgame ? work > best : work < best) ){
       best = work;
       mark = i;
@@ -790,7 +790,7 @@ void PeerList::CancelOneRequest(bt_index_t idx)
     if( pending ) PENDINGQUEUE.Delete(idx);
     else{
       CONSOLE.Debug("Cancel #%d on %p (%d B/s)", (int)idx, peer,
-        (int)(peer->NominalDL()));
+        (int)peer->NominalDL());
       peer->CancelPiece(idx);
     }
     if( dupcount == 2 ){  // was 2, now only 1
@@ -1044,7 +1044,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
 
   if( !Self.OntimeDL() && (peer = GetNextUL()) &&
       !FD_ISSET(peer->stream.GetSocket(), wfdp) &&
-      !BandWidthLimitUp(Self.LateUL()) ){
+      !BandwidthLimitUp(Self.LateUL()) ){
     if(arg_verbose) CONSOLE.Debug("%p is not write-ready", peer);
     peer->CheckSendStatus();
   }
@@ -1163,7 +1163,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     }
   }  // end for
 
-  if( !m_ul_limited && !BandWidthLimitUp() ) m_missed_count++;
+  if( !m_ul_limited && !BandwidthLimitUp() ) m_missed_count++;
 }
 
 void PeerList::CloseAllConnectionToSeed()
@@ -1468,12 +1468,12 @@ dt_rate_t PeerList::GetSlowestUp(dt_rate_t minimum) const
   }
 }
 
-int PeerList::BandWidthLimitUp(double when) const
+int PeerList::BandwidthLimitUp(double when) const
 {
-  return BandWidthLimitUp(when, cfg_max_bandwidth_up);
+  return BandwidthLimitUp(when, cfg_max_bandwidth_up);
 }
 
-int PeerList::BandWidthLimitUp(double when, dt_rate_t limit) const
+int PeerList::BandwidthLimitUp(double when, dt_rate_t limit) const
 {
   int limited = 0;
   double nexttime;
@@ -1481,7 +1481,7 @@ int PeerList::BandWidthLimitUp(double when, dt_rate_t limit) const
   if( limit == 0 ) return 0;
 
   nexttime = Self.LastSendTime() +
-             (double)(Self.LastSizeSent()) / limit;
+             (double)Self.LastSizeSent() / limit;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
   else if( nexttime <= PreciseTime() + when ) limited = 0;
@@ -1490,12 +1490,12 @@ int PeerList::BandWidthLimitUp(double when, dt_rate_t limit) const
   return limited;
 }
 
-int PeerList::BandWidthLimitDown(double when) const
+int PeerList::BandwidthLimitDown(double when) const
 {
-  return BandWidthLimitDown(when, cfg_max_bandwidth_down);
+  return BandwidthLimitDown(when, cfg_max_bandwidth_down);
 }
 
-int PeerList::BandWidthLimitDown(double when, dt_rate_t limit) const
+int PeerList::BandwidthLimitDown(double when, dt_rate_t limit) const
 {
   int limited = 0;
   double nexttime;
@@ -1504,7 +1504,7 @@ int PeerList::BandWidthLimitDown(double when, dt_rate_t limit) const
   if( limit == 0 ) return 0;
 
   nexttime = Self.LastRecvTime() +
-             (double)(Self.LastSizeRecv()) / limit;
+             (double)Self.LastSizeRecv() / limit;
   if( nexttime >= now + 1 + when ) limited = 1;
   else if( nexttime < now + when ) limited = 0;
   else if( nexttime <= PreciseTime() + when ) limited = 0;
@@ -1575,11 +1575,11 @@ double PeerList::WaitBW() const
 
   if( cfg_max_bandwidth_up > 0){
     nextup = Self.LastSendTime() +
-             (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up;
+             (double)Self.LastSizeSent() / cfg_max_bandwidth_up;
   }
   if( cfg_max_bandwidth_down > 0 ){
     nextdn = Self.LastRecvTime() +
-             (double)(Self.LastSizeRecv()) / cfg_max_bandwidth_down;
+             (double)Self.LastSizeRecv() / cfg_max_bandwidth_down;
   }
 
   // could optimize away the clock call when maxwait will be > MAX_SLEEP

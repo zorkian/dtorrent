@@ -133,7 +133,7 @@ int Ctcs::CheckMessage()
         if(arg_verbose) CONSOLE.Debug("DLimit=%d", (int)cfg_max_bandwidth_down);
       }
     }else if( !strncmp("SETULIMIT", msgbuf, 9) ){
-      cfg_max_bandwidth_up = (dt_rate_t)(strtod(msgbuf+10, NULL));
+      cfg_max_bandwidth_up = (dt_rate_t)strtod(msgbuf+10, NULL);
       if(arg_verbose) CONSOLE.Debug("ULimit=%d", (int)cfg_max_bandwidth_up);
     }else if( !strncmp("SENDPEERS", msgbuf, 9) ){
       Send_Peers();
@@ -217,7 +217,7 @@ int Ctcs::Send_Torrent(const unsigned char *peerid, char *torrent)
   TextPeerID(peerid, txtid);
 
   snprintf(message, CTCS_BUFSIZE, "CTORRENT %s %ld %ld %s", txtid,
-    (long)(BTCONTENT.GetStartTime()), (long)now, torrent);
+    (long)BTCONTENT.GetStartTime(), (long)now, torrent);
   return SendMessage(message);
 }
 
@@ -276,7 +276,7 @@ int Ctcs::Send_Status()
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d/%d %d/%d/%d %d,%d %llu,%llu %d,%d",
       (int)seeders, (int)leechers,
-      (int)nhave, (int)ntotal, (int)(WORLD.Pieces_I_Can_Get()),
+      (int)nhave, (int)ntotal, (int)WORLD.Pieces_I_Can_Get(),
       (int)dlrate, (int)ulrate,
       (unsigned long long)dltotal, (unsigned long long)ultotal,
       (int)dlimit, (int)ulimit );
@@ -284,12 +284,12 @@ int Ctcs::Send_Status()
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d:%d/%d:%d/%d %d/%d/%d %d,%d %llu,%llu %d,%d %d",
       (int)seeders,
-        (int)(Tracker.GetSeedsCount()) - (BTCONTENT.IsFull() ? 1 : 0),
+        (int)(Tracker.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
       (int)leechers,
-        (int)(Tracker.GetPeersCount()) - Tracker.GetSeedsCount() -
-          (!BTCONTENT.IsFull() ? 1 : 0),
-      (int)(WORLD.GetConnCount()),
-      (int)nhave, (int)ntotal, (int)(WORLD.Pieces_I_Can_Get()),
+        (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
+              (!BTCONTENT.IsFull() ? 1 : 0)),
+      (int)WORLD.GetConnCount(),
+      (int)nhave, (int)ntotal, (int)WORLD.Pieces_I_Can_Get(),
       (int)dlrate, (int)ulrate,
       (unsigned long long)dltotal, (unsigned long long)ultotal,
       (int)dlimit, (int)ulimit,
@@ -305,8 +305,8 @@ int Ctcs::Send_bw()
   char message[CTCS_BUFSIZE];
 
   snprintf(message, CTCS_BUFSIZE, "CTBW %d,%d %d,%d",
-    (int)(m_ctstatus.dlrate), (int)(m_ctstatus.ulrate),
-    (int)(m_ctstatus.dlimit), (int)(m_ctstatus.ulimit) );
+    (int)m_ctstatus.dlrate, (int)m_ctstatus.ulrate,
+    (int)m_ctstatus.dlimit, (int)m_ctstatus.ulimit);
   m_sent_ctbw = 1;
   return SendMessage(message);
 }
@@ -349,7 +349,7 @@ int Ctcs::Send_Config()
 
     snprintf(value, MAXPATHLEN, "%d", (int)cfg_max_peers);
     snprintf(desc, MAXPATHLEN, "Current peers: %d",
-      (int)(WORLD.GetPeersCount()));
+      (int)WORLD.GetPeersCount());
     if( (r = SendMessage(ConfigMsg("max_peers", "I", "20-1000", value,
         "Max peers [-M]", desc))) < 0 ){
       return r;
@@ -357,7 +357,7 @@ int Ctcs::Send_Config()
 
     snprintf(value, MAXPATHLEN, "%d", (int)cfg_min_peers);
     snprintf(desc, MAXPATHLEN, "Current peers: %d",
-      (int)(WORLD.GetPeersCount()));
+      (int)WORLD.GetPeersCount());
     if( (r = SendMessage(ConfigMsg("min_peers", "I", "1-1000", value,
         "Min peers [-m]", desc))) < 0 ){
       return r;
@@ -632,10 +632,10 @@ int Ctcs::Send_Detail()
   Bitfield tmpBitfield, fileFilter, availbf, tmpavail, allFilter, tmpFilter,
     *pfilter;
 
-  snprintf( message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
+  snprintf(message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
     (unsigned long long)BTCONTENT.GetTotalFilesLength(),
-    (int)(BTCONTENT.GetPieceLength()), (long)now,
-    (long)(BTCONTENT.GetSeedTime()) );
+    (int)BTCONTENT.GetPieceLength(), (long)now,
+    (long)BTCONTENT.GetSeedTime());
   r = SendMessage(message);
 
   if( r==0 ) r = SendMessage((m_protocol >= 3) ? "CTFILESTART" : "CTFILES");
@@ -674,23 +674,23 @@ int Ctcs::Send_Detail()
         if( !pfilter ) priority = 0;
       }
       snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %d %d %llu %s",
-        (int)n, priority, current, (int)(BTCONTENT.GetFilePieces(n)),
-        (int)(tmpBitfield.Count()), (int)(tmpavail.Count()),
-        (unsigned long long)(BTCONTENT.GetFileSize(n)),
+        (int)n, priority, current, (int)BTCONTENT.GetFilePieces(n),
+        (int)tmpBitfield.Count(), (int)tmpavail.Count(),
+        (unsigned long long)BTCONTENT.GetFileSize(n),
         BTCONTENT.GetFileName(n) );
     }
     else if( m_protocol == 2 )
-      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %llu %s",
-        (int)n, (int)(BTCONTENT.GetFilePieces(n)),
-        (int)(tmpBitfield.Count()), (int)(tmpavail.Count()),
-        (unsigned long long)(BTCONTENT.GetFileSize(n)),
-        BTCONTENT.GetFileName(n) );
+      snprintf(message, CTCS_BUFSIZE, "CTFILE %d %d %d %d %llu %s",
+        (int)n, (int)BTCONTENT.GetFilePieces(n),
+        (int)tmpBitfield.Count(), (int)tmpavail.Count(),
+        (unsigned long long)BTCONTENT.GetFileSize(n),
+        BTCONTENT.GetFileName(n));
     else  // m_protocol == 1
-      snprintf( message, CTCS_BUFSIZE, "CTFILE %d %d %d %llu %s",
-        (int)n, (int)(BTCONTENT.GetFilePieces(n)),
-        (int)(tmpBitfield.Count()),
-        (unsigned long long)(BTCONTENT.GetFileSize(n)),
-        BTCONTENT.GetFileName(n) );
+      snprintf(message, CTCS_BUFSIZE, "CTFILE %d %d %d %llu %s",
+        (int)n, (int)BTCONTENT.GetFilePieces(n),
+        (int)tmpBitfield.Count(),
+        (unsigned long long)BTCONTENT.GetFileSize(n),
+        BTCONTENT.GetFileName(n));
 
     r = SendMessage(message);
   }
@@ -718,10 +718,10 @@ int Ctcs::Send_Peers()
        peer->Is_Local_Interested() ? 'i' : 'n',
        peer->Is_Local_Unchoked() ? 'U' : 'C',
        peer->Is_Remote_Interested() ? 'i' : 'n',
-       (int)(peer->RateDL()), (int)(peer->RateUL()),
-       (unsigned long long)(peer->TotalDL()),
-         (unsigned long long)(peer->TotalUL()),
-       (int)(peer->bitfield.Count()) );
+       (int)peer->RateDL(), (int)peer->RateUL(),
+       (unsigned long long)peer->TotalDL(),
+         (unsigned long long)peer->TotalUL(),
+       (int)peer->bitfield.Count());
      r = SendMessage(message);
   }
   if( r==0 ) r = SendMessage((m_protocol >= 3) ? "CTPEERSDONE" : "CTPDONE");

@@ -30,7 +30,7 @@ int TextPeerID(const unsigned char *peerid, char *txtid)
          sprintf(txtid + j, "0x");
          j += 2;
       }
-      snprintf(txtid + j, 3, "%.2X", (int)(peerid[i]));
+      snprintf(txtid + j, 3, "%.2X", (int)peerid[i]);
       j += 2;
     }
   }
@@ -622,7 +622,7 @@ int btPeer::SendRequest()
     if(arg_verbose){
       CONSOLE.Debug_n("");
       CONSOLE.Debug_n("Requesting #%d from %p (%d left, %d slots):",
-        (int)(ps->index), this, (int)(request_q.Qsize()), (int)m_req_send);
+        (int)ps->index, this, (int)request_q.Qsize(), (int)m_req_send);
     }
     for( int i=0; ps && m_req_out < m_req_send && i<5; ps = ps->next, i++ ){
       if( first && (!RateDL() ||
@@ -661,7 +661,7 @@ int btPeer::CancelPiece(bt_index_t idx)
     if( ps == request_q.NextSend() ) cancel = 0;
     if( cancel ){
       if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
-        (int)(ps->index), (int)(ps->offset), (int)(ps->length), this);
+        (int)ps->index, (int)ps->offset, (int)ps->length, this);
       if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
         if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
         return -1;
@@ -694,7 +694,7 @@ int btPeer::CancelRequest()
   for( ; ps; ps = ps->next ){
     if( ps == request_q.NextSend() ) break;
     if(arg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
-      (int)(ps->index), (int)(ps->offset), (int)(ps->length), this);
+      (int)ps->index, (int)ps->offset, (int)ps->length, this);
     if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
       if(arg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
@@ -908,7 +908,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
     if( (rate = RateDL()) > len/20 && m_latency_timestamp ){
       /* 20==RATE_INTERVAL from rate.cpp.  This is really just a check to see
          if rate is measurable/usable. */
-      m_req_send = (dt_count_t)( m_latency / (len / (double)rate) + 1 );
+      m_req_send = (dt_count_t)(m_latency / (len / (double)rate) + 1);
       if( m_req_send < 2 ) m_req_send = 2;
 
       // If latency increases, we will see this as a dlrate decrease.
@@ -1219,7 +1219,7 @@ int btPeer::RecvModule()
 
   if( stream.PeekMessage(BT_MSG_PIECE) ){
     if( WORLD.IsNextDL(this) ){
-      int limited = WORLD.BandWidthLimitDown(Self.LateDL());
+      int limited = WORLD.BandwidthLimitDown(Self.LateDL());
       if( !limited ){
         WORLD.DontWaitDL(this);
         r = stream.Feed(&rate_dl);  // feed full amount (can download)
@@ -1238,7 +1238,7 @@ int btPeer::RecvModule()
   }else if( !stream.HaveMessage() ){  // could have been called post-handshake
     r = stream.Feed(BUF_DEF_SIZ, &rate_dl);
 //  if( r>=0 ) CONSOLE.Debug("%p fed, now has %d bytes (msg=%d)",
-//    this, r, (int)(stream.PeekMessage()));
+//    this, r, (int)stream.PeekMessage());
   }
   if( r < 0 ){
     if(arg_verbose) CONSOLE.Debug("%p: %s", this,
@@ -1283,7 +1283,7 @@ int btPeer::SendModule()
   }
 
   if( !respond_q.IsEmpty() && CouldRespondSlice() ){
-    int limited = WORLD.BandWidthLimitUp(Self.LateUL());
+    int limited = WORLD.BandwidthLimitUp(Self.LateUL());
     if( WORLD.IsNextUL(this) ){
       if( !limited ){
         WORLD.DontWaitUL(this);
@@ -1461,8 +1461,8 @@ int btPeer::Prefetch(time_t deadline)
   }
   else if( Is_Local_Unchoked() && respond_q.Peek(&idx, &off, &len) == 0 ){
     if( cfg_max_bandwidth_up > 0 )
-      next_chance = (time_t)( Self.LastSendTime() +
-                    (double)(Self.LastSizeSent()) / cfg_max_bandwidth_up );
+      next_chance = (time_t)(Self.LastSendTime() +
+                           (double)Self.LastSizeSent() / cfg_max_bandwidth_up);
     else next_chance = now;
 
     if( WORLD.GetNextUL() ){

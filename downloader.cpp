@@ -77,7 +77,7 @@ void Downloader()
             !BTCONTENT.NeedFlush() ){
           if( BTCONTENT.CheckNextPiece() < 0 ){
             CONSOLE.Warning(1, "Error while checking piece %d of %d",
-              (int)(BTCONTENT.CheckedPieces()), (int)(BTCONTENT.GetNPieces()));
+              (int)BTCONTENT.CheckedPieces(), (int)BTCONTENT.GetNPieces());
             Tracker.SetStoped();
             maxsleep = 2;
           }
@@ -112,7 +112,7 @@ void Downloader()
     }
 
     timeout.tv_sec = (long)maxsleep;
-    timeout.tv_usec = (long)( (maxsleep-(long)maxsleep) * 1000000 );
+    timeout.tv_usec = (long)((maxsleep - (long)maxsleep) * 1000000);
 
     nfds = select(maxfd + 1, &rfd, &wfd, (fd_set *)0, &timeout);
     if( nfds < 0 ){

@@ -1096,9 +1096,9 @@ int btFiles::SetupFiles(const char *torrentid)
         CONSOLE.Warning(1, "error, file \"%s\" is not a regular file.", fn);
         return -1;
       }
-      if( (dt_datalen_t)(sb.st_size) > pbt->bf_length ){
+      if( (dt_datalen_t)sb.st_size > pbt->bf_length ){
         CONSOLE.Warning(1, "error, file \"%s\" size is too big; should be %llu",
-          fn, (unsigned long long)(pbt->bf_length));
+          fn, (unsigned long long)pbt->bf_length);
         return -1;
       }
       pbt->bf_size = sb.st_size;
@@ -1200,15 +1200,15 @@ void btFiles::PrintOut()
     ++id;
     CONSOLE.Print_n("");
     CONSOLE.Print_n("<%d> %s%s [%llu]", (int)id, m_directory ? " " : "",
-      p->bf_filename, (unsigned long long)(p->bf_length));
+      p->bf_filename, (unsigned long long)p->bf_length);
     if( !arg_flg_exam_only ){
       BTCONTENT.SetTmpFilter(id, &tmpFilter);
       tmpBitfield = *BTCONTENT.pBF;
       tmpBitfield.Except(tmpFilter);
       CONSOLE.Print_n(" %d/%d (%d%%)",
-        (int)(tmpBitfield.Count()), (int)(GetFilePieces(id)),
+        (int)tmpBitfield.Count(), (int)GetFilePieces(id),
         GetFilePieces(id) ?
-          (100 * tmpBitfield.Count() / GetFilePieces(id)) : 100);
+          100 * tmpBitfield.Count() / GetFilePieces(id) : 100);
     }
   }
   CONSOLE.Print("Total: %lu MB",
@@ -1329,7 +1329,7 @@ int btFiles::ConvertFilename(char *dst, const char *src, int size)
         sprintf(dst + j, "_");
         j++;
       }
-      snprintf(dst + j, 3, "%.2X", (unsigned char)(src[i]));
+      snprintf(dst + j, 3, "%.2X", (unsigned char)src[i]);
       j += 2;
       f_print = f_punct = 0;
       if( !retval ) retval = 1;

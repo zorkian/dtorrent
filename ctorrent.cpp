@@ -232,11 +232,11 @@ int param_check(int argc, char **argv)
       break;
 
     case 'D':  // download bandwidth limit
-      cfg_max_bandwidth_down = (int)(strtod(optarg, NULL) * 1024);
+      cfg_max_bandwidth_down = (dt_rate_t)(strtod(optarg, NULL) * 1024);
       break;
 
     case 'U':  // upload bandwidth limit
-      cfg_max_bandwidth_up = (int)(strtod(optarg, NULL) * 1024);
+      cfg_max_bandwidth_up = (dt_rate_t)(strtod(optarg, NULL) * 1024);
       break;
 
     case 'P':  // peer ID prefix

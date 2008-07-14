@@ -710,11 +710,11 @@ int Console::OperatorMenu(const char *param)
         Interact("Downloading: %s", arg_file_to_download);
       Interact("");
       Interact("Download rate: %dB/s   Limit: %dB/s   Total: %llu",
-        (int)(Self.RateDL()), (int)cfg_max_bandwidth_down,
-        (unsigned long long)(Self.TotalDL()));
+        (int)Self.RateDL(), (int)cfg_max_bandwidth_down,
+        (unsigned long long)Self.TotalDL());
       Interact("  Upload rate: %dB/s   Limit: %dB/s   Total: %llu",
-        (int)(Self.RateUL()), (int)cfg_max_bandwidth_up,
-        (unsigned long long)(Self.TotalUL()));
+        (int)Self.RateUL(), (int)cfg_max_bandwidth_up,
+        (unsigned long long)Self.TotalUL());
       time_t t = Tracker.GetReportTime();
       if( t ){
         char s[42];
@@ -725,21 +725,21 @@ int Console::OperatorMenu(const char *param)
 #endif
         if( s[strlen(s)-1] == '\n' ) s[strlen(s)-1] = '\0';
         Interact("Reported to tracker: %llu up",
-          (unsigned long long)(Tracker.GetReportUL()));
+          (unsigned long long)Tracker.GetReportUL());
         Interact("                     %llu down at %s",
-          (unsigned long long)(Tracker.GetReportDL()), s);
+          (unsigned long long)Tracker.GetReportDL(), s);
       }
       Interact("Failed hashes: %d    Dup blocks: %d    Unwanted blocks: %d",
-        (int)(BTCONTENT.GetHashFailures()), (int)(BTCONTENT.GetDupBlocks()),
-        (int)(BTCONTENT.GetUnwantedBlocks()));
+        (int)BTCONTENT.GetHashFailures(), (int)BTCONTENT.GetDupBlocks(),
+        (int)BTCONTENT.GetUnwantedBlocks());
       Interact("");
       Interact("Peers: %d   Min: %d   Max: %d",
-        (int)(WORLD.GetPeersCount()), (int)cfg_min_peers, (int)cfg_max_peers);
+        (int)WORLD.GetPeersCount(), (int)cfg_min_peers, (int)cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
       Interact("Announce URL: %s", BTCONTENT.GetAnnounce());
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
-        (double)(Self.TotalUL()) / ( Self.TotalDL() ? Self.TotalDL() :
+        (double)Self.TotalUL() / ( Self.TotalDL() ? Self.TotalDL() :
                                      BTCONTENT.GetTotalFilesLength() ),
         (unsigned long)cfg_seed_hours, cfg_seed_ratio);
       Interact("Cache in use: %dKB  Wants: %dKB  Max: %dMB",
@@ -867,7 +867,7 @@ void Console::ShowFiles()
     Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(tmpFilter);
     Interact("%d) %s [%llu] %d%%", (int)n, BTCONTENT.GetFileName(n),
-      (unsigned long long)(BTCONTENT.GetFileSize(n)),
+      (unsigned long long)BTCONTENT.GetFileSize(n),
       BTCONTENT.GetFilePieces(n) ?
         (int)(100 * tmpBitfield.Count() / BTCONTENT.GetFilePieces(n)) : 0);
   }
@@ -917,7 +917,7 @@ void Console::Status(int immediate)
       if(arg_verbose)
         Debug("Cache: %dK/%dM  Hits: %d  Miss: %d  %d%%  Pre: %d/%d",
           (int)(BTCONTENT.CacheUsed()/1024), (int)cfg_cache_size,
-          (int)(BTCONTENT.CacheHits()), (int)(BTCONTENT.CacheMiss()),
+          (int)BTCONTENT.CacheHits(), (int)BTCONTENT.CacheMiss(),
           BTCONTENT.CacheHits() ? (int)(100 * BTCONTENT.CacheHits() /
             (BTCONTENT.CacheHits()+BTCONTENT.CacheMiss())) : 0,
           (int)BTCONTENT.CachePre(),
@@ -937,7 +937,7 @@ void Console::StatusLine0(char buffer[], size_t length)
     Bitfield tmpBitfield = *BTCONTENT.pBF;
     tmpBitfield.Except(BTCONTENT.GetFilter());
     sprintf( partial, "P:%d/%d ",
-      (int)(tmpBitfield.Count()),
+      (int)tmpBitfield.Count(),
       (int)(BTCONTENT.GetNPieces() - BTCONTENT.GetFilter()->Count()) );
   }
 
@@ -951,13 +951,13 @@ void Console::StatusLine0(char buffer[], size_t length)
     "%c %d/%d/%d [%d/%d/%d] %lluMB,%lluMB | %d,%dK/s | %d,%dK E:%d,%d %s%s",
     LIVE_CHAR[m_live_idx++],
 
-    (int)(WORLD.GetSeedsCount()),
-    (int)(WORLD.GetPeersCount()) - WORLD.GetSeedsCount(),
-    (int)(Tracker.GetPeersCount()),
+    (int)WORLD.GetSeedsCount(),
+    (int)(WORLD.GetPeersCount() - WORLD.GetSeedsCount()),
+    (int)Tracker.GetPeersCount(),
 
-    (int)(BTCONTENT.pBF->Count()),
-    (int)(BTCONTENT.GetNPieces()),
-    (int)(WORLD.Pieces_I_Can_Get()),
+    (int)BTCONTENT.pBF->Count(),
+    (int)BTCONTENT.GetNPieces(),
+    (int)WORLD.Pieces_I_Can_Get(),
 
     (unsigned long long)(Self.TotalDL() >> 20),
     (unsigned long long)(Self.TotalUL() >> 20),
@@ -967,8 +967,8 @@ void Console::StatusLine0(char buffer[], size_t length)
     (int)(m_pre_dlrate.RateMeasure(Self.GetDLRate()) >> 10),
     (int)(m_pre_ulrate.RateMeasure(Self.GetULRate()) >> 10),
 
-    (int)(Tracker.GetRefuseClick()),
-    (int)(Tracker.GetOkClick()),
+    (int)Tracker.GetRefuseClick(),
+    (int)Tracker.GetOkClick(),
 
     partial,
 
@@ -1077,18 +1077,18 @@ void Console::StatusLine1(char buffer[], size_t length)
     "%c S:%d/%d L:%d/%d C:%d  R=%.2f D=%d U=%d K/s  %s %s  %s%s",
     LIVE_CHAR[m_live_idx++],
 
-    (int)(WORLD.GetSeedsCount()),
-    (int)(Tracker.GetSeedsCount()) - (BTCONTENT.IsFull() ? 1 : 0),
+    (int)WORLD.GetSeedsCount(),
+    (int)(Tracker.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
 
-    (int)(WORLD.GetPeersCount()) - WORLD.GetSeedsCount() - WORLD.GetConnCount(),
-    (int)(Tracker.GetPeersCount()) - Tracker.GetSeedsCount() -
-      (!BTCONTENT.IsFull() ? 1 : 0),
+    (int)(WORLD.GetPeersCount() - WORLD.GetSeedsCount() - WORLD.GetConnCount()),
+    (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
+          (!BTCONTENT.IsFull() ? 1 : 0)),
 
-    (int)(WORLD.GetConnCount()),
+    (int)WORLD.GetConnCount(),
 
 
-    (double)(Self.TotalUL()) / ( Self.TotalDL() ? Self.TotalDL() :
-                                 BTCONTENT.GetTotalFilesLength() ),
+    (double)Self.TotalUL() / (Self.TotalDL() ? Self.TotalDL() :
+                               BTCONTENT.GetTotalFilesLength()),
 
     (int)(Self.RateDL() >> 10), (int)(Self.RateUL() >> 10),
 

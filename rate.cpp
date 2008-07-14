@@ -81,7 +81,7 @@ void Rate::Cleanup()
 {
   BWSAMPLE *p = m_history;
 
-  while( p && RATE_INTERVAL <= now - (time_t)(p->timestamp) ){
+  while( p && RATE_INTERVAL <= now - (time_t)p->timestamp ){
     int nzero = 0;
     if( !p->next ){
       if( BWSAMPLE *q = NewSample() ){
@@ -90,17 +90,17 @@ void Rate::Cleanup()
         m_history_last = q;
         nzero++;
       }else{
-        p->bytes = p->bytes * RATE_INTERVAL / (now - (time_t)(p->timestamp));
+        p->bytes = p->bytes * RATE_INTERVAL / (now - (time_t)p->timestamp);
         p->timestamp = (double)(now - RATE_INTERVAL + 1);
       }
     }
     if( p->next ){
-      if( RATE_INTERVAL > now - (time_t)(p->next->timestamp) ){
-        time_t reftime = nzero ? now : (time_t)(p->next->timestamp);
-        while( (time_t)(p->next->timestamp) > (time_t)(p->timestamp) + 1 ){
+      if( RATE_INTERVAL > now - (time_t)p->next->timestamp ){
+        time_t reftime = nzero ? now : (time_t)p->next->timestamp;
+        while( (time_t)p->next->timestamp > (time_t)p->timestamp + 1 ){
           // fill holes
           if( BWSAMPLE *q = NewSample() ){
-            q->timestamp = (double)((time_t)(p->next->timestamp) - 1);
+            q->timestamp = (double)((time_t)p->next->timestamp - 1);
             q->next = p->next;
             p->next = q;
             nzero++;
@@ -155,7 +155,7 @@ void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
   }
 
   if( m_history_last &&
-      (time_t)timestamp == (time_t)(m_history_last->timestamp) ){
+      (time_t)timestamp == (time_t)m_history_last->timestamp ){
     m_history_last->bytes += nbytes;
   }else{
     if( BWSAMPLE *p = NewSample() ){
@@ -226,7 +226,7 @@ dt_rate_t Rate::CurrentRate()
   double timeused = PreciseTime() - m_last_realtime;
   if( timeused <= 0 ) return 0;
 
-  return (dt_rate_t)( m_last_size / timeused );
+  return (dt_rate_t)(m_last_size / timeused);
 }
 
 dt_rate_t Rate::NominalRate()
@@ -264,7 +264,7 @@ dt_rate_t Rate::RateMeasure()
   for( p=m_history; p; p=p->next ){
     countbytes += p->bytes;
   }
-  timeused = (double)(now - (time_t)(m_history->timestamp));
+  timeused = (double)(now - (time_t)m_history->timestamp);
   if( timeused == 0 ) timeused = 1;
   else if( timeused < 0 ) ClearHistory();  // time went backward
   else m_update_nominal = 1;

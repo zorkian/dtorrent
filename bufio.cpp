@@ -129,7 +129,7 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
 
   if( !_left_buffer_size && _realloc_buffer() < 0 ){
     errno = ENOMEM;
-    return (ssize_t)(-2);
+    return (ssize_t)-2;
   }
 
   if( 0==limit || limit > _left_buffer_size )

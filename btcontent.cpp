@@ -437,7 +437,7 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
       if( !pBF->IsEmpty() )
         m_btfiles.PrintOut(); // show file completion
     }
-    CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)(pBF->Count()),
+    CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)pBF->Count(),
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
     if( !arg_flg_force_seed_mode ){
       SaveBitfield();
@@ -640,7 +640,7 @@ void btContent::CacheClean(bt_length_t need, bt_index_t idx)
       if( !f_flush && idx == p->bc_off / m_piece_length ) continue;
       if(arg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
-          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+          (int)(p->bc_off % m_piece_length), (int)p->bc_len);
 
       if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
       else p->age_prev->age_next = p->age_next;
@@ -717,8 +717,8 @@ void btContent::CacheEval()
       else upadd = DEFAULT_SLICE_SIZE * unchoked;
 
       upmin = DEFAULT_SLICE_SIZE * unchoked;
-      upmax = (dt_mem_t)( DEFAULT_SLICE_SIZE * (unchoked-1) +
-        rateup * 2.5 * WORLD.GetUnchokeInterval() );
+      upmax = (dt_mem_t)(DEFAULT_SLICE_SIZE * (unchoked-1) +
+                         rateup * 2.5 * WORLD.GetUnchokeInterval());
     }
   }else{
     if( rateup > ratedn ){
@@ -729,7 +729,7 @@ void btContent::CacheEval()
         /* lead cache is how much we'll use while uploading a slice to slowest
            (default_slice_size / slowest) * (ratedn + rateup) */
         upadd = (dt_mem_t)( ((double)DEFAULT_SLICE_SIZE / slowest) *
-                          (ratedn + rateup + 1) );
+                            (ratedn + rateup + 1) );
       else upadd = m_piece_length * unchoked;
     }
     else if( rateup ){
@@ -936,7 +936,7 @@ int btContent::CachePrep(bt_index_t idx)
       }
       if(arg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
-          (int)(p->bc_off % m_piece_length), (int)(p->bc_len));
+          (int)(p->bc_off % m_piece_length), (int)p->bc_len);
       if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
       else p->age_prev->age_next = p->age_next;
       if( m_cache_newest == p ) m_cache_newest = p->age_prev;
@@ -1024,7 +1024,7 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
 
   if( arg_verbose && 0==method )
     CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
-      (int)(idx), (int)(off % m_piece_length), (int)len);
+      (int)idx, (int)(off % m_piece_length), (int)len);
 
   if( m_cache_size < m_cache_used + len ){
     if( 0==method && !pBF->IsSet(idx) ) CacheClean(len, idx);
@@ -1482,7 +1482,7 @@ void btContent::CheckFilter()
       if( GetFilter()->IsEmpty() )
         CONSOLE.Print("Downloading remaining files");
       else CONSOLE.Print("Downloading file(s): %s", m_current_filter->name);
-      CONSOLE.Print( "Pieces: %d (%llu bytes)", (int)(tmpBitfield.Count()),
+      CONSOLE.Print( "Pieces: %d (%llu bytes)", (int)tmpBitfield.Count(),
         (unsigned long long)
           ((tmpBitfield.Count() - last) * (dt_datalen_t)m_piece_length +
            (last ? GetPieceLength(m_npieces-1) : 0)) );
@@ -1683,7 +1683,7 @@ void btContent::DumpCache()
     CONSOLE.Debug("  %p prev=%p %d/%d/%d %sflushed",
       p, p->age_prev,
       (int)(p->bc_off / m_piece_length), (int)(p->bc_off % m_piece_length),
-      (int)(p->bc_len),
+      (int)p->bc_len,
       p->bc_f_flush ? "un" : "");
     count++;
   }
@@ -1697,7 +1697,7 @@ void btContent::DumpCache()
       CONSOLE.Debug("  %p prev=%p %d/%d/%d %sflushed",
         p, p->bc_prev,
         (int)(p->bc_off / m_piece_length), (int)(p->bc_off % m_piece_length),
-        (int)(p->bc_len),
+        (int)p->bc_len,
         p->bc_f_flush ? "un" : "");
       count++;
     }

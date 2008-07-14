@@ -371,7 +371,7 @@ int btTracker::Initial()
       if( (h = gethostbyname(hostname)) ){
 //      CONSOLE.Debug("Host name: %s", h->h_name);
 //      CONSOLE.Debug("Address: %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
-        if( !IsPrivateAddress(((struct in_addr *)(h->h_addr))->s_addr) ||
+        if( !IsPrivateAddress(((struct in_addr *)h->h_addr)->s_addr) ||
             !cfg_listen_ip ){
           memcpy(&addr.sin_addr, h->h_addr, sizeof(struct in_addr));
           Self.SetIp(addr);
@@ -515,7 +515,7 @@ int btTracker::SendRequest()
                    *m_trackerid ? strncat(opt2, m_trackerid, PEER_ID_LEN) : "",
                    (unsigned long long)(m_totalul = Self.TotalUL()),
                    (unsigned long long)m_totaldl,
-                   (unsigned long long)(BTCONTENT.GetLeftBytes()),
+                   (unsigned long long)BTCONTENT.GetLeftBytes(),
                    (int)cfg_max_peers) ){
     return -1;
   }

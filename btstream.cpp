@@ -207,7 +207,7 @@ bt_msg_t btStream::PeekMessage()
 {
   return ( BT_LEN_PRE < in_buffer.Count() &&
            get_bt_msglen(in_buffer.BasePointer()) ) ?
-             (bt_msg_t)(in_buffer.BasePointer()[BT_LEN_PRE]) : BT_MSG_NONE;
+             (bt_msg_t)in_buffer.BasePointer()[BT_LEN_PRE] : BT_MSG_NONE;
 }
 
 // Is the next message known to match m?

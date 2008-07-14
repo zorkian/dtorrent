@@ -79,10 +79,10 @@ class PeerList
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
-  int BandWidthLimitUp(double when=0) const;
-  int BandWidthLimitUp(double when, dt_rate_t limit) const;
-  int BandWidthLimitDown(double when=0) const;
-  int BandWidthLimitDown(double when, dt_rate_t limit) const;
+  int BandwidthLimitUp(double when=0) const;
+  int BandwidthLimitUp(double when, dt_rate_t limit) const;
+  int BandwidthLimitDown(double when=0) const;
+  int BandwidthLimitDown(double when, dt_rate_t limit) const;
   double WaitBW() const;
   void DontWaitBW(){ Self.OntimeUL(0); Self.OntimeDL(0); }
 
