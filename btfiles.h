@@ -98,15 +98,15 @@ class btFiles
   int BuildFromMI(const char *metabuf, const size_t metabuf_len,
                   const char *saveas);
 
-  char *GetDataName() const;
+  const char *GetDataName() const;
   dt_datalen_t GetTotalLength() const { return m_total_files_length; }
-  int IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype);
+  int IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len);
   int FillMetaInfo(FILE *fp);
 
   void SetFilter(dt_count_t nfile, Bitfield *pFilter, bt_length_t pieceLength);
 
   dt_count_t GetNFiles() const { return m_nfiles; }
-  char *GetFileName(dt_count_t nfile) const;
+  const char *GetFileName(dt_count_t nfile) const;
   dt_datalen_t GetFileSize(dt_count_t nfile) const;
   bt_index_t GetFilePieces(dt_count_t nfile) const;
 
@@ -116,7 +116,7 @@ class btFiles
   bt_index_t ChoosePiece(const Bitfield &choices, const Bitfield &available,
     bt_index_t preference) const;
 
-  void PrintOut();
+  void PrintOut() const;
 };
 
 #endif  // BTFILES_H

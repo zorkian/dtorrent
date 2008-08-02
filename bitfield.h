@@ -47,7 +47,7 @@ class Bitfield
   void And(const Bitfield *pbf){ if(pbf) And(*pbf); }
   void Invert();
 
-  void SetReferBuffer(char *buf);
+  void SetReferBuffer(const char *buf);
   void WriteToBuffer(char *buf);
   int SetReferFile(const char *fname);
   int WriteToFile(const char *fname);

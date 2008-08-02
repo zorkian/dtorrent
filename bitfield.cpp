@@ -289,7 +289,7 @@ bt_index_t Bitfield::Random() const
   return idx;
 }
 
-void Bitfield::SetReferBuffer(char *buf)
+void Bitfield::SetReferBuffer(const char *buf)
 {
   if( !b ){
     b = new unsigned char[nbytes];

@@ -32,8 +32,8 @@ class RequestQueue
 
   void SetHead(PSLICE ps);
   void SetNextSend(PSLICE ps){ rq_send = ps; }
-  PSLICE GetHead() const { return rq_head; }
-  PSLICE NextSend() const { return rq_send; }
+  const PSLICE GetHead() const { return rq_head; }
+  const PSLICE NextSend() const { return rq_send; }
   bt_index_t GetRequestIdx() const { return rq_head ? rq_head->index :
                                                   BTCONTENT.GetNPieces(); }
   bt_length_t GetRequestLen() const { return rq_head ? rq_head->length : 0; }
@@ -58,8 +58,7 @@ class RequestQueue
   int HasIdx(bt_index_t idx) const;
   int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
   time_t GetReqTime(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
-  void SetReqTime(PSLICE n, time_t t);
-
+  void SetReqTime(PSLICE n, time_t t) { n->reqtime = t; }
 
   int Pop(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen);
   int Peek(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen) const;
@@ -82,9 +81,9 @@ class PendingQueue
   ~PendingQueue();
   void Empty();
   int Pending(RequestQueue *prq);
-  bt_index_t ReAssign(RequestQueue *prq, Bitfield &bf);
+  bt_index_t Reassign(RequestQueue *prq, const Bitfield &bf);
   int Exist(bt_index_t idx) const;
-  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
   int Delete(bt_index_t idx);
   int DeleteSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
 };

@@ -965,14 +965,13 @@ int PeerList::Initial_ListenPort()
   return 0;
 }
 
-bt_index_t PeerList::Pieces_I_Can_Get() const
-{
-  Bitfield tmpBitfield;
-  return Pieces_I_Can_Get(&tmpBitfield);
-}
-
 bt_index_t PeerList::Pieces_I_Can_Get(Bitfield *ptmpBitfield) const
 {
+  if( !ptmpBitfield ){
+    ptmpBitfield = new Bitfield(BTCONTENT.GetNPieces());
+    if( !ptmpBitfield ) return 0;
+  }
+
   if( m_seeds_count > 0 || BTCONTENT.IsFull() )
     ptmpBitfield->SetAll();
   else{
@@ -998,7 +997,7 @@ int PeerList::AlreadyRequested(bt_index_t idx) const
   return 0;
 }
 
-void PeerList::CheckBitfield(Bitfield &bf)
+void PeerList::CheckBitfield(Bitfield &bf) const
 {
   PEERNODE *p;
   PSLICE ps;
@@ -1022,7 +1021,7 @@ void PeerList::PrintOut() const
   CONSOLE.Print("PEER LIST");
   for( ; p; p = p->next ){
     if( PEER_IS_FAILED(p->peer) ) continue;
-    p->peer->dump();
+    p->peer->Dump();
   }
 }
 
@@ -1334,7 +1333,7 @@ void PeerList::CheckInterest()
   }
 }
 
-btPeer *PeerList::GetNextPeer(btPeer *peer) const
+btPeer *PeerList::GetNextPeer(const btPeer *peer) const
 {
   static PEERNODE *p = m_head;
 
@@ -1467,18 +1466,6 @@ dt_rate_t PeerList::GetSlowestUp(dt_rate_t minimum) const
                              ((rate = Self.RateUL()) ? rate / unchoked : 1);
     else return 0;
   }
-}
-
-inline int PeerList::BandwidthLimitUp(double grace) const
-{
-  return BandwidthLimited(Self.LastSendTime(), Self.LastSizeSent(),
-                          cfg_max_bandwidth_up, grace);
-}
-
-inline int PeerList::BandwidthLimitDown(double grace) const
-{
-  return BandwidthLimited(Self.LastRecvTime(), Self.LastSizeRecv(),
-                          cfg_max_bandwidth_down, grace);
 }
 
 int PeerList::BandwidthLimited(double lasttime, bt_length_t lastsize,
@@ -1663,7 +1650,7 @@ void PeerList::BWReQueue(PEERNODE **queue, btPeer *peer)
   pp->next = node;
 }
 
-void PeerList::DontWaitBWQueue(PEERNODE **queue, btPeer *peer)
+void PeerList::DontWaitBWQueue(PEERNODE **queue, const btPeer *peer)
 {
   PEERNODE *p = *queue, *pp = (PEERNODE *)0;
 

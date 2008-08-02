@@ -57,32 +57,32 @@ public:
   btStream(){ sock = sock_was = INVALID_SOCKET; m_oldbytes = 0; }
   ~btStream(){ Close(); }
 
-  SOCKET GetSocket(){ return (INVALID_SOCKET==sock) ? sock_was : sock; }
+  SOCKET GetSocket() const { return (INVALID_SOCKET==sock) ? sock_was : sock; }
   void SetSocket(SOCKET sk){ sock = sk; }
 
   void Close();
 
   ssize_t PickMessage();
-  ssize_t Feed();
-  ssize_t Feed(Rate *rate);
+  ssize_t Feed() { return in_buffer.FeedIn(sock); }
+  ssize_t Feed(Rate *rate) { return Feed(0, rate); }
   ssize_t Feed(size_t limit, Rate *rate);
 
-  int HaveMessage();
-  bt_msg_t PeekMessage();
-  int PeekMessage(bt_msg_t m);
-  int PeekNextMessage(bt_msg_t m);
+  int HaveMessage() const;
+  bt_msg_t PeekMessage() const;
+  int PeekMessage(bt_msg_t m) const;
+  int PeekNextMessage(bt_msg_t m) const;
 
   ssize_t Send_Keepalive();
   ssize_t Send_State(bt_msg_t state);
   ssize_t Send_Have(bt_index_t idx);
-  ssize_t Send_Piece(bt_index_t idx, bt_offset_t off, char *piece_buf,
+  ssize_t Send_Piece(bt_index_t idx, bt_offset_t off, const char *piece_buf,
     bt_length_t len);
-  ssize_t Send_Bitfield(char *bit_buf, size_t len);
+  ssize_t Send_Bitfield(const char *bit_buf, size_t len);
   ssize_t Send_Request(bt_index_t idx, bt_offset_t off, bt_length_t len);
   ssize_t Send_Cancel(bt_index_t idx, bt_offset_t off, bt_length_t len);
-  ssize_t Send_Buffer(char *buf, bt_length_t len);
+  ssize_t Send_Buffer(const char *buf, bt_length_t len);
 
-  ssize_t Flush();
+  ssize_t Flush() { return out_buffer.FlushOut(sock); }
 };
 
 #endif  // BTSTREAM_H

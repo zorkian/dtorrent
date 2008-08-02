@@ -3,7 +3,7 @@
 
 IpList IPQUEUE;
 
-void IpList::_Emtpy()
+void IpList::_Empty()
 {
   IPLIST *node = ipl_head;
   while( ipl_head ){

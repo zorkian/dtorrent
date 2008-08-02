@@ -68,7 +68,7 @@ class ConStream
 
   void Close();
   void Associate(FILE *stream, const char *name, int mode);
-  char *GetName() const { return m_name; }
+  const char *GetName() const { return m_name; }
   int GetMode() const { return m_filemode ? 1 : 0; }
   int Fileno() const { return m_stream ? fileno(m_stream) : -1; }
   int GetNewline() const { return m_newline ? 1 : 0; }
@@ -143,7 +143,7 @@ class Console
   void InteractU(const char *message, ...);
   char *Input(const char *prompt, char *field, size_t length);
 
-  char *GetChannel(dt_conchan_t channel) const {
+  const char *GetChannel(dt_conchan_t channel) const {
     return m_streams[channel]->GetName();
   }
   int ChangeChannel(dt_conchan_t channel, const char *param, int notify = 1);

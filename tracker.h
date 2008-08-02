@@ -65,10 +65,10 @@ class btTracker
   SOCKET m_sock;
   BufIo m_request_buffer, m_response_buffer;
 
-  int _IPsin(char *h, int p, struct sockaddr_in *psin);
-  int _s2sin(char *h, int p, struct sockaddr_in *psin);
-  int _UpdatePeerList(char *buf, size_t bufsiz);
-  int IsPrivateAddress(uint32_t addr);
+  int _IPsin(const char *h, int p, struct sockaddr_in *psin);
+  int _s2sin(const char *h, int p, struct sockaddr_in *psin);
+  int _UpdatePeerList(const char *buf, size_t bufsiz);
+  int IsPrivateAddress(uint32_t addr) const;
 
   int BuildBaseRequest();
   int Connect();
@@ -84,10 +84,10 @@ class btTracker
 
   void Reset(time_t new_interval);
 
-  dt_trackerstatus_t GetStatus(){ return m_status; }
+  dt_trackerstatus_t GetStatus() const { return m_status; }
   void SetStatus(dt_trackerstatus_t s){ m_status = s; }
 
-  SOCKET GetSocket(){ return m_sock; }
+  SOCKET GetSocket() const { return m_sock; }
 
   void RestartTracker();
   void SetRestart(){ m_f_restart = 1; }

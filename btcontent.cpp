@@ -228,7 +228,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
   return 0;
 }
 
-int btContent::PrintOut()
+int btContent::PrintOut() const
 {
   CONSOLE.Print("META INFO");
   CONSOLE.Print("Announce: %s", m_announce);
@@ -260,12 +260,6 @@ int btContent::PrintOut()
     }
   }
   if( m_created_by ) CONSOLE.Print("Created with: %s", m_created_by);
-  m_btfiles.PrintOut();
-  return 0;
-}
-
-int btContent::PrintFiles()
-{
   m_btfiles.PrintOut();
   return 0;
 }
@@ -535,11 +529,6 @@ btContent::~btContent()
   if( pBF ) delete pBF;
 }
 
-void btContent::_Set_InfoHash(unsigned char buf[20])
-{
-  memcpy(m_shake_buffer + 28, buf, 20);
-}
-
 // returns <0 if error; if using cache: 1 if read from disk, 0 otherwise
 int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
   bt_length_t len)
@@ -547,7 +536,7 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
   int retval = 0;
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
-  if( !m_cache_size ) return buf ? FileIO(buf, offset, len, 0) : 0;
+  if( !m_cache_size ) return buf ? FileIO(buf, NULL, offset, len) : 0;
   else{
     bt_length_t len2;
     BTCACHE *p;
@@ -560,7 +549,7 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
       if( !p || !CACHE_FIT(p, offset, len) ) break;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
-        if( CacheIO(buf, offset, len2, 0) < 0 ) return -1;
+        if( CacheIO(buf, NULL, offset, len2, 0) < 0 ) return -1;
         retval = 1;
         if( buf ) m_cache_miss += len2 / DEFAULT_SLICE_SIZE +
                                   ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
@@ -605,7 +594,7 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
                                 ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
       else m_cache_pre += len / DEFAULT_SLICE_SIZE +
                           ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
-      retval = CacheIO(buf, offset, len, 0);
+      retval = CacheIO(buf, NULL, offset, len, 0);
       return (retval < 0) ? retval : 1;
     }
   }
@@ -613,7 +602,7 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
 }
 
 
-void btContent::CacheClean(bt_length_t need)
+inline void btContent::CacheClean(bt_length_t need)
 {
   CacheClean(need, m_npieces);
 }
@@ -838,7 +827,7 @@ void btContent::FlushEntry(BTCACHE *p)
     // Delay until next retry.
     return;
   }
-  if( p->bc_f_flush && FileIO(p->bc_buf, p->bc_off, p->bc_len, 1) == 0 ){
+  if( p->bc_f_flush && FileIO(NULL, p->bc_buf, p->bc_off, p->bc_len) == 0 ){
     p->bc_f_flush = 0;
     if( m_flush_failed ){
       m_flush_failed = 0;
@@ -954,12 +943,12 @@ int btContent::CachePrep(bt_index_t idx)
   return retval;
 }
 
-int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
+int btContent::WriteSlice(const char *buf, bt_index_t idx, bt_offset_t off,
   bt_length_t len)
 {
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
-  if( !m_cache_size && FileIO(buf, offset, len, 1) == 0 ){
+  if( !m_cache_size && FileIO(NULL, buf, offset, len) == 0 ){
     return 0;
     // save it in cache if write failed
   }else{
@@ -974,7 +963,7 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
       if( !p || !CACHE_FIT(p, offset, len) ) break;
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
-        if( CacheIO(buf, offset, len2, 1) < 0 ) return -1;
+        if( CacheIO(NULL, buf, offset, len2, 1) < 0 ) return -1;
         p = m_cache[idx];  // p may not be valid after CacheIO
       }else{
         if( offset > p->bc_off ){
@@ -1004,13 +993,14 @@ int btContent::WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
       len -= len2;
     }  // end while
 
-    if( len ) return CacheIO(buf, offset, len, 1);
+    if( len ) return CacheIO(NULL, buf, offset, len, 1);
   }
   return 0;
 }
 
 // Put data into the cache (receiving data, or need to read from disk).
-int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
+int btContent::CacheIO(char *rbuf, const char *wbuf, dt_datalen_t off,
+  bt_length_t len, int method)
 {
   BTCACHE *p;
   BTCACHE *pp = (BTCACHE *)0;
@@ -1018,12 +1008,12 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
   bt_index_t idx = off / m_piece_length;
 
   if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
-    if( buf ) return FileIO(buf, off, len, method);
+    if( rbuf || wbuf ) return FileIO(rbuf, wbuf, off, len);
     else return 0;
   }
 
   if( arg_verbose && 0==method )
-    CONSOLE.Debug("Read to %s %d/%d/%d", buf?"buffer":"cache",
+    CONSOLE.Debug("Read to %s %d/%d/%d", rbuf ? "buffer" : "cache",
       (int)idx, (int)(off % m_piece_length), (int)len);
 
   if( m_cache_size < m_cache_used + len ){
@@ -1033,24 +1023,25 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
        done to increase the cache size, we allocate what we need anyway. */
   }
 
-  if( 0==method && buf && FileIO(buf, off, len, method) < 0 ) return -1;
+  if( 0==method && rbuf && FileIO(rbuf, wbuf, off, len) < 0 )
+    return -1;
 
   pnew = new BTCACHE;
 #ifndef WINDOWS
   if( !pnew )
-    return (method && buf) ? FileIO(buf, off, len, method) : 0;
+    return (method && wbuf) ? FileIO(rbuf, wbuf, off, len) : 0;
 #endif
 
   pnew->bc_buf = new char[len];
 #ifndef WINDOWS
   if( !(pnew->bc_buf) ){
     delete pnew;
-    return (method && buf) ? FileIO(buf, off, len, method) : 0;
+    return (method && wbuf) ? FileIO(rbuf, wbuf, off, len) : 0;
   }
 #endif
 
-  if( buf ) memcpy(pnew->bc_buf, buf, len);
-  else if( 0==method && FileIO(pnew->bc_buf, off, len, method) < 0 ){
+  if( rbuf || wbuf ) memcpy(pnew->bc_buf, method ? wbuf : rbuf, len);
+  else if( 0==method && FileIO(pnew->bc_buf, wbuf, off, len) < 0 ){
     delete []pnew->bc_buf;
     delete pnew;
     return -1;
@@ -1084,20 +1075,21 @@ int btContent::CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method)
   return 0;
 }
 
-// Perform file I/O, handling failures.
-inline int btContent::FileIO(char *buf, dt_datalen_t off, bt_length_t len,
-  int method)
+/* Perform file I/O, handling failures.
+   Method (read/write) is determined by which buffer is given. */
+inline int btContent::FileIO(char *rbuf, const char *wbuf, dt_datalen_t off,
+  bt_length_t len)
 {
-  return ( m_btfiles.IO(buf, off, len, method) < 0 ) ?
-             (method ? WriteFail() : -1) : 0;
+  return ( m_btfiles.IO(rbuf, wbuf, off, len) < 0 ) ?
+             (wbuf ? WriteFail() : -1) : 0;
 }
 
-int btContent::ReadPiece(char *buf, bt_index_t idx)
+inline int btContent::ReadPiece(char *buf, bt_index_t idx)
 {
   return ReadSlice(buf, idx, 0, GetPieceLength(idx));
 }
 
-bt_length_t btContent::GetPieceLength(bt_index_t idx)
+bt_length_t btContent::GetPieceLength(bt_index_t idx) const
 {
   /* Slight optimization to avoid division in every call.  The second test is
      still needed in case the torrent size is exactly n pieces. */
@@ -1457,7 +1449,7 @@ void btContent::CheckFilter()
   if( !m_current_filter ) m_current_filter = m_filters;
 
   while( m_current_filter ){
-    tmpBitfield = *pBF;             // what I have...
+    tmpBitfield = *pBF;           // what I have...
     tmpBitfield.Or(GetFilter());  // ...plus what I don't want
     if( !tmpBitfield.IsFull() ) break;
     m_current_filter = m_current_filter->next;
@@ -1596,7 +1588,7 @@ void btContent::SetFilter()
 }
 
 
-Bitfield *btContent::GetNextFilter(Bitfield *pfilter) const
+const Bitfield *btContent::GetNextFilter(const Bitfield *pfilter) const
 {
   static BFNODE *p = m_filters;
 
@@ -1672,7 +1664,7 @@ bt_index_t btContent::ChoosePiece(const Bitfield &choices,
 }
 
 
-void btContent::DumpCache()
+void btContent::DumpCache() const
 {
   BTCACHE *p = m_cache_oldest;
   int count;

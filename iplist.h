@@ -27,13 +27,13 @@ class IpList
 private:
   IPLIST *ipl_head;
   dt_count_t count;
-  void _Emtpy();
+  void _Empty();
 public:
   IpList(){ ipl_head = (IPLIST *)0; count = 0; }
-  ~IpList(){ if(ipl_head) _Emtpy(); }
+  ~IpList(){ if(ipl_head) _Empty(); }
   int Add(const struct sockaddr_in *psin);
   int Pop(struct sockaddr_in *psin);
-  int IsEmpty(){ return count ? 0 : 1; }
+  int IsEmpty() const { return count ? 0 : 1; }
 };
 
 extern IpList IPQUEUE;

@@ -99,7 +99,7 @@ int ConStream::SameDev(ConStream *master) const
 }
 
 
-int ConStream::IsTTY() const
+inline int ConStream::IsTTY() const
 {
   return ( Fileno() >= 0 ) ? isatty(Fileno()) : 0;
 }

@@ -217,7 +217,7 @@ void Rate::operator=(const Rate &ra)
   m_count_bytes = ra.m_count_bytes;
 }
 
-dt_rate_t Rate::CurrentRate()
+dt_rate_t Rate::CurrentRate() const
 {
   /* We can't make up for past slowness by overloading the line now/future.
      Look at only the most recent data sent/received. */

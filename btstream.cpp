@@ -56,11 +56,6 @@ void btStream::Close()
   out_buffer.Close();
 }
 
-ssize_t btStream::Flush()
-{
-  return out_buffer.FlushOut(sock);
-}
-
 ssize_t btStream::Send_State(bt_msg_t state)
 {
   char msg[BT_LEN_PRE + BT_LEN_MSGID];
@@ -81,7 +76,7 @@ ssize_t btStream::Send_Have(bt_index_t idx)
   return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_HAVE);
 }
 
-ssize_t btStream::Send_Bitfield(char *bit_buf, size_t len)
+ssize_t btStream::Send_Bitfield(const char *bit_buf, size_t len)
 {
   char msg[BT_LEN_PRE + BT_LEN_MSGID];
   ssize_t r;
@@ -105,8 +100,8 @@ ssize_t btStream::Send_Cancel(bt_index_t idx, bt_offset_t off, bt_length_t len)
   return out_buffer.Put(sock, msg, BT_LEN_PRE + BT_MSGLEN_CANCEL);
 }
 
-ssize_t btStream::Send_Piece(bt_index_t idx, bt_offset_t off, char *piece_buf,
-  bt_length_t len)
+ssize_t btStream::Send_Piece(bt_index_t idx, bt_offset_t off,
+  const char *piece_buf, bt_length_t len)
 {
   char msg[BT_LEN_PRE + BT_MSGLEN_PIECE];
   ssize_t r;
@@ -142,7 +137,7 @@ ssize_t btStream::Send_Keepalive()
     0 if not
    -1 if garbage in buffer
 */
-int btStream::HaveMessage()
+int btStream::HaveMessage() const
 {
   bt_msglen_t msglen;
   if( BT_LEN_PRE <= in_buffer.Count() ){
@@ -152,16 +147,6 @@ int btStream::HaveMessage()
     if( msglen + BT_LEN_PRE <= in_buffer.Count() ) return 1;
   }
   return 0; // no message arrived
-}
-
-ssize_t btStream::Feed()
-{
-  return in_buffer.FeedIn(sock);
-}
-
-ssize_t btStream::Feed(Rate *rate)
-{
-  return Feed(0, rate);
 }
 
 ssize_t btStream::Feed(size_t limit, Rate *rate)
@@ -197,13 +182,13 @@ ssize_t btStream::PickMessage()
 }
 
 // Used only for sending peer handshake
-ssize_t btStream::Send_Buffer(char *buf, bt_length_t len)
+ssize_t btStream::Send_Buffer(const char *buf, bt_length_t len)
 {
   return out_buffer.PutFlush(sock, buf, len);
 }
 
 // Does not distinguish between keepalive and no message.
-bt_msg_t btStream::PeekMessage()
+bt_msg_t btStream::PeekMessage() const
 {
   return ( BT_LEN_PRE < in_buffer.Count() &&
            get_bt_msglen(in_buffer.BasePointer()) ) ?
@@ -211,7 +196,7 @@ bt_msg_t btStream::PeekMessage()
 }
 
 // Is the next message known to match m?
-int btStream::PeekMessage(bt_msg_t m)
+int btStream::PeekMessage(bt_msg_t m) const
 {
   return ( BT_LEN_PRE < in_buffer.Count() &&
            m == in_buffer.BasePointer()[BT_LEN_PRE] &&
@@ -219,9 +204,9 @@ int btStream::PeekMessage(bt_msg_t m)
 }
 
 // Is the next next message known to match m?
-int btStream::PeekNextMessage(bt_msg_t m)
+int btStream::PeekNextMessage(bt_msg_t m) const
 {
-  char *base;
+  const char *base;
 
   base = in_buffer.BasePointer() + BT_LEN_PRE +
          get_bt_msglen(in_buffer.BasePointer());

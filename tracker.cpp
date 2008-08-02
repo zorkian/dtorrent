@@ -81,7 +81,7 @@ void btTracker::Reset(time_t new_interval)
   else m_status = DT_TRACKER_FREE;
 }
 
-int btTracker:: _IPsin(char *h, int p, struct sockaddr_in *psin)
+int btTracker::_IPsin(const char *h, int p, struct sockaddr_in *psin)
 {
   psin->sin_family = AF_INET;
   psin->sin_port = htons(p);
@@ -89,7 +89,7 @@ int btTracker:: _IPsin(char *h, int p, struct sockaddr_in *psin)
   return ( psin->sin_addr.s_addr == INADDR_NONE ) ? -1 : 0;
 }
 
-int btTracker:: _s2sin(char *h, int p, struct sockaddr_in *psin)
+int btTracker::_s2sin(const char *h, int p, struct sockaddr_in *psin)
 {
   psin->sin_family = AF_INET;
   psin->sin_port = htons(p);
@@ -107,7 +107,7 @@ int btTracker:: _s2sin(char *h, int p, struct sockaddr_in *psin)
   return 0;
 }
 
-int btTracker::_UpdatePeerList(char *buf, size_t bufsiz)
+int btTracker::_UpdatePeerList(const char *buf, size_t bufsiz)
 {
   char tmphost[MAXHOSTNAMELEN];
   const char *ps;
@@ -205,7 +205,7 @@ int btTracker::_UpdatePeerList(char *buf, size_t bufsiz)
       }
       ps += 6;
     }
-  }else for( ; bufsiz && *buf!='e'; buf += pos, bufsiz -= pos ){
+  }else for( ; bufsiz && *buf != 'e'; buf += pos, bufsiz -= pos ){
     pos = decode_dict(buf, bufsiz, (char *)0);
     if( !pos ) break;
     if( !decode_query(buf, pos, "ip", &ps, &i, (int64_t *)0, DT_QUERY_STR) ||
@@ -386,7 +386,7 @@ int btTracker::Initial()
   return 0;
 }
 
-int btTracker::IsPrivateAddress(uint32_t addr)
+int btTracker::IsPrivateAddress(uint32_t addr) const
 {
   return (addr & htonl(0xff000000)) == htonl(0x0a000000) ||  // 10.x.x.x/8
          (addr & htonl(0xfff00000)) == htonl(0xac100000) ||  // 172.16.x.x/12

@@ -192,7 +192,8 @@ int btPeer::SetLocal(bt_msg_t s)
 int btPeer::RequestPiece()
 {
   bt_index_t idx;
-  Bitfield tmpBitfield, *pfilter;
+  Bitfield tmpBitfield;
+  const Bitfield *pfilter;
 
   dt_count_t qsize = request_q.Qsize();
   bt_length_t psize = BTCONTENT.GetPieceLength() / cfg_req_slice_size;
@@ -208,7 +209,7 @@ int btPeer::RequestPiece()
   tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
   if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
     tmpBitfield.UnSet(m_last_req_piece);
-  if( (idx = PENDINGQUEUE.ReAssign(&request_q, tmpBitfield)) <
+  if( (idx = PENDINGQUEUE.Reassign(&request_q, tmpBitfield)) <
       BTCONTENT.GetNPieces() ){
     if(arg_verbose)
       CONSOLE.Debug("Assigning #%d to %p from Pending", (int)idx, this);
@@ -353,7 +354,7 @@ int btPeer::MsgDeliver()
   bt_length_t len;
   int retval = 0;
 
-  char *msgbuf = stream.in_buffer.BasePointer();
+  const char *msgbuf = stream.in_buffer.BasePointer();
 
   msglen = get_bt_msglen(msgbuf);
 
@@ -759,7 +760,7 @@ int btPeer::CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len)
   return retval;
 }
 
-bt_index_t btPeer::FindLastCommonRequest(Bitfield &proposerbf)
+bt_index_t btPeer::FindLastCommonRequest(const Bitfield &proposerbf) const
 {
   PSLICE ps;
   bt_index_t idx, piece;
@@ -817,7 +818,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
   bt_index_t idx;
   bt_offset_t off;
   bt_length_t len;
-  char *msgbuf = stream.in_buffer.BasePointer();
+  const char *msgbuf = stream.in_buffer.BasePointer();
   time_t t = (time_t)0;
   int f_accept = 0, f_requested = 0, f_success = 1, f_count = 1, f_want = 1;
   int f_complete = 0, dup = 0;
@@ -1029,22 +1030,20 @@ int btPeer::HandShake()
   }
   if( (r = stream.in_buffer.Count()) < 68 ){
     // If it's not BitTorrent, don't wait around for a complete handshake.
-    if( r > 20 ){  // ignore 8 reserved bytes following protocol ID
-      if( memcmp(stream.in_buffer.BasePointer()+20,
-                 BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8) != 0 ){
-        if(arg_verbose){
-          CONSOLE.Debug_n("");
-          CONSOLE.Debug_n("peer %p gave 0x", this);
-          for( int i = 20; i < r && i < 27; i++ ){
-            CONSOLE.Debug_n("%2.2hx",
-              (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-          }
-          CONSOLE.Debug_n(" as reserved bytes (partial)");
-        }
-        memcpy(stream.in_buffer.BasePointer()+20,
-               BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8);
+
+    // Report if the 8 reserved bytes following protocol ID differ.
+    if( arg_verbose && r > 20 &&
+        memcmp(stream.in_buffer.BasePointer()+20,
+               BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8) != 0 ){
+      CONSOLE.Debug_n("");
+      CONSOLE.Debug_n("peer %p gave 0x", this);
+      for( int i = 20; i < r && i < 27; i++ ){
+        CONSOLE.Debug_n("%2.2hx",
+          (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
       }
+      CONSOLE.Debug_n(" as reserved bytes (partial)");
     }
+
     if( r && memcmp(stream.in_buffer.BasePointer(), BTCONTENT.GetShakeBuffer(),
                     (r<48) ? r : 48) != 0 ){
       if(arg_verbose){
@@ -1080,23 +1079,24 @@ int btPeer::HandShake()
     return -1;
   }
 
-  /* If the reserved bytes differ, make them the same.
-     If they mean anything important, the handshake is likely to fail anyway. */
-  if( memcmp(stream.in_buffer.BasePointer()+20, BTCONTENT.GetShakeBuffer()+20,
+  // Report if the reserved bytes differ.
+  if( arg_verbose &&
+      memcmp(stream.in_buffer.BasePointer()+20, BTCONTENT.GetShakeBuffer()+20,
              8) != 0 ){
-    if(arg_verbose){
-      CONSOLE.Debug_n("");
-      CONSOLE.Debug_n("peer %p gave 0x", this);
-      for( int i = 20; i < 27; i++ ){
-        CONSOLE.Debug_n("%2.2hx",
-          (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-      }
-      CONSOLE.Debug_n(" as reserved bytes" );
+    CONSOLE.Debug_n("");
+    CONSOLE.Debug_n("peer %p gave 0x", this);
+    for( int i = 20; i < 27; i++ ){
+      CONSOLE.Debug_n("%2.2hx",
+        (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
     }
-    memcpy(stream.in_buffer.BasePointer()+20, BTCONTENT.GetShakeBuffer()+20, 8);
+    CONSOLE.Debug_n(" as reserved bytes" );
   }
+
+  // Compare the handshake, ignoring the reserved bytes.
   if( memcmp(stream.in_buffer.BasePointer(),
-             BTCONTENT.GetShakeBuffer(), 48) != 0 ){
+             BTCONTENT.GetShakeBuffer(), 20) != 0 ||
+      memcmp(stream.in_buffer.BasePointer() + 28,
+             BTCONTENT.GetShakeBuffer() + 28, 20) != 0 ){
     if(arg_verbose){
       CONSOLE.Debug("%p: handshake mismatch", this);
       CONSOLE.Debug_n("");
@@ -1180,7 +1180,7 @@ int btPeer::NeedWrite(int limited)
   return yn;
 }
 
-int btPeer::NeedRead(int limited)
+int btPeer::NeedRead(int limited) const
 {
   int yn = 1;
 
@@ -1192,7 +1192,7 @@ int btPeer::NeedRead(int limited)
   return yn;
 }
 
-int btPeer::CouldRespondSlice()
+int btPeer::CouldRespondSlice() const
 {
   // If the entire buffer isn't big enough, go ahead and let the put resize it.
   if( !m_state.local_choked &&
@@ -1507,16 +1507,16 @@ int btPeer::PeerError(int weight, const char *message)
   }else return 0;
 }
 
-void btPeer::dump()
+void btPeer::Dump() const
 {
   struct sockaddr_in sin;
 
   GetAddress(&sin);
   CONSOLE.Print("%s: %d -> %d:%d   %llud:%lluu", inet_ntoa(sin.sin_addr),
-          bitfield.Count(),
-          Is_Remote_Unchoked() ? 1 : 0,
-          request_q.IsEmpty() ? 0 : 1,
-          (unsigned long long)TotalDL(),
-          (unsigned long long)TotalUL());
+    (int)bitfield.Count(),
+    Is_Remote_Unchoked() ? 1 : 0,
+    request_q.IsEmpty() ? 0 : 1,
+    (unsigned long long)TotalDL(),
+    (unsigned long long)TotalUL());
 }
 

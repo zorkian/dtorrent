@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #endif
 
-int connect_nonb(SOCKET sk, struct sockaddr *psa);
+int connect_nonb(SOCKET sk, const struct sockaddr *psa);
 
 #endif  // CONNECT_NONB_H
 

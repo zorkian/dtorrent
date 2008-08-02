@@ -7,7 +7,7 @@
    -1 on failure
    -2 if connection is delayed (in progress)
 */
-int connect_nonb(SOCKET sk, struct sockaddr *psa)
+int connect_nonb(SOCKET sk, const struct sockaddr *psa)
 {
   int r;
   r = connect(sk, psa, sizeof(struct sockaddr));

@@ -81,7 +81,7 @@ void Ctcs::Reset(time_t new_interval)
 
 
 // borrowed from tracker.cpp (with changes)
-int Ctcs:: _s2sin(char *h, int p, struct sockaddr_in *psin)
+int Ctcs::_s2sin(const char *h, int p, struct sockaddr_in *psin)
 {
   psin->sin_family = AF_INET;
   psin->sin_port = htons(p);
@@ -121,11 +121,11 @@ int Ctcs::CheckMessage()
     return -1;
   }
 
-  char *s, *msgbuf;
+  const char *s, *msgbuf;
   while( in_buffer.Count() &&
-         (s=strpbrk(msgbuf=in_buffer.BasePointer(), "\r\n")) ){
-    *s = '\0';
-    if( arg_verbose && s!=msgbuf ) CONSOLE.Debug("CTCS: %s", msgbuf);
+         (s = strpbrk((msgbuf = in_buffer.BasePointer()), "\r\n")) ){
+    if( arg_verbose && s != msgbuf )
+      CONSOLE.Debug("CTCS: %.*s", (int)(s - msgbuf), msgbuf);
     if( !strncmp("SETDLIMIT", msgbuf, 9) ){
       dt_rate_t arg = (dt_rate_t)strtod(msgbuf+10, NULL);
       if( !BTCONTENT.IsFull() || arg < cfg_max_bandwidth_down ){
@@ -157,10 +157,11 @@ int Ctcs::CheckMessage()
       int proto = atoi(msgbuf+9);
       if( proto <= CTCS_PROTOCOL ) m_protocol = proto;
       else m_protocol = CTCS_PROTOCOL;
-    }else if( s!=msgbuf ){
-      if(arg_verbose) CONSOLE.Debug("unknown CTCS message: %s", msgbuf);
+    }else if( s != msgbuf ){
+      if(arg_verbose)
+        CONSOLE.Debug("unknown CTCS message: %.*s", (int)(s - msgbuf), msgbuf);
     }
-    in_buffer.PickUp(s-msgbuf + 1);
+    in_buffer.PickUp(s - msgbuf + 1);
   }
   m_last_timestamp = now;
   return 0;
@@ -209,7 +210,7 @@ int Ctcs::Send_Protocol()
 }
 
 
-int Ctcs::Send_Torrent(const unsigned char *peerid, char *torrent)
+int Ctcs::Send_Torrent(const unsigned char *peerid, const char *torrent)
 {
   char message[CTCS_BUFSIZE];
   char txtid[PEER_ID_LEN*2+3];
@@ -629,8 +630,8 @@ int Ctcs::Send_Detail()
   char message[CTCS_BUFSIZE];
   int r=0, priority, current=0;
   dt_count_t n=0;
-  Bitfield tmpBitfield, fileFilter, availbf, tmpavail, allFilter, tmpFilter,
-    *pfilter;
+  Bitfield tmpBitfield, fileFilter, availbf, tmpavail, allFilter, tmpFilter;
+  const Bitfield *pfilter;
 
   snprintf(message, CTCS_BUFSIZE, "CTDETAIL %lld %d %ld %ld",
     (unsigned long long)BTCONTENT.GetTotalFilesLength(),

@@ -187,8 +187,9 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
   return 0;
 }
 
-int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
+int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
 {
+  const int iotype = wbuf ? 1 : 0;
   off_t pos;
   size_t nio;
   BTFILE *pbf = m_btfhead, *pbfref = (BTFILE *)0, *pbfnext = (BTFILE *)0;
@@ -207,9 +208,10 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
     for( iosize = len; iosize > (size_t)iosize; iosize /= 2 );
     while( len ){
       if( len < iosize ) iosize = len;
-      r = IO(buf, off, iosize, iotype);
+      r = IO(rbuf, wbuf, off, iosize);
       if( r != 0 ) retval = r;
-      buf += iosize;
+      if( iotype ) wbuf += iosize;
+      else rbuf += iosize;
       len -= iosize;
     }
     return retval;
@@ -301,7 +303,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
     if( 0 == iotype ){
       nio = (len <= pbf->bf_size - pos) ? len : (pbf->bf_size - pos);
       errno = 0;
-      if( nio && 1 != fread(buf, nio, 1, pbf->bf_fp) && ferror(pbf->bf_fp) ){
+      if( nio && 1 != fread(rbuf, nio, 1, pbf->bf_fp) && ferror(pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
@@ -316,7 +318,7 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
         nio = (len <= pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
       }
       errno = 0;
-      if( nio && 1 != fwrite(buf, nio, 1, pbf->bf_fp) ){
+      if( nio && 1 != fwrite(wbuf, nio, 1, pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
         return -1;
@@ -340,7 +342,8 @@ int btFiles::IO(char *buf, dt_datalen_t off, bt_length_t len, const int iotype)
     len -= nio;
     if( len ){
       off += nio;
-      buf += nio;
+      if( iotype ) wbuf += nio;
+      else rbuf += nio;
       pbfref = pbf;
       pbf = pbf->bf_next;
       if( off < pbf->bf_offset ){
@@ -1188,7 +1191,7 @@ int btFiles::ExtendAll()
   return 0;
 }
 
-void btFiles::PrintOut()
+void btFiles::PrintOut() const
 {
   BTFILE *p = m_btfhead;
   dt_count_t id = 0;
@@ -1288,7 +1291,7 @@ void btFiles::SetFilter(dt_count_t nfile, Bitfield *pFilter,
   }
 }
 
-char *btFiles::GetFileName(dt_count_t nfile) const
+const char *btFiles::GetFileName(dt_count_t nfile) const
 {
   if( nfile && nfile <= m_nfiles )
     return m_file[nfile-1]->bf_filename;
@@ -1339,7 +1342,7 @@ int btFiles::ConvertFilename(char *dst, const char *src, int size)
   return retval;
 }
 
-char *btFiles::GetDataName() const
+const char *btFiles::GetDataName() const
 {
   return m_directory ? m_directory : m_btfhead->bf_filename;
 }

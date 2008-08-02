@@ -79,7 +79,6 @@ class btContent
   dt_rate_t m_prevdlrate;
   dt_count_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
 
-  void _Set_InfoHash(unsigned char buf[20]);
   char *_file2mem(const char *fname, size_t *psiz);
 
   void ReleaseHashTable(){
@@ -99,8 +98,10 @@ class btContent
   dt_datalen_t min_datalen(dt_datalen_t a, dt_datalen_t b){
     return (a > b) ? b : a;
   }
-  int CacheIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
-  int FileIO(char *buf, dt_datalen_t off, bt_length_t len, int method);
+  int ReadPiece(char *buf, bt_index_t idx);
+  int CacheIO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len,
+    int method);
+  int FileIO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len);
   void FlushEntry(BTCACHE *p);
   int WriteFail();
 
@@ -137,13 +138,13 @@ class btContent
   int CheckNextPiece();
   bt_index_t CheckedPieces() const { return m_check_piece; }
 
-  char *GetAnnounce(){ return m_announce; }
+  const char *GetAnnounce() const { return m_announce; }
 
-  unsigned char *GetShakeBuffer(){ return m_shake_buffer; }
-  unsigned char *GetInfoHash(){ return (m_shake_buffer + 28); }
-  unsigned char *GetPeerId(){ return (m_shake_buffer + 48); }
+  const unsigned char *GetShakeBuffer() const { return m_shake_buffer; }
+  const unsigned char *GetInfoHash() const { return (m_shake_buffer + 28); }
+  const unsigned char *GetPeerId() const { return (m_shake_buffer + 48); }
 
-  bt_length_t GetPieceLength(bt_index_t idx);
+  bt_length_t GetPieceLength(bt_index_t idx) const;
   bt_length_t GetPieceLength() const { return m_piece_length; }
   bt_index_t GetNPieces() const { return m_npieces; }
 
@@ -155,32 +156,29 @@ class btContent
   int GetHashValue(bt_index_t idx, unsigned char *md);
 
   int CachePrep(bt_index_t idx);
-  int ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
+  int ReadSlice(char *buf, bt_index_t idx, bt_offset_t off, bt_length_t len);
+  int WriteSlice(const char *buf, bt_index_t idx, bt_offset_t off,
     bt_length_t len);
-  int WriteSlice(char *buf, bt_index_t idx, bt_offset_t off,
-    bt_length_t len);
-  int ReadPiece(char *buf, bt_index_t idx);
 
-  int PrintOut();
-  int PrintFiles();
+  int PrintOut() const;
   int SeedTimeout();
   void CompletionCommand();
   void SaveBitfield();
 
   void CheckFilter();
   void SetFilter();
-  Bitfield *GetFilter() const {
+  const Bitfield *GetFilter() const {
     return m_current_filter ? &(m_current_filter->bitfield) : (Bitfield *)0;
   }
-  Bitfield *GetNextFilter() const { return GetNextFilter((Bitfield *)0); }
-  Bitfield *GetNextFilter(Bitfield *pfilter) const;
-  char *GetFilterName() const { return m_current_filter->name; }
+  const Bitfield *GetNextFilter() const { return GetNextFilter((Bitfield *)0); }
+  const Bitfield *GetNextFilter(const Bitfield *pfilter) const;
+  const char *GetFilterName() const { return m_current_filter->name; }
   void SetTmpFilter(int nfile, Bitfield *pFilter){
     m_btfiles.SetFilter(nfile, pFilter, m_piece_length);
   }
 
   dt_count_t GetNFiles() const { return m_btfiles.GetNFiles(); }
-  char *GetFileName(dt_count_t nfile) const {
+  const char *GetFileName(dt_count_t nfile) const {
     return m_btfiles.GetFileName(nfile);
   }
   dt_datalen_t GetFileSize(dt_count_t nfile) const {
@@ -213,7 +211,7 @@ class btContent
 
   void CloseAllFiles();
 
-  void DumpCache();
+  void DumpCache() const;
 };
 
 extern btContent BTCONTENT;

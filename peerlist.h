@@ -51,8 +51,8 @@ class PeerList
     int f_unchoke_check, btPeer **UNCHOKER);
   void WaitBWQueue(PEERNODE **queue, btPeer *peer);
   void BWReQueue(PEERNODE **queue, btPeer *peer);
-  void DontWaitBWQueue(PEERNODE **queue, btPeer *peer);
-  dt_count_t Rank(btPeer *peer){
+  void DontWaitBWQueue(PEERNODE **queue, const btPeer *peer);
+  dt_count_t Rank(const btPeer *peer) const {
     return (m_readycnt > peer->readycnt) ? m_readycnt - peer->readycnt : 3;
   }
 
@@ -79,8 +79,14 @@ class PeerList
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
 
-  int BandwidthLimitUp(double grace=0) const;
-  int BandwidthLimitDown(double grace=0) const;
+  int BandwidthLimitUp(double grace=0) const {
+    return BandwidthLimited(Self.LastSendTime(), Self.LastSizeSent(),
+                            cfg_max_bandwidth_up, grace);
+  }
+  int BandwidthLimitDown(double grace=0) const {
+    return BandwidthLimited(Self.LastRecvTime(), Self.LastSizeRecv(),
+                            cfg_max_bandwidth_down, grace);
+  }
   int BandwidthLimited(double lasttime, bt_length_t lastsize, dt_rate_t limit,
     double grace) const;
   double WaitBW() const;
@@ -99,8 +105,8 @@ class PeerList
   btPeer *GetNextUL(){ return m_next_ul ? m_next_ul->peer : (btPeer *)0; }
   void ReQueueDL(btPeer *peer){ BWReQueue(&m_next_dl, peer); }
   void ReQueueUL(btPeer *peer){ BWReQueue(&m_next_ul, peer); }
-  void DontWaitDL(btPeer *peer){ DontWaitBWQueue(&m_next_dl, peer); }
-  void DontWaitUL(btPeer *peer){ DontWaitBWQueue(&m_next_ul, peer); }
+  void DontWaitDL(const btPeer *peer){ DontWaitBWQueue(&m_next_dl, peer); }
+  void DontWaitUL(const btPeer *peer){ DontWaitBWQueue(&m_next_ul, peer); }
 
   void Tell_World_I_Have(bt_index_t idx);
   btPeer *Who_Can_Abandon(btPeer *proposer);
@@ -115,12 +121,11 @@ class PeerList
   int CancelPiece(bt_index_t idx);
   void CancelOneRequest(bt_index_t idx);
 
-  void CheckBitfield(Bitfield &bf);
+  void CheckBitfield(Bitfield &bf) const;
   int AlreadyRequested(bt_index_t idx) const;
-  bt_index_t Pieces_I_Can_Get() const;
-  bt_index_t Pieces_I_Can_Get(Bitfield *ptmpBitfield) const;
+  bt_index_t Pieces_I_Can_Get(Bitfield *ptmpBitfield=(Bitfield *)0) const;
   void CheckInterest();
-  btPeer *GetNextPeer(btPeer *peer) const;
+  btPeer *GetNextPeer(const btPeer *peer) const;
   int Endgame();
   void UnStandby();
 

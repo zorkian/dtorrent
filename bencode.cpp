@@ -74,12 +74,12 @@ size_t buf_str(const char *b, size_t len, const char **pstr, size_t *slen)
   return (rl + sl);
 }
 
-size_t decode_int(const char *b, size_t len)
+inline size_t decode_int(const char *b, size_t len)
 {
   return buf_int(b, len, 'i', 'e', (int64_t *)0);
 }
 
-size_t decode_str(const char *b, size_t len)
+inline size_t decode_str(const char *b, size_t len)
 {
   return buf_str(b, len, (const char **)0, (size_t *)0);
 }

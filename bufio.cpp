@@ -55,7 +55,7 @@ ssize_t BufIo::SetSize(size_t len)
 }
 
 // Returns the number of bytes sent if successful, -1 otherwise
-ssize_t BufIo::_SEND(SOCKET sk,  char *buf, size_t len)
+ssize_t BufIo::_SEND(SOCKET sk, const char *buf, size_t len)
 {
   ssize_t r;
   size_t t = 0;
@@ -116,11 +116,6 @@ ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
   memcpy(b + p, buf, len);
   p += len;
   return 0;
-}
-
-ssize_t BufIo::FeedIn(SOCKET sk)
-{
-  return FeedIn(sk, _left_buffer_size);
 }
 
 ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)

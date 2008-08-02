@@ -82,8 +82,8 @@ public:
   dt_rate_t RateDL(){ return rate_dl.RateMeasure(); }
   dt_rate_t RateUL(){ return rate_ul.RateMeasure(); }
 
-  dt_rate_t NominalDL(){ return rate_dl.NominalRate(); }
-  dt_rate_t NominalUL(){ return rate_ul.NominalRate(); }
+  dt_rate_t NominalDL() { return rate_dl.NominalRate(); }
+  dt_rate_t NominalUL() { return rate_ul.NominalRate(); }
 
   void StartDLTimer(){ rate_dl.StartTimer(); }
   void StartULTimer(){ rate_ul.StartTimer(); }
@@ -152,7 +152,7 @@ class btPeer:public btBasic
   int RespondSlice();
   int RequestPiece();
   int MsgDeliver();
-  int CouldRespondSlice();
+  int CouldRespondSlice() const;
   int RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int PeerError(int weight, const char *message);
 
@@ -189,12 +189,12 @@ class btPeer:public btBasic
   int CancelRequest();
   int CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int CancelPiece(bt_index_t idx);
-  bt_index_t FindLastCommonRequest(Bitfield &proposerbf);
+  bt_index_t FindLastCommonRequest(const Bitfield &proposerbf) const;
 
   void SetStatus(dt_peerstatus_t s){ m_status = s; }
   dt_peerstatus_t GetStatus() const { return m_status; }
   int NeedWrite(int limited);
-  int NeedRead(int limited);
+  int NeedRead(int limited) const;
 
   void CloseConnection();
   int CanReconnect() const {
@@ -226,7 +226,7 @@ class btPeer:public btBasic
   int SendHaves();
   int QueueHave(bt_index_t idx);
 
-  void dump();
+  void Dump() const;
 };
 
 extern btBasic Self;

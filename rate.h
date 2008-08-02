@@ -57,7 +57,7 @@ class Rate{
   void RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp);
   void operator=(const Rate &ra);
   dt_datalen_t Count() const { return m_count_bytes; }
-  dt_rate_t CurrentRate();
+  dt_rate_t CurrentRate() const;
   dt_rate_t NominalRate();
   dt_rate_t RateMeasure();
   dt_rate_t RateMeasure(const Rate &ra);

@@ -386,11 +386,6 @@ time_t RequestQueue::GetReqTime(bt_index_t idx, bt_offset_t off,
   return n->reqtime;
 }
 
-void RequestQueue::SetReqTime(PSLICE n, time_t t)
-{
-  n->reqtime = t;
-}
-
 int RequestQueue::Pop(bt_index_t *pidx, bt_offset_t *poff, bt_length_t *plen)
 {
   PSLICE n;
@@ -511,6 +506,7 @@ int PendingQueue::Exist(bt_index_t idx) const
 }
 
 int PendingQueue::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
+  const
 {
   int i;
   dt_count_t j = 0;
@@ -593,7 +589,7 @@ int PendingQueue::Pending(RequestQueue *prq)
   return retval;
 }
 
-bt_index_t PendingQueue::ReAssign(RequestQueue *prq, Bitfield &bf)
+bt_index_t PendingQueue::Reassign(RequestQueue *prq, const Bitfield &bf)
 {
   int i = 0;
   dt_count_t sc = pq_count;

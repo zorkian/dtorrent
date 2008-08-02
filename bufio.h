@@ -24,7 +24,7 @@ class BufIo
   int f_socket_remote_closed;
 
   ssize_t _realloc_buffer();
-  ssize_t _SEND(SOCKET socket, char *buf, size_t len);
+  ssize_t _SEND(SOCKET socket, const char *buf, size_t len);
   ssize_t _RECV(SOCKET socket, char *buf, size_t len);
 
  public:
@@ -45,14 +45,14 @@ class BufIo
 
   ssize_t PickUp(size_t len);
 
-  ssize_t FeedIn(SOCKET sk);
+  ssize_t FeedIn(SOCKET sk) { return FeedIn(sk, n - p); }
   ssize_t FeedIn(SOCKET sk, size_t limit);
   ssize_t FlushOut(SOCKET sk);
   ssize_t Put(SOCKET sk, const char *buf, size_t len);
   ssize_t PutFlush(SOCKET sk, const char *buf, size_t len);
 
-  char *BasePointer(){ return b; }
-  char *CurrentPointer(){ return (b + p); }
+  const char *BasePointer() const { return b; }
+  const char *CurrentPointer() const { return (b + p); }
 };
 
 #endif  // BUFIO_H
