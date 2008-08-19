@@ -175,7 +175,7 @@ int Ctcs::SendMessage(const char *message)
 
   if( m_status == DT_TRACKER_READY ){
     len = strlen(message);
-    strncpy(buf, message, len);
+    strncpy(buf, message, CTCS_BUFSIZE);
     if( len+1 < CTCS_BUFSIZE ){
       buf[len] = '\n';
       buf[len+1] = '\0';
@@ -457,13 +457,17 @@ char *Ctcs::ConfigMsg(const char *name, const char *type, const char *range,
 
 int Ctcs::Set_Config(const char *origmsg)
 {
-  char *msgbuf = new char[strlen(origmsg)+1];
+  char *msgbuf;
+  size_t msglen;
 
+  msglen = strpbrk(origmsg, "\r\n") - origmsg;
+  msgbuf = new char[msglen + 1];
   if( !msgbuf ){
     CONSOLE.Warning(1, "error, failed to allocate memory for config");
     return -1;
   }
-  strcpy(msgbuf, origmsg);
+  strncpy(msgbuf, origmsg, msglen);
+  msgbuf[msglen] = '\0';
 
   if( m_protocol >= 3 ){
     char *name, *valstr;

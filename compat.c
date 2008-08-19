@@ -18,7 +18,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap)
   char *buffer[4*MAXPATHLEN];  /* git-r-dun */
 
   if( (r = vsprintf(buffer, format, ap)) >= 0 ){
-    strncpy(str, buffer, size-1);
+    strncpy(str, buffer, size);
     str[size] = '\0';
   }
   return r;
