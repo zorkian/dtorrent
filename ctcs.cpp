@@ -121,9 +121,14 @@ int Ctcs::CheckMessage()
     return -1;
   }
 
-  const char *s, *msgbuf;
-  while( in_buffer.Count() &&
-         (s = strpbrk((msgbuf = in_buffer.BasePointer()), "\r\n")) ){
+  const char *s, *p, *msgbuf;
+  while( in_buffer.Count() ){
+    msgbuf = in_buffer.BasePointer();
+    p = (const char *)memchr(msgbuf, '\r', in_buffer.Count());
+    s = (const char *)memchr(msgbuf, '\n', in_buffer.Count());
+    if( p && s > p ) s = p;
+    if( !s ) break;
+
     if( arg_verbose && s != msgbuf )
       CONSOLE.Debug("CTCS: %.*s", (int)(s - msgbuf), msgbuf);
     if( !strncmp("SETDLIMIT", msgbuf, 9) ){
