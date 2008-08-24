@@ -46,6 +46,9 @@
 /* Define to 1 if you have the `htonl' function. */
 #undef HAVE_HTONL
 
+/* Define to 1 if you have the `htons' function. */
+#undef HAVE_HTONS
+
 /* Define to 1 if you have the `inet_ntoa' function. */
 #undef HAVE_INET_NTOA
 
@@ -84,6 +87,9 @@
 
 /* Define to 1 if you have the `ntohl' function. */
 #undef HAVE_NTOHL
+
+/* Define to 1 if you have the `ntohs' function. */
+#undef HAVE_NTOHS
 
 /* Define to 1 if you have the <openssl/sha.h> header file. */
 #undef HAVE_OPENSSL_SHA_H

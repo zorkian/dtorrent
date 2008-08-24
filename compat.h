@@ -43,9 +43,31 @@ void srandom(unsigned long seed);
 #endif
 
 
+#if !defined(HAVE_NTOHL) || !defined(HAVE_HTONL) || \
+    !defined(HAVE_NTOHS) || !defined(HAVE_HTONS)
+#include <inttypes.h>
+#endif
+
+#ifndef HAVE_NTOHL
+uint32_t ntohl(uint32_t n);
+#endif
+
+#ifndef HAVE_HTONL
+uint32_t htonl(uint32_t h);
+#endif
+
+#ifndef HAVE_NTOHS
+uint16_t ntohs(uint16_t n);
+#endif
+
+#ifndef HAVE_HTONS
+uint16_t htons(uint16_t h);
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // COMPAT_H
+#endif  /* COMPAT_H */
 

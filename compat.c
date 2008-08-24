@@ -136,3 +136,52 @@ void srandom(unsigned long seed)
 }
 #endif
 
+
+#ifndef HAVE_NTOHL
+uint32_t ntohl(uint32_t n)
+{
+  uint32_t h = 0;
+  unsigned char *c = (unsigned char *)&n;
+  h = c[0];
+  h = (h << 8) | c[1];
+  h = (h << 8) | c[2];
+  h = (h << 8) | c[3];
+  return h;
+}
+#endif
+
+#ifndef HAVE_HTONL
+uint32_t htonl(uint32_t h)
+{
+  uint32_t n = 0;
+  unsigned char *c = (unsigned char *)&n;
+  c[0] = h >> 24;
+  c[1] = (h >> 16) & 0xff;
+  c[2] = (h >> 8) & 0xff;
+  c[3] = h & 0xff;
+  return n;
+}
+#endif
+
+#ifndef HAVE_NTOHS
+uint16_t ntohs(uint16_t n)
+{
+  uint16_t h = 0;
+  unsigned char *c = (unsigned char *)&n;
+  h = c[0];
+  h = (h << 8) | c[1];
+  return h;
+}
+#endif
+
+#ifndef HAVE_HTONS
+uint16_t htons(uint16_t h)
+{
+  uint16_t n = 0;
+  unsigned char *c = (unsigned char *)&n;
+  c[0] = h >> 8;
+  c[1] = h & 0xff;
+  return n;
+}
+#endif
+

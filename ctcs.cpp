@@ -16,7 +16,7 @@
 #include "bttime.h"
 #include "console.h"
 
-#ifndef HAVE_SNPRINTF
+#if !defined(HAVE_SNPRINTF) || !defined(HAVE_HTONS)
 #include "compat.h"
 #endif
 
