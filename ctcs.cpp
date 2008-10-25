@@ -462,7 +462,7 @@ char *Ctcs::ConfigMsg(const char *name, const char *type, const char *range,
 
 int Ctcs::Set_Config(const char *origmsg)
 {
-  char *msgbuf;
+  char *msgbuf, *msgptr;
   size_t msglen;
 
   msglen = strpbrk(origmsg, "\r\n") - origmsg;
@@ -473,6 +473,7 @@ int Ctcs::Set_Config(const char *origmsg)
   }
   strncpy(msgbuf, origmsg, msglen);
   msgbuf[msglen] = '\0';
+  msgptr = msgbuf;
 
   if( m_protocol >= 3 ){
     char *name, *valstr;
@@ -577,48 +578,48 @@ int Ctcs::Set_Config(const char *origmsg)
       }
     }else CONSOLE.Warning(2, "Unknown config option %s from CTCS", name);
   }else{  // m_protocol <= 2
-    if( msgbuf[9] != '.' ){
-      int arg = atoi(msgbuf+9);
+    if( msgptr[9] != '.' ){
+      int arg = atoi(msgptr+9);
       if( arg_verbose && !arg ) CONSOLE.Debug("Verbose output off");
       arg_verbose = arg;
     }
-    if( msgbuf[11] != '.' ) cfg_seed_hours = strtoul(msgbuf+11, NULL, 10);
-    if( !(msgbuf = strchr(msgbuf+11, ' ')) ) goto err;
-    if( *++msgbuf != '.' ) cfg_seed_ratio = atof(msgbuf);
-    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ) cfg_max_peers = (dt_count_t)atoi(msgbuf);
-    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ) cfg_min_peers = (dt_count_t)atoi(msgbuf);
-    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ){
-      char *p = strchr(msgbuf, ' ');
+    if( msgptr[11] != '.' ) cfg_seed_hours = strtoul(msgptr+11, NULL, 10);
+    if( !(msgptr = strchr(msgptr+11, ' ')) ) goto err;
+    if( *++msgptr != '.' ) cfg_seed_ratio = atof(msgptr);
+    if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+    if( *++msgptr != '.' ) cfg_max_peers = (dt_count_t)atoi(msgptr);
+    if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+    if( *++msgptr != '.' ) cfg_min_peers = (dt_count_t)atoi(msgptr);
+    if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+    if( *++msgptr != '.' ){
+      char *p = strchr(msgptr, ' ');
       if( !p ) goto err;
       if( arg_file_to_download ) delete []arg_file_to_download;
-      arg_file_to_download = new char[p - msgbuf + 2 + 1];
+      arg_file_to_download = new char[p - msgptr + 2 + 1];
       if( !arg_file_to_download )
         CONSOLE.Warning(1, "error, failed to allocate memory for option");
       else{
-        strncpy(arg_file_to_download, msgbuf, p - msgbuf);
-        arg_file_to_download[p - msgbuf] = '\0';
+        strncpy(arg_file_to_download, msgptr, p - msgptr);
+        arg_file_to_download[p - msgptr] = '\0';
         strcat(arg_file_to_download, ",*");  // mock old behavior
       }
       BTCONTENT.SetFilter();
     }
     if( m_protocol >= 2 ){
-      if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-      if( *++msgbuf != '.' ){
-        cfg_cache_size = atoi(msgbuf);
+      if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+      if( *++msgptr != '.' ){
+        cfg_cache_size = atoi(msgptr);
         BTCONTENT.CacheConfigure();
       }
     }
     if( m_protocol == 1 ){
-      if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-      ++msgbuf;
+      if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+      ++msgptr;
       // old cfg_exit_zero_peers option
     }
-    if( !(msgbuf = strchr(msgbuf, ' ')) ) goto err;
-    if( *++msgbuf != '.' ){
-      if( atoi(msgbuf) ){
+    if( !(msgptr = strchr(msgptr, ' ')) ) goto err;
+    if( *++msgptr != '.' ){
+      if( atoi(msgptr) ){
         if( !WORLD.IsPaused() ) WORLD.Pause();
       }else if( WORLD.IsPaused() ) WORLD.Resume();
     }
@@ -628,7 +629,12 @@ int Ctcs::Set_Config(const char *origmsg)
   return 0;
 
  err:
-  CONSOLE.Warning(2, "Malformed or invalid input from CTCS: %s", origmsg);
+  const char *p, *s;
+  p = (const char *)memchr(origmsg, '\r', in_buffer.Count());
+  s = (const char *)memchr(origmsg, '\n', in_buffer.Count());
+  if( p && s > p ) s = p;
+  CONSOLE.Warning(2, "Malformed or invalid input from CTCS: %.*s",
+    (int)(s - origmsg), origmsg);
   delete []msgbuf;
   return -1;
 }
