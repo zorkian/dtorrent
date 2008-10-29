@@ -1029,7 +1029,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
   PEERNODE *p, *pp = (PEERNODE *)0, *pnext;
-  btPeer *peer;
+  btPeer *peer = (btPeer *)0;
   SOCKET sk;
   int pready, pmoved;
   dt_count_t pcount = 0;

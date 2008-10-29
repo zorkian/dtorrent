@@ -202,10 +202,12 @@ dt_count_t RequestQueue::Qlen(bt_index_t piece) const
 
   for( ; n && n->index != piece; n = n->next );
 
-  if( n ) idx = n->index;
-  for( ; n; u = n, n = u->next ){
-    if( n->index != idx ) break;
-    cnt++;
+  if( n ){
+    idx = n->index;
+    for( ; n; u = n, n = u->next ){
+      if( n->index != idx ) break;
+      cnt++;
+    }
   }
   return cnt;
 }
