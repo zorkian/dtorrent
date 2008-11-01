@@ -46,8 +46,10 @@ typedef struct _bfnode{
 
 class btContent
 {
+ private:
+  const char *m_metainfo_file;
   // torrent metainfo data
-  char *m_announce;
+  const char *m_announce;
   unsigned char *m_hash_table;
   unsigned char m_shake_buffer[68];
   char *m_announcelist[9];
@@ -78,6 +80,8 @@ class btContent
 
   dt_rate_t m_prevdlrate;
   dt_count_t m_hash_failures, m_dup_blocks, m_unwanted_blocks;
+
+  time_t m_updated_remain;
 
   char *_file2mem(const char *fname, size_t *psiz);
 
@@ -130,14 +134,16 @@ class btContent
   bt_index_t ChoosePiece(const Bitfield &choices, const Bitfield &available,
     bt_index_t preference) const;
 
-  int CreateMetainfoFile(const char *mifn);
+  int CreateMetainfoFile(const char *mifn, const char *comment, bool isprivate);
   int InitialFromFS(const char *pathname, char *ann_url,
     bt_length_t piece_length);
-  int InitialFromMI(const char *metainfo_fname, const char *saveas);
+  int InitialFromMI(const char *metainfo_fname, const char *saveas,
+    const char *announce);
 
   int CheckNextPiece();
   bt_index_t CheckedPieces() const { return m_check_piece; }
 
+  const char *GetMetainfoFile() const { return m_metainfo_file; }
   const char *GetAnnounce() const { return m_announce; }
 
   const unsigned char *GetShakeBuffer() const { return m_shake_buffer; }
@@ -215,6 +221,7 @@ class btContent
 };
 
 extern btContent BTCONTENT;
+
 
 #endif  // BTCONTENT_H
 

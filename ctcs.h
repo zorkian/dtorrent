@@ -64,12 +64,13 @@ class Ctcs
   char *ConfigMsg(const char *name, const char *type, const char *range,
     const char *value, const char *short_desc, const char *long_desc);
 
+  friend void CfgCTCS(Config<const char *> *config);
+
  public:
   Ctcs();
   ~Ctcs();
 
   void Reset(time_t new_interval);
-  int Initial();
   int Connect();
   int CheckMessage();
   int Send_Protocol();

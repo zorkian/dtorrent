@@ -20,11 +20,12 @@
 #include <string.h>
 
 #include "bttypes.h"
+#include "btconfig.h"
 #include "btrequest.h"
 #include "btstream.h"
 #include "bitfield.h"
 #include "rate.h"
-#include "btconfig.h"
+#include "btcontent.h"
 
 enum dt_peerstatus_t{
   DT_PEER_CONNECTING,
@@ -74,7 +75,7 @@ public:
   void DataUnRec(bt_length_t nby){ rate_dl.UnCount(nby); }
   void DataSent(bt_length_t nby, double timestamp){
     rate_ul.CountAdd(nby);
-    rate_ul.RateAdd(nby, cfg_max_bandwidth_up, timestamp);
+    rate_ul.RateAdd(nby, *cfg_max_bandwidth_up, timestamp);
   }
 
   dt_rate_t CurrentDL(){ return rate_dl.CurrentRate(); }
@@ -155,6 +156,12 @@ class btPeer:public btBasic
   int CouldRespondSlice() const;
   int RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int PeerError(int weight, const char *message);
+  bt_length_t ReqQueueLength() const {
+    return (BTCONTENT.GetPieceLength() / *cfg_req_slice_size) * 2 - 1;
+  }
+  bt_length_t MaxReqQueueLength() const {
+    return (BTCONTENT.GetPieceLength() / MIN_SLICE_SIZE) * 2 - 1;
+  }
 
  public:
   unsigned char id[PEER_ID_LEN];

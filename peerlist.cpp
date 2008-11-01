@@ -33,9 +33,11 @@
 
 #define PEER_IS_SUCCESS(peer) (DT_PEER_SUCCESS == (peer)->GetStatus())
 #define PEER_IS_FAILED(peer) (DT_PEER_FAILED == (peer)->GetStatus())
-#define NEED_MORE_PEERS() (m_peers_count < cfg_max_peers)
+#define NEED_MORE_PEERS() (m_peers_count < *cfg_max_peers)
+
 
 PeerList WORLD;
+
 
 PeerList::PeerList()
 {
@@ -53,7 +55,7 @@ PeerList::PeerList()
   m_max_unchoke = MIN_UNCHOKES;
   m_defer_count = m_missed_count = 0;
   m_upload_count = m_up_opt_count = 0;
-  m_prev_limit_up = cfg_max_bandwidth_up;
+  m_prev_limit_up = *cfg_max_bandwidth_up;
   m_dup_req_pieces = 0;
   m_readycnt = 0;
 }
@@ -73,6 +75,17 @@ PeerList::~PeerList()
   }
 }
 
+int PeerList::Init()
+{
+  cfg_default_port.Lock();
+  cfg_default_port.Hide();
+  m_max_listen_port = *cfg_default_port;
+  m_min_listen_port = m_max_listen_port - 600;
+  if( m_min_listen_port < 1025 ) m_min_listen_port = 1025;
+
+  return InitialListenPort();
+}
+
 void PeerList::CloseAll()
 {
   PEERNODE *p;
@@ -89,13 +102,13 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   btPeer *peer = (btPeer *)0;
   int r;
 
-  if( m_peers_count >= cfg_max_peers ){
+  if( m_peers_count >= *cfg_max_peers ){
     if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
     return -4;
   }
 
   if( INVALID_SOCKET != sk && Self.IpEquiv(addr) ){
-    if(arg_verbose)
+    if(*cfg_verbose)
       CONSOLE.Debug("Connection from myself %s", inet_ntoa(addr.sin_addr));
     Tracker.AdjustPeersCount();
     if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
@@ -104,7 +117,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_FAILED(p->peer) && p->peer->IpEquiv(addr) ){
-      if(arg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
+      if(*cfg_verbose) CONSOLE.Debug("Connection from duplicate peer %s",
         inet_ntoa(addr.sin_addr));
       if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
       return -3;
@@ -134,7 +147,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     if( setfd_nonblock(sk) < 0 ) goto err;
 
     if( -1 == (r = connect_nonb(sk, (struct sockaddr *)&addr)) ){
-      if(arg_verbose) CONSOLE.Debug("Connect to peer at %s:%hu failed:  %s",
+      if(*cfg_verbose) CONSOLE.Debug("Connect to peer at %s:%hu failed:  %s",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), strerror(errno));
       return -1;
     }
@@ -148,7 +161,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus( (-2 == r) ? DT_PEER_CONNECTING : DT_PEER_HANDSHAKE );
-    if(arg_verbose)
+    if(*cfg_verbose)
       CONSOLE.Debug("Connect%s to %s:%hu (peer %p)", (-2==r) ? "ing" : "ed",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
 
@@ -163,12 +176,12 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus(DT_PEER_HANDSHAKE);
-    if(arg_verbose) CONSOLE.Debug("Connection from %s:%hu (peer %p)",
+    if(*cfg_verbose) CONSOLE.Debug("Connection from %s:%hu (peer %p)",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
   }
 
   if( !BTCONTENT.Seeding() &&
-      peer->stream.in_buffer.SetSize(BUF_DEF_SIZ + cfg_req_slice_size) < 0 ){
+      peer->stream.in_buffer.SetSize(BUF_DEF_SIZ + *cfg_req_slice_size) < 0 ){
     goto err;
   }
 
@@ -231,15 +244,15 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       !m_f_pause ){
     f_unchoke_check = 1;
 
-    if( m_missed_count > m_upload_count && cfg_max_bandwidth_up ){
+    if( m_missed_count > m_upload_count && *cfg_max_bandwidth_up ){
       dt_count_t unchokes = GetUnchoked();  // already adds one (opt)
       if( unchokes < MIN_UNCHOKES ) m_max_unchoke = MIN_UNCHOKES;
       else{
         m_max_unchoke = unchokes;
-        if(arg_verbose)
+        if(*cfg_verbose)
           CONSOLE.Debug("max unchokes up to %d", (int)m_max_unchoke);
       }
-    }else if(arg_verbose) CONSOLE.Debug("UL missed %d sending %d",
+    }else if(*cfg_verbose) CONSOLE.Debug("UL missed %d sending %d",
       (int)m_missed_count, (int)m_upload_count);
     m_up_opt_count += m_upload_count;
     m_missed_count = m_upload_count = 0;
@@ -247,16 +260,16 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     if( m_opt_interval && m_opt_interval <= now - m_opt_timestamp ){
       m_opt_timestamp = 0;
       if( m_defer_count > m_up_opt_count &&
-          m_max_unchoke > MIN_UNCHOKES && cfg_max_bandwidth_up ){
+          m_max_unchoke > MIN_UNCHOKES && *cfg_max_bandwidth_up ){
         m_max_unchoke--;
-        if(arg_verbose)
+        if(*cfg_verbose)
           CONSOLE.Debug("max unchokes down to %d", (int)m_max_unchoke);
-      }else if(arg_verbose) CONSOLE.Debug("UL deferred %d sending %d",
+      }else if(*cfg_verbose) CONSOLE.Debug("UL deferred %d sending %d",
         (int)m_defer_count, (int)m_up_opt_count);
       m_defer_count = m_up_opt_count = 0;
     }
 
-    if( 0==cfg_max_bandwidth_up ) m_max_unchoke = MIN_UNCHOKES;
+    if( 0==*cfg_max_bandwidth_up ) m_max_unchoke = MIN_UNCHOKES;
 
     UNCHOKER = new btPeer *[m_max_unchoke + 1];
     if( UNCHOKER ) memset(UNCHOKER, 0, (m_max_unchoke + 1) * sizeof(btPeer *));
@@ -272,12 +285,12 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
          a long time even after the limit has been increased. */
       if( !BandwidthLimitUp() ||
           ( m_prev_limit_up &&
-            labs((long)cfg_max_bandwidth_up - (long)m_prev_limit_up) /
+            labs((long)*cfg_max_bandwidth_up - (long)m_prev_limit_up) /
                  (double)m_prev_limit_up  >
               1 / (double)m_unchoke_interval &&
-            ( cfg_max_bandwidth_up < cfg_req_slice_size * (MIN_OPT_CYCLE-1) /
-                                     (MIN_UNCHOKE_INTERVAL * MIN_OPT_CYCLE) ||
-              m_prev_limit_up < cfg_req_slice_size * (MIN_OPT_CYCLE-1) /
+            ( *cfg_max_bandwidth_up < *cfg_req_slice_size * (MIN_OPT_CYCLE-1) /
+                                      (MIN_UNCHOKE_INTERVAL * MIN_OPT_CYCLE) ||
+              m_prev_limit_up < *cfg_req_slice_size * (MIN_OPT_CYCLE-1) /
                                 (MIN_UNCHOKE_INTERVAL * MIN_OPT_CYCLE) ) ) ){
         SetUnchokeIntervals();
       }
@@ -297,7 +310,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
   m_f_limitu = BandwidthLimitUp(Self.LateUL());
   m_f_limitd = BandwidthLimitDown(Self.LateDL());
-  if( cfg_cache_size && !m_f_pause )
+  if( *cfg_cache_size && !m_f_pause )
     f_idle = IsIdle();
 
  again:
@@ -313,7 +326,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         FD_CLR(sk, wfdp);
       }
       if( peer->CanReconnect() ){  // connect to this peer again
-        if(arg_verbose) CONSOLE.Debug("Adding %p for reconnect", peer);
+        if(*cfg_verbose) CONSOLE.Debug("Adding %p for reconnect", peer);
         peer->Retry();
         struct sockaddr_in addr;
         peer->GetAddress(&addr);
@@ -343,14 +356,14 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       }
       if( f_keepalive_check ){
         if( 3 * KEEPALIVE_INTERVAL <= now - peer->GetLastTimestamp() ){
-          if(arg_verbose) CONSOLE.Debug("close: keepalive expired");
+          if(*cfg_verbose) CONSOLE.Debug("close: keepalive expired");
           peer->CloseConnection();
           goto skip_continue;
         }
         if( PEER_IS_SUCCESS(peer) &&
             KEEPALIVE_INTERVAL <= now - peer->GetLastTimestamp() &&
             peer->AreYouOK() < 0 ){
-          if(arg_verbose) CONSOLE.Debug("close: keepalive death");
+          if(*cfg_verbose) CONSOLE.Debug("close: keepalive death");
           peer->CloseConnection();
           goto skip_continue;
         }
@@ -360,7 +373,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
           if( UNCHOKER && UnchokeCheck(peer, UNCHOKER) < 0 )
             goto skip_continue;
         }else if( peer->SetLocal(BT_MSG_CHOKE) < 0 ){
-          if(arg_verbose) CONSOLE.Debug("close: Can't choke peer");
+          if(*cfg_verbose) CONSOLE.Debug("close: Can't choke peer");
           peer->CloseConnection();
           goto skip_continue;
         }
@@ -373,7 +386,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       if( !FD_ISSET(sk, wfdp) && peer->NeedWrite((int)m_f_limitu) )
         FD_SET(sk, wfdp);
 
-      if( cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
+      if( *cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
         if( peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval) ){
             SetIdled();
             f_idle = IsIdle();
@@ -396,7 +409,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
   if( 0==interested_count ) Self.StopDLTimer();
 
-  if( INVALID_SOCKET != m_listen_sock && m_peers_count < cfg_max_peers ){
+  if( INVALID_SOCKET != m_listen_sock && m_peers_count < *cfg_max_peers ){
     FD_SET(m_listen_sock, rfdp);
     if( maxfd < m_listen_sock ) maxfd = m_listen_sock;
   }
@@ -415,7 +428,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       sk = UNCHOKER[i]->stream.GetSocket();
 
       if( UNCHOKER[i]->SetLocal(BT_MSG_UNCHOKE) < 0 ){
-        if(arg_verbose) CONSOLE.Debug("close: Can't unchoke peer");
+        if(*cfg_verbose) CONSOLE.Debug("close: Can't unchoke peer");
         UNCHOKER[i]->CloseConnection();
         FD_CLR(sk, rfdp);
         FD_CLR(sk, wfdp);
@@ -440,12 +453,12 @@ void PeerList::SetUnchokeIntervals()
   // Unchoke peers long enough to have a chance at getting some data.
   if( BandwidthLimitUp() && BTCONTENT.Seeding() ){
     dt_count_t optx = (dt_count_t)(1 / (1 - (double)MIN_UNCHOKE_INTERVAL *
-                                   cfg_max_bandwidth_up / cfg_req_slice_size));
+                                 *cfg_max_bandwidth_up / *cfg_req_slice_size));
     if( optx < 0 ) optx = 0;
     if( optx < MIN_OPT_CYCLE ){
       optx = MIN_OPT_CYCLE;
-      double interval = cfg_req_slice_size /
-           (cfg_max_bandwidth_up * MIN_OPT_CYCLE / (double)(MIN_OPT_CYCLE-1));
+      double interval = *cfg_req_slice_size /
+           (*cfg_max_bandwidth_up * MIN_OPT_CYCLE / (double)(MIN_OPT_CYCLE-1));
       m_unchoke_interval = (time_t)interval;
       if( interval - (int)interval > 0 ) m_unchoke_interval++;
       if( m_unchoke_interval < MIN_UNCHOKE_INTERVAL )
@@ -463,7 +476,7 @@ void PeerList::SetUnchokeIntervals()
     m_opt_interval = optx * m_unchoke_interval;
   }else if( BandwidthLimitUp() && !BTCONTENT.Seeding() ){
     // Need to be able to upload a slice per interval.
-    double interval = cfg_req_slice_size / (double)cfg_max_bandwidth_up;
+    double interval = *cfg_req_slice_size / (double)*cfg_max_bandwidth_up;
     m_unchoke_interval = (time_t)interval;
     if( interval - (int)interval > 0 ) m_unchoke_interval++;
     if( m_unchoke_interval < MIN_UNCHOKE_INTERVAL )
@@ -473,12 +486,12 @@ void PeerList::SetUnchokeIntervals()
     m_unchoke_interval = MIN_UNCHOKE_INTERVAL;
     m_opt_interval = MIN_OPT_CYCLE * MIN_UNCHOKE_INTERVAL;
   }
-  m_prev_limit_up = cfg_max_bandwidth_up;
+  m_prev_limit_up = *cfg_max_bandwidth_up;
   m_interval_timestamp = now;
-  if( arg_verbose && (m_unchoke_interval != old_unchoke_int ||
+  if( *cfg_verbose && (m_unchoke_interval != old_unchoke_int ||
                       m_opt_interval != old_opt_int) ){
     CONSOLE.Debug("ulimit %d, unchoke interval %d, opt interval %d",
-      (int)cfg_max_bandwidth_up, (int)m_unchoke_interval, (int)m_opt_interval);
+      (int)*cfg_max_bandwidth_up, (int)m_unchoke_interval, (int)m_opt_interval);
   }
 }
 
@@ -513,7 +526,7 @@ btPeer *PeerList::Who_Can_Abandon(btPeer *proposer)
       }
     }
   }  // end for
-  if( peer && arg_verbose )
+  if( peer && *cfg_verbose )
     CONSOLE.Debug("Abandoning %p (%d B/s) for %p (%d B/s)",
       peer, peer->NominalDL(), proposer, proposer->NominalDL());
   return peer;
@@ -601,7 +614,7 @@ bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
   /* Find the best workload for initial/endgame.
      In endgame mode, request the piece that should take the longest.
      In initial mode, request the piece that should complete the fastest. */
-  best = endgame ? 0 : BTCONTENT.GetPieceLength() / cfg_req_slice_size + 2;
+  best = endgame ? 0 : BTCONTENT.GetPieceLength() / *cfg_req_slice_size + 2;
   mark = slots;
   for( i = 0; i < slots; i++ ){
     if( data[i].idx == BTCONTENT.GetNPieces() ) continue;
@@ -725,7 +738,7 @@ int PeerList::CancelSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
     if( t ){
       r = 1;
       if( t < 0 ){
-        if(arg_verbose) CONSOLE.Debug("close: CancelSlice");
+        if(*cfg_verbose) CONSOLE.Debug("close: CancelSlice");
         p->peer->CloseConnection();
       }
     }
@@ -745,7 +758,7 @@ int PeerList::CancelPiece(bt_index_t idx)
     if( t ){
       r = 1;
       if( t < 0 ){
-        if(arg_verbose) CONSOLE.Debug("close: CancelPiece");
+        if(*cfg_verbose) CONSOLE.Debug("close: CancelPiece");
         p->peer->CloseConnection();
       }
     }
@@ -856,7 +869,7 @@ void PeerList::Tell_World_I_Have(bt_index_t idx)
     else if( f_seed ){
       // request queue is emptied by setting not-interested state
       if( peer->SetLocal(BT_MSG_NOT_INTERESTED) < 0 ){
-        if(arg_verbose)
+        if(*cfg_verbose)
           CONSOLE.Debug("close: Can't set self not interested (T_W_I_H)");
         peer->CloseConnection();
       }
@@ -889,7 +902,7 @@ int PeerList::Accepter()
   return NewPeer(addr, newsk);
 }
 
-int PeerList::Initial_ListenPort()
+int PeerList::InitialListenPort()
 {
   int r = 0;
   struct sockaddr_in lis_addr;
@@ -902,13 +915,15 @@ int PeerList::Initial_ListenPort()
 
   if( INVALID_SOCKET == m_listen_sock ) return -1;
 
-  if( cfg_listen_ip != 0 )
-    lis_addr.sin_addr.s_addr = cfg_listen_ip;
+  if( *cfg_listen_ip != 0 )
+    lis_addr.sin_addr.s_addr = *cfg_listen_ip;
+  cfg_listen_ip.Lock();
+  cfg_listen_addr.Lock();
 
-  if( cfg_listen_port ){
+  if( *cfg_listen_port ){
     int opt = 1;
     setsockopt(m_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    lis_addr.sin_port = htons(cfg_listen_port);
+    lis_addr.sin_port = htons(*cfg_listen_port);
     if( bind(m_listen_sock, (struct sockaddr *)&lis_addr,
              sizeof(struct sockaddr_in)) == 0 ){
       r = 1;
@@ -916,39 +931,42 @@ int PeerList::Initial_ListenPort()
       opt = 0;
       setsockopt(m_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
       CONSOLE.Warning(2, "warn, couldn't bind on specified port %d:  %s",
-        cfg_listen_port, strerror(errno));
+        (int)*cfg_listen_port, strerror(errno));
     }
   }
 
-  if( !r && (!cfg_listen_port || cfg_listen_port > 1025) ){
+  if( !r && (!*cfg_listen_port || *cfg_listen_port > 1025) ){
     r = -1;
-    if( cfg_listen_port ){
-      cfg_min_listen_port = cfg_listen_port -
-                            (cfg_max_listen_port - cfg_min_listen_port);
-      if( cfg_min_listen_port < 1025 ) cfg_min_listen_port = 1025;
-      cfg_max_listen_port = cfg_listen_port;
+    if( *cfg_listen_port ){
+      m_min_listen_port = *cfg_listen_port -
+                            (m_max_listen_port - m_min_listen_port);
+      if( m_min_listen_port < 1025 ) m_min_listen_port = 1025;
+      m_max_listen_port = *cfg_listen_port;
     }
-    cfg_listen_port = cfg_max_listen_port;
+    cfg_listen_port = m_max_listen_port;
+
     while( r != 0 ){
-      lis_addr.sin_port = htons(cfg_listen_port);
+      lis_addr.sin_port = htons(*cfg_listen_port);
       r = bind(m_listen_sock, (struct sockaddr *)&lis_addr,
         sizeof(struct sockaddr_in));
       if( r != 0 ){
         cfg_listen_port--;
-        if( cfg_listen_port < cfg_min_listen_port ){
+        if( *cfg_listen_port < m_min_listen_port ){
           CLOSE_SOCKET(m_listen_sock);
           CONSOLE.Warning(1, "error, couldn't bind port from %d to %d:  %s",
-            cfg_min_listen_port, cfg_max_listen_port, strerror(errno));
+            m_min_listen_port, m_max_listen_port, strerror(errno));
+          cfg_listen_port.Lock();
           return -1;
         }
       }
     }  // end while
   }
+  cfg_listen_port.Lock();
 
   if( listen(m_listen_sock, 5) == -1 ){
     CLOSE_SOCKET(m_listen_sock);
     CONSOLE.Warning(1, "error, couldn't listen on port %d: %s",
-      cfg_listen_port, strerror(errno));
+      (int)*cfg_listen_port, strerror(errno));
     return -1;
   }
 
@@ -1045,7 +1063,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   if( !Self.OntimeDL() && (peer = GetNextUL()) &&
       !FD_ISSET(peer->stream.GetSocket(), wfdp) &&
       !BandwidthLimitUp(Self.LateUL()) ){
-    if(arg_verbose) CONSOLE.Debug("%p is not write-ready", peer);
+    if(*cfg_verbose) CONSOLE.Debug("%p is not write-ready", peer);
     peer->CheckSendStatus();
   }
 
@@ -1068,7 +1086,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           m_readycnt++;
           FD_CLR(sk, rfdnextp);
           if( peer->RecvModule() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: receive");
+            if(*cfg_verbose) CONSOLE.Debug("close: receive");
             peer->CloseConnection();
           }else{
             if( pcount > Rank(peer) )
@@ -1084,7 +1102,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       }
       if( !Self.OntimeDL() && !Self.OntimeUL() &&
           DT_PEER_SUCCESS == peer->GetStatus() && peer->HealthCheck() < 0 ){
-        if(arg_verbose) CONSOLE.Debug("close: unhealthy");
+        if(*cfg_verbose) CONSOLE.Debug("close: unhealthy");
         peer->CloseConnection();
       }
       if( PEER_IS_FAILED(peer) ){
@@ -1099,7 +1117,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
           if( !pready ) m_readycnt++;
           FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: send");
+            if(*cfg_verbose) CONSOLE.Debug("close: send");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
           }else if( !pready ){
@@ -1121,7 +1139,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, rfdnextp);
           if( peer->HandShake() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: receiving handshake");
+            if(*cfg_verbose) CONSOLE.Debug("close: receiving handshake");
             peer->CloseConnection();
             FD_CLR(sk, wfdnextp);
           }
@@ -1132,7 +1150,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: flushing handshake");
+            if(*cfg_verbose) CONSOLE.Debug("close: flushing handshake");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
           }
@@ -1145,7 +1163,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, wfdnextp);
           if( peer->Send_ShakeInfo() < 0 ){
-            if(arg_verbose) CONSOLE.Debug("close: sending handshake");
+            if(*cfg_verbose) CONSOLE.Debug("close: sending handshake");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
           }else peer->SetStatus(DT_PEER_HANDSHAKE);
@@ -1155,7 +1173,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, rfdnextp);
-          if(arg_verbose) CONSOLE.Debug("close: connect failed");
+          if(*cfg_verbose) CONSOLE.Debug("close: connect failed");
           peer->CloseConnection();
           FD_CLR(sk, wfdnextp);
         }
@@ -1177,7 +1195,7 @@ void PeerList::CloseAllConnectionToSeed()
           BTCONTENT.GetSeedTime() - now >= 300 &&
           !p->peer->ConnectedWhileSeed()) ){
       p->peer->DontWantAgain();
-      if(arg_verbose) CONSOLE.Debug("close: seed<->seed");
+      if(*cfg_verbose) CONSOLE.Debug("close: seed<->seed");
       p->peer->CloseConnection();
     }
     else p->peer->stream.in_buffer.SetSize(BUF_DEF_SIZ);
@@ -1374,10 +1392,10 @@ int PeerList::Endgame()
   }
 
   if( endgame && !m_endgame ){
-    if(arg_verbose) CONSOLE.Debug("Endgame (dup request) mode");
+    if(*cfg_verbose) CONSOLE.Debug("Endgame (dup request) mode");
     UnStandby();
   }else if( !endgame && m_endgame ){
-    if(arg_verbose) CONSOLE.Debug("Normal (non dup request) mode");
+    if(*cfg_verbose) CONSOLE.Debug("Normal (non dup request) mode");
     RecalcDupReqs();  // failsafe
   }
 
@@ -1398,6 +1416,7 @@ void PeerList::Pause()
   PEERNODE *p = m_head;
 
   m_f_pause = 1;
+  cfg_pause.Override(true);
   StopDownload();
   for( ; p; p = p->next ){
     if( p->peer->Is_Local_Unchoked() && p->peer->SetLocal(BT_MSG_CHOKE) < 0 )
@@ -1408,6 +1427,7 @@ void PeerList::Pause()
 void PeerList::Resume()
 {
   m_f_pause = 0;
+  cfg_pause.Override(false);
   CheckInterest();
 }
 
@@ -1491,21 +1511,21 @@ dt_idle_t PeerList::IdleState() const
   double dnext, unext, rightnow;
   int dlimnow, dlimthen, ulimnow, ulimthen;
 
-  if( cfg_max_bandwidth_down == 0 && cfg_max_bandwidth_up == 0 )  // no limits
+  if( *cfg_max_bandwidth_down == 0 && *cfg_max_bandwidth_up == 0 )  // no limits
     return DT_IDLE_POLLING;
 
   rightnow = PreciseTime();
 
-  if( cfg_max_bandwidth_down > 0 ){
+  if( *cfg_max_bandwidth_down > 0 ){
     dnext = Self.LastRecvTime() +
-            (double)Self.LastSizeRecv() / cfg_max_bandwidth_down;
+            (double)Self.LastSizeRecv() / *cfg_max_bandwidth_down;
     dlimnow = (dnext > rightnow);
     dlimthen = (dnext > rightnow + Self.LateDL());
   }else dlimnow = dlimthen = 0;
 
-  if( cfg_max_bandwidth_up > 0 ){
+  if( *cfg_max_bandwidth_up > 0 ){
     unext = Self.LastSendTime() +
-            (double)Self.LastSizeSent() / cfg_max_bandwidth_up;
+            (double)Self.LastSizeSent() / *cfg_max_bandwidth_up;
     ulimnow = (unext > rightnow);
     ulimthen = (unext > rightnow + Self.LateUL());
   }else ulimnow = ulimthen = 0;
@@ -1545,13 +1565,13 @@ double PeerList::WaitBW() const
   double nextup = 0, nextdn = 0;
   int use_up = 0, use_dn = 0;
 
-  if( cfg_max_bandwidth_up > 0){
+  if( *cfg_max_bandwidth_up > 0 ){
     nextup = Self.LastSendTime() +
-             (double)Self.LastSizeSent() / cfg_max_bandwidth_up;
+             (double)Self.LastSizeSent() / *cfg_max_bandwidth_up;
   }
-  if( cfg_max_bandwidth_down > 0 ){
+  if( *cfg_max_bandwidth_down > 0 ){
     nextdn = Self.LastRecvTime() +
-             (double)Self.LastSizeRecv() / cfg_max_bandwidth_down;
+             (double)Self.LastSizeRecv() / *cfg_max_bandwidth_down;
   }
 
   // could optimize away the clock call when maxwait will be > MAX_SLEEP

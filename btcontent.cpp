@@ -38,6 +38,7 @@
 #include "bttime.h"
 #include "util.h"
 
+#define MAX_METAINFO_FILESIZ (4*1024*1024)
 #define FLUSH_RETRY_INTERVAL 300  // seconds to retry after disk write error
 
 #define meta_str(keylist, pstr, psiz) \
@@ -56,6 +57,7 @@
 
 
 btContent BTCONTENT;
+
 
 static void Sha1(char *ptr, size_t len, unsigned char *dm)
 {
@@ -100,9 +102,11 @@ btContent::btContent()
   m_flushq = (BTFLUSH *)0;
   m_filters = m_current_filter = (BFNODE *)0;
   m_prevdlrate = 0;
+  m_updated_remain = (time_t)0;
 }
 
-int btContent::CreateMetainfoFile(const char *mifn)
+int btContent::CreateMetainfoFile(const char *mifn, const char *comment,
+  bool isprivate)
 {
   FILE *fp;
   fp = fopen(mifn, "r");
@@ -129,14 +133,14 @@ int btContent::CreateMetainfoFile(const char *mifn)
   if( bencode_str(m_announce, fp) != 1 ) goto err;
 
   // comment
-  if( arg_comment ){
+  if( comment ){
     if( bencode_str("comment", fp) != 1 ) goto err;
-    if( bencode_str(arg_comment, fp) != 1 ) goto err;
+    if( bencode_str(comment, fp) != 1 ) goto err;
   }
 
   // created by
   if( bencode_str("created by", fp) != 1 ) goto err;
-  if( bencode_str(cfg_user_agent, fp) != 1 ) goto err;
+  if( bencode_str(*cfg_user_agent, fp) != 1 ) goto err;
 
   // creation date
   if( bencode_str("creation date", fp) != 1 ) goto err;
@@ -160,7 +164,7 @@ int btContent::CreateMetainfoFile(const char *mifn)
       goto err;
 
     // private
-    if( arg_flg_private ){
+    if( isprivate ){
       if( bencode_str("private", fp) != 1 ) goto err;
       if( bencode_int(1, fp) != 1 ) goto err;
     }
@@ -193,6 +197,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
   if( !m_piece_length || m_piece_length > 4096*1024 )
     m_piece_length = 262144;
 
+  m_metainfo_file = pathname;
   m_announce = ann_url;
   m_create_date = time((time_t *)0);
 
@@ -264,10 +269,11 @@ int btContent::PrintOut() const
   return 0;
 }
 
-int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
+int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
+  const char *announce)
 {
   unsigned char *ptr = m_shake_buffer;
-  char *b;
+  char *b, *tmpstr;
   const char *s;
   size_t flen, q, bsiz;
   int64_t bint;
@@ -277,15 +283,17 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   m_cache_hit = m_cache_miss = m_cache_pre = 0;
   time(&m_cache_eval_time);
 
+  m_metainfo_file = metainfo_fname;
   b = _file2mem(metainfo_fname, &flen);
   if( !b ) return -1;
 
   // announce
   if( !meta_str("announce", &s, &bsiz) ) goto err;
   if( bsiz > MAXPATHLEN ) goto err;
-  m_announce = new char [bsiz + 1];
-  memcpy(m_announce, s, bsiz);
-  m_announce[bsiz] = '\0';
+  tmpstr = new char [bsiz + 1];
+  memcpy(tmpstr, s, bsiz);
+  tmpstr[bsiz] = '\0';
+  m_announce = tmpstr;
 
   // announce-list
   if( (bsiz = meta_pos("announce-list")) ){
@@ -353,10 +361,8 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   m_piece_length = (bt_length_t)bint;
   m_npieces = m_hashtable_length / 20;
 
-  if( m_piece_length < cfg_req_slice_size )
+  if( m_piece_length < *cfg_req_slice_size )
     cfg_req_slice_size = m_piece_length;
-
-  cfg_req_queue_length = (m_piece_length / cfg_req_slice_size) * 2 - 1;
 
   if( m_btfiles.BuildFromMI(b, flen, saveas) < 0 ) goto err;
 
@@ -367,9 +373,9 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
     PrintOut();
     return 0;
   }else{
-    arg_flg_exam_only = 1;
+    arg_flg_exam_only = true;
     PrintOut();
-    arg_flg_exam_only = 0;
+    arg_flg_exam_only = false;
   }
 
   for( int i=0; i < 20; i++ ){
@@ -408,7 +414,7 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 #ifndef WINDOWS
   if( !pBMasterFilter ) goto err;
 #endif
-  if( arg_file_to_download ) SetFilter();
+  if( *cfg_file_to_download ) SetFilter();
 
   check_pieces *= m_btfiles.CreateFiles();
 
@@ -420,10 +426,10 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 
   if( arg_flg_check_only ){
     struct stat sb;
-    if( stat(arg_bitfield_file, &sb) == 0 ){
-      if( remove(arg_bitfield_file) < 0 ){
+    if( *cfg_bitfield_file && stat(*cfg_bitfield_file, &sb) == 0 ){
+      if( remove(*cfg_bitfield_file) < 0 ){
         CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
-          arg_bitfield_file, strerror(errno));
+          *cfg_bitfield_file, strerror(errno));
       }
     }
     if( check_pieces ){
@@ -435,24 +441,24 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
     if( !arg_flg_force_seed_mode ){
       SaveBitfield();
-      if( arg_completion_exit ) CompletionCommand();
+      if( *cfg_completion_exit ) CompletionCommand();
       exit(0);
     }
   }else if( check_pieces ){  // files exist already
-    if( pBRefer->SetReferFile(arg_bitfield_file) < 0 ){
+    if( *cfg_bitfield_file && pBRefer->SetReferFile(*cfg_bitfield_file) < 0 ){
       if( !arg_flg_force_seed_mode ){
         CONSOLE.Warning(2,
           "warn, couldn't set bit field refer file \"%s\":  %s",
-          arg_bitfield_file, strerror(errno));
+          *cfg_bitfield_file, strerror(errno));
         CONSOLE.Warning(2, "This is normal if you are seeding.");
       }
       pBRefer->SetAll();  // need to check all pieces
     }else{
       CONSOLE.Interact("Found bit field file; %s previous state.",
         arg_flg_force_seed_mode ? "resuming download from" : "verifying");
-      if( remove(arg_bitfield_file) < 0 ){
+      if( *cfg_bitfield_file && remove(*cfg_bitfield_file) < 0 ){
         CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
-          arg_bitfield_file, strerror(errno));
+          *cfg_bitfield_file, strerror(errno));
       }
       // Mark missing pieces as "checked" (eligible for download).
     }
@@ -497,20 +503,23 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   memset(ptr, 0, 8);                       // reserved bytes
 
   { // peer id
-    char *sptr = arg_user_agent;
+    const char *sptr = *cfg_peer_prefix;
     char *dptr = (char *)m_shake_buffer + 48;
     char *eptr = dptr + PEER_ID_LEN;
     while( *sptr ) *dptr++ = *sptr++;
     while( dptr < eptr )
       *dptr++ = (unsigned char)RandBits(sizeof(unsigned char) * 8);
+    cfg_peer_prefix.Lock();
   }
 
-  if( arg_announce ){
+  if( announce ){
     int n;
     delete []m_announce;
-    if( (n = atoi(arg_announce)) && n <= 9 && m_announcelist[n-1] )
+    if( (n = atoi(announce)) && n <= 9 && m_announcelist[n-1] ){
       m_announce = m_announcelist[n-1];
-    else m_announce = arg_announce;
+      delete []announce;
+    }
+    else m_announce = announce;
     CONSOLE.Print("Using announce URL:  %s", m_announce);
   }
 
@@ -527,6 +536,7 @@ btContent::~btContent()
   if( m_announce ) delete []m_announce;
   if( global_piece_buffer ) delete []global_piece_buffer;
   if( pBF ) delete pBF;
+  if( m_metainfo_file ) delete []m_metainfo_file;
 }
 
 // returns <0 if error; if using cache: 1 if read from disk, 0 otherwise
@@ -627,7 +637,7 @@ void btContent::CacheClean(bt_length_t need, bt_index_t idx)
     }
     if( !p->bc_f_flush ){
       if( !f_flush && idx == p->bc_off / m_piece_length ) continue;
-      if(arg_verbose)
+      if(*cfg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
           (int)(p->bc_off % m_piece_length), (int)p->bc_len);
 
@@ -646,12 +656,12 @@ void btContent::CacheClean(bt_length_t need, bt_index_t idx)
     }
   }
   if( m_cache_size < m_cache_used + need ){  // still not enough
-    if( m_cache_size < cfg_cache_size*1024*1024 ){  // can alloc more
-      m_cache_size = (m_cache_used + need > cfg_cache_size*1024*1024) ?
-        cfg_cache_size*1024*1024 : (m_cache_used + need);
+    if( m_cache_size < (*cfg_cache_size)*1024U*1024U ){  // can alloc more
+      m_cache_size = (m_cache_used + need > (*cfg_cache_size)*1024U*1024U) ?
+        (*cfg_cache_size)*1024U*1024U : (m_cache_used + need);
     }
     if( m_cache_size < m_cache_used + need && m_cache_used && !f_flush ){
-      if(arg_verbose) CONSOLE.Debug("CacheClean flushing to obtain space");
+      if(*cfg_verbose) CONSOLE.Debug("CacheClean flushing to obtain space");
       f_flush = 1;
       goto again;
     }  // else we tried...
@@ -691,14 +701,14 @@ void btContent::CacheEval()
 
   // Upload: need enough to hold read/dl'd data until it can be sent
   upmin = DEFAULT_SLICE_SIZE * unchoked;
-  upmax = cfg_cache_size*1024*1024;
+  upmax = (*cfg_cache_size)*1024U*1024U;
   if( pBF->IsFull() ){
     /* Seed mode.  All cache data is prefetched, and we don't normally need to
        keep prefetched data longer than 2.5 unchoke intervals. */
     if( rateup && unchoked ){
       // A very slow peer can't possibly benefit from cache--don't grow for it.
       dt_rate_t slowest = (dt_rate_t)( 1 + DEFAULT_SLICE_SIZE /
-                                 ((double)cfg_cache_size*1024*1024 / rateup) );
+                           ((double)(*cfg_cache_size)*1024*1024 / rateup) );
       /* Lead cache: data we need to cache to keep the slowest up's data cached
          Add a slice per up for timing uncertainty */
       if( (slowest = WORLD.GetSlowestUp(slowest)) )
@@ -712,8 +722,8 @@ void btContent::CacheEval()
   }else{
     if( rateup > ratedn ){
       dt_rate_t slowest = (dt_rate_t)( 1 +
-        cfg_req_slice_size * ((double)ratedn / cfg_cache_size*1024*1024) +
-        DEFAULT_SLICE_SIZE * ((double)rateup / cfg_cache_size*1024*1024) );
+        *cfg_req_slice_size * ((double)ratedn / (*cfg_cache_size)*1024*1024) +
+         DEFAULT_SLICE_SIZE * ((double)rateup / (*cfg_cache_size)*1024*1024) );
       if( (slowest = WORLD.GetSlowestUp(slowest)) )
         /* lead cache is how much we'll use while uploading a slice to slowest
            (default_slice_size / slowest) * (ratedn + rateup) */
@@ -724,7 +734,7 @@ void btContent::CacheEval()
     else if( rateup ){
       // same as m_piece_length / (cfg_cache_size*1024*1024 / (double)ratedn)
       dt_rate_t slowest = (dt_rate_t)( 1 +
-        ratedn * ((double)m_piece_length / (cfg_cache_size*1024*1024)) );
+        ratedn * ((double)m_piece_length / ((*cfg_cache_size)*1024*1024)) );
       if( (slowest = WORLD.GetSlowestUp(slowest)) ){
         /* m_piece_length / (double)slowest * ratedn
            optimize, then round up a piece and add a piece */
@@ -741,15 +751,16 @@ void btContent::CacheEval()
   if( upadd < upmin ) upadd = upmin;
 
   // Add a slice to round up
-  total = unflushed + dlnext + upadd + cfg_req_slice_size;
+  total = unflushed + dlnext + upadd + *cfg_req_slice_size;
 
   // Limit to max configured size
-  if( total > cfg_cache_size*1024*1024 ) total = cfg_cache_size*1024*1024;
+  if( total > (*cfg_cache_size)*1024U*1024U )
+    total = (*cfg_cache_size)*1024U*1024U;
 
   // Don't decrease cache size if flush failed.
   if( !m_flush_failed || total > m_cache_size ) m_cache_size = total;
 
-  if(arg_verbose)
+  if(*cfg_verbose)
     CONSOLE.Debug("DL need: %dK  UL need: %dK  Cache: %dK  Used: %dK",
       (int)((unflushed+dlnext)/1024), (int)(upadd/1024),
       (int)(m_cache_size/1024), (int)(m_cache_used/1024));
@@ -758,10 +769,10 @@ void btContent::CacheEval()
 
 void btContent::CacheConfigure()
 {
-  if( cfg_cache_size ){
-    if( cfg_cache_size > GetTotalFilesLength()/1024/1024 )
+  if( *cfg_cache_size ){
+    if( *cfg_cache_size > GetTotalFilesLength()/1024/1024 )
       cfg_cache_size = (GetTotalFilesLength()+1024*1024-1)/1024/1024;
-    CacheEval();
+    else CacheEval();
   }else m_cache_size = 0;
 
   if( m_cache_size < m_cache_used && !m_flush_failed ) CacheClean(0);
@@ -774,14 +785,15 @@ int btContent::NeedFlush() const
   }else{
     return (m_flushq ||
             (m_cache_oldest && m_cache_oldest->bc_f_flush &&
-             m_cache_used >= cfg_cache_size*1024*1024-cfg_req_slice_size+1)) ?
+             m_cache_used >=
+               (*cfg_cache_size)*1024U*1024U - *cfg_req_slice_size + 1)) ?
            1 : 0;
   }
 }
 
 void btContent::FlushCache()
 {
-  if(arg_verbose) CONSOLE.Debug("Flushing all cache");
+  if(*cfg_verbose) CONSOLE.Debug("Flushing all cache");
   for( bt_index_t i=0; i < m_npieces; i++ ){
     if( m_cache[i] ) FlushPiece(i);
     if( m_flush_failed ) break;
@@ -795,7 +807,7 @@ int btContent::FlushPiece(bt_index_t idx)
   BTCACHE *p;
   int retval = 0;
 
-  if(arg_verbose){
+  if(*cfg_verbose){
     if( pBF->IsSet(idx) )
       CONSOLE.Debug("Writing piece #%d to disk", (int)idx);
     else CONSOLE.Debug("Flushing piece #%d", (int)idx);
@@ -844,7 +856,7 @@ int btContent::WriteFail()
 {
   m_flush_tried = now;
   if( !m_flush_failed )
-    m_cache_size += cfg_req_slice_size * WORLD.GetDownloads() * 2;
+    m_cache_size += *cfg_req_slice_size * WORLD.GetDownloads() * 2;
   CONSOLE.Warning(1, "warn, write file failed while flushing data.");
   CONSOLE.Warning(1,
     "You need to have at least %llu bytes free on this filesystem!",
@@ -852,10 +864,10 @@ int btContent::WriteFail()
   CONSOLE.Warning(1,
     "This could also be caused by a conflict or disk error.");
   if( !IsFull() ||
-      (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ){
+      (!m_flush_failed && m_cache_size > (*cfg_cache_size)*1024U*1024U) ){
     CONSOLE.Warning(1, "Temporarily %s%s...",
       IsFull() ? "" : "suspending download",
-      (!m_flush_failed && m_cache_size > cfg_cache_size*1024*1024) ?
+      (!m_flush_failed && m_cache_size > (*cfg_cache_size)*1024U*1024U) ?
         (IsFull() ? "increasing cache" : " and increasing cache") : "");
   }
   m_flush_failed = 1;
@@ -923,7 +935,7 @@ int btContent::CachePrep(bt_index_t idx)
           continue;
         }
       }
-      if(arg_verbose)
+      if(*cfg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
           (int)(p->bc_off % m_piece_length), (int)p->bc_len);
       if( m_cache_oldest == p ) m_cache_oldest = p->age_next;
@@ -1007,12 +1019,12 @@ int btContent::CacheIO(char *rbuf, const char *wbuf, dt_datalen_t off,
   BTCACHE *pnew = (BTCACHE *)0;
   bt_index_t idx = off / m_piece_length;
 
-  if( len >= cfg_cache_size*1024*768 ){  // 75% of cache limit
+  if( len >= (*cfg_cache_size)*1024U*768U ){  // 75% of cache limit
     if( rbuf || wbuf ) return FileIO(rbuf, wbuf, off, len);
     else return 0;
   }
 
-  if( arg_verbose && 0==method )
+  if( *cfg_verbose && 0==method )
     CONSOLE.Debug("Read to %s %d/%d/%d", rbuf ? "buffer" : "cache",
       (int)idx, (int)(off % m_piece_length), (int)len);
 
@@ -1137,7 +1149,7 @@ int btContent::CheckNextPiece()
   if( idx >= m_npieces ) return 0;
   if( pBChecked->IsSet(idx) ){
     while( idx < m_npieces && pBChecked->IsSet(idx) ){
-      if(arg_verbose) CONSOLE.Debug("Check: %u skipped", idx);
+      if(*cfg_verbose) CONSOLE.Debug("Check: %u skipped", idx);
       pBChecked->Set(idx);
       ++idx;
     }
@@ -1154,12 +1166,12 @@ int btContent::CheckNextPiece()
 
     pBChecked->Set(idx);  // need to set before CheckInterest below
     if( memcmp(md, m_hash_table + idx * 20, 20) == 0 ){
-      if(arg_verbose) CONSOLE.Debug("Check: %u ok", idx);
+      if(*cfg_verbose) CONSOLE.Debug("Check: %u ok", idx);
       m_left_bytes -= GetPieceLength(idx);
       pBF->Set(idx);
       WORLD.Tell_World_I_Have(idx);
     }else{
-      if(arg_verbose) CONSOLE.Debug("Check: %u failed", idx);
+      if(*cfg_verbose) CONSOLE.Debug("Check: %u failed", idx);
       f_checkint = 1;
     }
     m_check_piece = idx + 1;
@@ -1239,7 +1251,7 @@ int btContent::APieceComplete(bt_index_t idx)
   Tracker.CountDL(GetPieceLength(idx));
 
   // Add the completed piece to the flush queue.
-  if( cfg_cache_size ){
+  if( *cfg_cache_size ){
     BTFLUSH *last = m_flushq;
     BTFLUSH *node = new BTFLUSH;
     if( !node ) FlushPiece(idx);
@@ -1275,11 +1287,12 @@ int btContent::SeedTimeout()
   dt_rate_t oldrate = m_prevdlrate;
 
   if( Seeding() && (!m_flush_failed || IsFull()) &&
-      (!arg_completion_exit || (!m_flushq && !NeedMerge())) ){
+      (!*cfg_completion_exit || (!m_flushq && !NeedMerge())) ){
     if( !m_seed_timestamp ){
       if( IsFull() ){
         Tracker.Reset(15);
         ReleaseHashTable();
+        cfg_file_to_download.Hide();
       }
       Self.ResetDLTimer();  // set/report dl rate = 0
       m_prevdlrate = 0;
@@ -1291,26 +1304,28 @@ int btContent::SeedTimeout()
         CONSOLE.Print("Download complete.");
         CONSOLE.Print("Total time used: %ld minutes.",
           (long)((now - m_start_timestamp) / 60));
-        if(arg_verbose) CONSOLE.cpu();
-        if( arg_completion_exit )
+        if(*cfg_verbose) CONSOLE.cpu();
+        if( *cfg_completion_exit )
           CompletionCommand();
       }
+      cfg_completion_exit.Hide();
       // Reallocate global buffer for uploading.
       global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
       global_buffer_size = global_piece_buffer ? DEFAULT_SLICE_SIZE : 0;
-      if(arg_ctcs) CTCS.Send_Status();
+      if(*cfg_ctcs) CTCS.Send_Status();
       CONSOLE.Print_n("Seed for others %lu hours",
-        (unsigned long)cfg_seed_hours);
-      if( cfg_seed_ratio )
-        CONSOLE.Print_n(" or to ratio of %.2f", cfg_seed_ratio);
+        (unsigned long)*cfg_seed_hours);
+      if( *cfg_seed_ratio )
+        CONSOLE.Print_n(" or to ratio of %.2f", *cfg_seed_ratio);
       CONSOLE.Print("");
+      cfg_seed_remain.Unhide();
     }else if( now < m_seed_timestamp ) m_seed_timestamp = now;
     dl = (Self.TotalDL() > 0) ? Self.TotalDL() : GetTotalFilesLength();
-    if( (cfg_seed_ratio == 0 && cfg_seed_hours == 0) ||
-        (cfg_seed_hours > 0 &&
-          (now - m_seed_timestamp) >= (time_t)(cfg_seed_hours * 60 * 60)) ||
-        (cfg_seed_ratio > 0 &&
-          cfg_seed_ratio <= (double) Self.TotalUL() / dl) ){
+    if( (*cfg_seed_ratio == 0 && *cfg_seed_hours == 0) ||
+        (*cfg_seed_hours > 0 &&
+          (now - m_seed_timestamp) >= (time_t)(*cfg_seed_hours * 60 * 60)) ||
+        (*cfg_seed_ratio > 0 &&
+          *cfg_seed_ratio <= (double) Self.TotalUL() / dl) ){
       if( m_flush_failed ){
         if( !WORLD.IsPaused() ){
           CONSOLE.Warning(1,
@@ -1318,6 +1333,11 @@ int btContent::SeedTimeout()
           WORLD.Pause();
         }
       }else return 1;
+    }
+    if( now >= m_updated_remain + 1 ){
+      cfg_seed_remain.Override( (*cfg_seed_time - (now - m_seed_timestamp)) /
+                                3600.0 );
+      m_updated_remain = now;
     }
   }else{
     m_prevdlrate = Self.RateDL();
@@ -1328,7 +1348,7 @@ int btContent::SeedTimeout()
       global_buffer_size = global_piece_buffer ? DEFAULT_SLICE_SIZE : 0;
     }
   }
-  if( (cfg_cache_size && now >= m_cache_eval_time) ||
+  if( (*cfg_cache_size && now >= m_cache_eval_time) ||
       (oldrate == 0 && m_prevdlrate > 0) ){
     CacheEval();
   }
@@ -1338,10 +1358,13 @@ int btContent::SeedTimeout()
 
 void btContent::CompletionCommand()
 {
-  char *pt, *pd, *pw, *cmdstr;
+  const char *pt, *pd, *pw;
+  char *cmdstr, wd[MAXPATHLEN];
   int nt=0, nd=0, nw=0;
 
-  pt = pd = pw = arg_completion_exit;
+  if( !*cfg_completion_exit || !**cfg_completion_exit ) return;
+
+  pt = pd = pw = *cfg_completion_exit;
   while( (pt = strstr(pt, "&t")) ){
     nt++;
     pt += 2;
@@ -1355,30 +1378,32 @@ void btContent::CompletionCommand()
     pw+=2;
   }
 
+  if( nw && !getcwd(wd, MAXPATHLEN) ){
+    CONSOLE.Warning(2, "warn, couldn't get working directory:  %s",
+      strerror(errno));
+    return;
+  }
+  cmdstr = new char[1 + strlen(*cfg_completion_exit) +
+    nt * (strlen(m_metainfo_file) - 2) +
+    nd * (strlen(m_btfiles.GetDataName()) - 2) +
+    nw * (strlen(wd) - 2)];
+  if( !cmdstr ){
+    CONSOLE.Warning(2,
+      "warn, failed to allocate memory for completion command");
+    return;
+  }
+  strcpy(cmdstr, *cfg_completion_exit);
+
   if( nt || nd || nw ){
-    char wd[MAXPATHLEN], *ptmp, *parg = arg_completion_exit;
-    if( nw && !getcwd(wd, MAXPATHLEN) ){
-      CONSOLE.Warning(2, "warn, couldn't get working directory:  %s",
-        strerror(errno));
-      return;
-    }
-    cmdstr = new char[1 + strlen(arg_completion_exit) +
-      nt * (strlen(arg_metainfo_file) - 2) +
-      nd * (strlen(m_btfiles.GetDataName()) - 2) +
-      nw * (strlen(wd) - 2)];
-    if( !cmdstr ){
-      CONSOLE.Warning(2,
-        "warn, failed to allocate memory for completion command");
-      return;
-    }
-    strcpy(cmdstr, arg_completion_exit);
+    char *pt, *pd, *pw;
+    const char *ptmp, *parg = *cfg_completion_exit;
 
     pt = strstr(cmdstr, "&t");
     pd = strstr(cmdstr, "&d");
     pw = strstr(cmdstr, "&w");
     while( pt || pd || pw ){
       if( pt && (!pd || pt < pd) && (!pw || pt < pw) ){
-        strcpy(pt, arg_metainfo_file);
+        strcpy(pt, m_metainfo_file);
         ptmp = cmdstr + strlen(cmdstr);
         parg = strstr(parg, "&t") + 2;
         strcat(pt, parg);
@@ -1406,10 +1431,9 @@ void btContent::CompletionCommand()
       }
     }
   }
-  else cmdstr = arg_completion_exit;
-  if(arg_verbose) CONSOLE.Debug("Executing: %s", cmdstr);
+  if(*cfg_verbose) CONSOLE.Debug("Executing: %s", cmdstr);
 #ifdef HAVE_WORKING_FORK
-  if( cfg_cache_size ){  // maybe free some cache before forking
+  if( *cfg_cache_size ){  // maybe free some cache before forking
     CacheEval();
     if( m_cache_size < m_cache_used && !m_flush_failed ) CacheClean(0);
   }
@@ -1418,7 +1442,7 @@ void btContent::CompletionCommand()
     CONSOLE.Warning(2, "warn, fork failed running completion command:  %s",
       strerror(errno));
   }else if( r==0 ){
-    cfg_child_process = 1;
+    g_secondary_process = true;
     if( m_cache_used ){  // free the cache in the child process
       BTCACHE *p, *pnext;
       for( p=m_cache_oldest; p; p=pnext ){
@@ -1436,7 +1460,7 @@ void btContent::CompletionCommand()
     exit(EXIT_SUCCESS);
   }
 #endif
-  if( cmdstr != arg_completion_exit ) delete []cmdstr;
+  delete []cmdstr;
 }
 
 
@@ -1484,6 +1508,8 @@ void btContent::CheckFilter()
   if( m_seed_timestamp && m_current_filter ){
     // was seeding, now downloading again
     m_seed_timestamp = (time_t)0;
+    cfg_seed_remain.Hide();
+    cfg_completion_exit.Unhide();
   }
 }
 
@@ -1496,14 +1522,14 @@ void btContent::SetFilter()
   Bitfield tmpFilter, *pfilter;
   BFNODE *node=m_filters, *pnode=(BFNODE *)0;
 
-  if( arg_file_to_download ){
+  if( *cfg_file_to_download ){
     pBMasterFilter->SetAll();
-    list = new char[strlen(arg_file_to_download) + 1];
+    list = new char[strlen(*cfg_file_to_download) + 1];
     if( !list ){
       CONSOLE.Warning(1, "error, failed to allocate memory for filter");
       return;
     }
-    strcpy(list, arg_file_to_download);
+    strcpy(list, *cfg_file_to_download);
     tok = strtok(list, ", ");
     while( tok ){
       if( !node ){
@@ -1562,12 +1588,11 @@ void btContent::SetFilter()
       node = node->next;
     }
     delete []list;
-  }else  // no arg_file_to_download
+  }else  // no cfg_file_to_download
     pBMasterFilter->Clear();
 
   if( m_filters && m_filters->bitfield.IsEmpty() ){
-    delete []arg_file_to_download;
-    arg_file_to_download = (char *)0;
+    cfg_file_to_download = (const char *)0;
     pBMasterFilter->Clear();
     node = m_filters;
     pnode = (BFNODE *)0;
@@ -1609,7 +1634,7 @@ const Bitfield *btContent::GetNextFilter(const Bitfield *pfilter) const
 int btContent::Seeding() const
 {
   if( IsFull() || m_flush_failed ) return 1;
-  if( arg_file_to_download && !m_current_filter ) return 1;
+  if( *cfg_file_to_download && !m_current_filter ) return 1;
   return 0;
 }
 
@@ -1617,13 +1642,18 @@ int btContent::Seeding() const
 // Note, this function assumes the program is exiting.
 void btContent::SaveBitfield()
 {
-  if( arg_bitfield_file ){
+  if( *cfg_bitfield_file ){
     if( m_check_piece < m_npieces ){  // still checking
       // Anything unchecked needs to be checked next time.
       pBChecked->Invert();
       pBF->Or(*pBChecked);
     }
-    if( !pBF->IsFull() ) pBF->WriteToFile(arg_bitfield_file);
+    if( !pBF->IsFull() ){
+      if( pBF->WriteToFile(*cfg_bitfield_file) < 0 ){
+        CONSOLE.Warning(1, "error writing bitfield file %s:  %s",
+          *cfg_bitfield_file, strerror(errno));
+      }
+    }
   }
 }
 

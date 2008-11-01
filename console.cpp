@@ -37,7 +37,8 @@
 const char LIVE_CHAR[4] = { '-', '\\', '|', '/' };
 
 Console CONSOLE;
-static int g_console_ready = 0;
+static bool g_console_ready = false;
+static bool g_daemon_parent = false;
 
 
 //===========================================================================
@@ -57,7 +58,7 @@ ConStream::ConStream()
 
 ConStream::~ConStream()
 {
-  if( !cfg_child_process ){
+  if( !g_secondary_process || g_daemon_parent ){
     if( m_restore ) RestoreMode();
     if( !m_suspend ) _newline();
     if( m_stream ) fclose(m_stream);
@@ -307,7 +308,6 @@ Console::Console()
   m_live_idx = 0;
   m_oldfd = -1;
 
-  m_status_format = 0;
   int i = 0;
   m_statusline[i++] = &Console::StatusLine0;
   m_statusline[i++] = &Console::StatusLine1;
@@ -336,13 +336,24 @@ Console::Console()
   m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
   m_conmode = DT_CONMODE_CHARS;
 
-  if( this == &CONSOLE ) g_console_ready = 1;
+  if( this == &CONSOLE ) g_console_ready = true;
 }
 
 
 Console::~Console()
 {
-  if( this == &CONSOLE ) g_console_ready = 0;
+  if( this == &CONSOLE ) g_console_ready = false;
+}
+
+
+void Console::Init()
+{
+  // Activate config defaults
+  ChangeChannel(O_NORMAL, *cfg_channel_normal, 0);
+  ChangeChannel(O_WARNING, *cfg_channel_error, 0);
+  ChangeChannel(O_DEBUG, *cfg_channel_debug, 0);
+  ChangeChannel(O_INTERACT, *cfg_channel_interact, 0);
+  ChangeChannel(O_INPUT, *cfg_channel_input, 0);
 }
 
 
@@ -387,39 +398,15 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
           if( *param ) switch( pending ){
           case 'n':  // get1file
-            if( arg_file_to_download ) delete []arg_file_to_download;
-            arg_file_to_download = new char[strlen(param) + 1];
-            if( !arg_file_to_download )
-              Warning(1, "error, failed to allocate memory for option");
-            else strcpy(arg_file_to_download, param);
-            BTCONTENT.SetFilter();
+            cfg_file_to_download = param;
             break;
           case 'S':  // CTCS server
-            if( !strchr(param, ':') )
+            if( !cfg_ctcs.Valid(param) )
               Interact("Invalid input");
-            else{
-              if( arg_ctcs ) delete []arg_ctcs;
-              if( 0==strcmp(":", param) ){
-                if(arg_ctcs) CTCS.Reset(1);
-                arg_ctcs = (char *)0;
-              }else{
-                arg_ctcs = new char[strlen(param) + 1];
-                if( !arg_ctcs )
-                  Warning(1, "error, failed to allocate memory for option");
-                else{
-                  strcpy(arg_ctcs, param);
-                  CTCS.Initial();
-                  CTCS.Reset(1);
-                }
-              }
-            }
+            else cfg_ctcs = param;
             break;
           case 'X':  // completion command (user exit)
-            if( arg_completion_exit ) delete []arg_completion_exit;
-            arg_completion_exit = new char[strlen(param) + 1];
-            if( !arg_completion_exit )
-              Warning(1, "error, failed to allocate memory for option");
-            else strcpy(arg_completion_exit, param);
+            cfg_completion_exit = param;
             break;
           case 'Q':  // quit
             if( 'y'==*param || 'Y'==*param ){
@@ -482,7 +469,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case 'd':  // download bw limit
       case 'u':  // upload bw limit
-        if(arg_ctcs) Interact("Note, changes may be overridden by CTCS.");
+        if(*cfg_ctcs) Interact("Note, changes may be overridden by CTCS.");
       case 'e':  // seed time
       case 'E':  // seed ratio
       case 'm':  // min peers
@@ -499,18 +486,18 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           ShowFiles();
           Interact("Enter 0 or * for all files (normal behavior).");
-          if( arg_file_to_download )
+          if( *cfg_file_to_download )
             Interact_n("Get file number/list (currently %s): ",
-              arg_file_to_download);
+              *cfg_file_to_download);
           else Interact_n("Get file number/list: ");
         }
         break;
       case 'S':  // CTCS server
         m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
         Interact_n("");
-        if( arg_ctcs ){
+        if( *cfg_ctcs ){
           Interact("Enter ':' to stop using CTCS.");
-          Interact_n("CTCS server:port (currently %s): ", arg_ctcs);
+          Interact_n("CTCS server:port (currently %s): ", *cfg_ctcs);
         }
         else Interact_n("CTCS server:port: ");
         break;
@@ -520,16 +507,15 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         else{
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
           Interact("Enter a command to run upon download completion.");
-          if( arg_completion_exit )
-            Interact("Currently: %s", arg_completion_exit);
+          if( *cfg_completion_exit )
+            Interact("Currently: %s", *cfg_completion_exit);
           Interact_n(">");
         }
         break;
       case 'v':  // verbose
-        if( arg_verbose && !m_streams[O_INPUT]->SameDev(m_streams[O_DEBUG]) )
-          Debug("Verbose output off");
-        arg_verbose = !arg_verbose;
-        Interact("Verbose output %s", arg_verbose ? "on" : "off");
+        cfg_verbose = !*cfg_verbose;
+        if( !m_streams[O_INTERACT]->SameDev(m_streams[O_DEBUG]) )
+          Interact("Verbose output %s", *cfg_verbose ? "on" : "off");
         break;
       case 'Q':  // quit
         if( !Tracker.IsQuitting() ){
@@ -542,44 +528,57 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       case '-':  // decrease value
         if( ('+'==c && inc<0) || ('-'==c && inc>0) ) inc *= -1;
         switch( pending ){
-          int64_t value;
         case 'd':
-          value = (int64_t)cfg_max_bandwidth_down;
-          value += (int64_t)
-            ( (cfg_max_bandwidth_down * (abs(inc)/100.0) < 1) ? inc :
-                (cfg_max_bandwidth_down * (inc/100.0)) );
-          cfg_max_bandwidth_down = (value < 0) ? 0 : (dt_rate_t)value;
+          if( inc < 0 && (unsigned int)abs(inc) > *cfg_max_bandwidth_down ){
+            cfg_max_bandwidth_down = 0;
+            break;
+          }
+          if( inc > 0 &&
+              *cfg_max_bandwidth_down + inc < *cfg_max_bandwidth_down ){
+            cfg_max_bandwidth_down = cfg_max_bandwidth_down.Max();
+            break;
+          }
+          cfg_max_bandwidth_down +=
+            (*cfg_max_bandwidth_down * (abs(inc)/100.0) < 1) ? inc :
+              (*cfg_max_bandwidth_down * (inc/100.0));
           break;
         case 'u':
-          value = (int64_t)cfg_max_bandwidth_up;
-          value += (int64_t)
-            ( (cfg_max_bandwidth_up * (abs(inc)/100.0) < 1) ? inc :
-                (cfg_max_bandwidth_up * (inc/100.0)) );
-          cfg_max_bandwidth_up = (value < 0) ? 0 : (dt_rate_t)value;
+          if( inc < 0 && (unsigned int)abs(inc) > *cfg_max_bandwidth_up ){
+            cfg_max_bandwidth_up = 0;
+            break;
+          }
+          if( inc > 0 &&
+              *cfg_max_bandwidth_up + inc < *cfg_max_bandwidth_up ){
+            cfg_max_bandwidth_up = cfg_max_bandwidth_up.Max();
+            break;
+          }
+          cfg_max_bandwidth_up +=
+            (*cfg_max_bandwidth_up * (abs(inc)/100.0) < 1) ? inc :
+              (*cfg_max_bandwidth_up * (inc/100.0));
           break;
         case 'e':
-          value = (int64_t)cfg_seed_hours + inc;
-          cfg_seed_hours = (value < 0) ? 0 : (time_t)value;
+          if( cfg_seed_remain.Hidden() ) cfg_seed_hours += inc;
+          else cfg_seed_remain += inc;
           break;
         case 'E':
           cfg_seed_ratio += inc / 10.0;
-          if( cfg_seed_ratio < 0 ) cfg_seed_ratio = 0;
           break;
         case 'm':
-          value = (int64_t)cfg_min_peers + inc;
-          cfg_min_peers = (value < 1) ? 1 : (dt_count_t)value;
-          if( cfg_min_peers > cfg_max_peers ) cfg_min_peers = cfg_max_peers;
+          cfg_min_peers += inc;
           break;
         case 'M':
-          value = (int64_t)cfg_max_peers + inc;
-          cfg_max_peers = (value < (int64_t)cfg_min_peers) ?
-                          cfg_min_peers : (dt_count_t)value;
-          if( cfg_max_peers > 1000 ) cfg_max_peers = 1000;
+          cfg_max_peers += inc;
           break;
         case 'C':
-          value = (int64_t)cfg_cache_size + inc;
-          cfg_cache_size = (value < 0) ? 0 : (dt_mem_t)value;
-          BTCONTENT.CacheConfigure();
+          if( inc < 0 && (unsigned int)abs(inc) > *cfg_cache_size ){
+            cfg_cache_size = 0;
+            break;
+          }
+          if( inc > 0 && *cfg_cache_size + inc < *cfg_cache_size ){
+            cfg_cache_size = cfg_cache_size.Max();
+            break;
+          }
+          cfg_cache_size += inc;
           break;
         default:
           Status(1);
@@ -587,10 +586,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }
         if( 10==++count ) inc *= 2;
         else if( 5==count ) inc *= 5;
-        if( arg_ctcs ){
-          if( 'd'==pending || 'u'==pending ) CTCS.Send_bw();
-          else CTCS.Send_Config();
-        }
+        if( *cfg_ctcs && 'd' != pending && 'u' != pending ) CTCS.Send_Config();
         break;
       case '0':  // operator menu
       case 0x1b:  // Escape key
@@ -604,27 +600,27 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
 
       switch( pending ){
       case 'd':
-        InteractU("DL Limit: %d B/s ", (int)cfg_max_bandwidth_down);
+        InteractU("DL Limit: %u B/s ", (unsigned int)*cfg_max_bandwidth_down);
         break;
       case 'u':
-        InteractU("UL Limit: %d B/s ", (int)cfg_max_bandwidth_up);
+        InteractU("UL Limit: %u B/s ", (unsigned int)*cfg_max_bandwidth_up);
         break;
       case 'e':
-        InteractU("Seed time: %.1f hours ", BTCONTENT.GetSeedTime() ?
-          (cfg_seed_hours - (now - BTCONTENT.GetSeedTime())/(double)3600) :
-          (double)cfg_seed_hours);
+        InteractU("Seed time: %.1f hours%s ",
+          cfg_seed_remain.Hidden() ? (double)*cfg_seed_hours : *cfg_seed_remain,
+          cfg_seed_remain.Hidden() ? "" : " remaining");
         break;
       case 'E':
-        InteractU("Seed ratio: %.2f ", (double)cfg_seed_ratio);
+        InteractU("Seed ratio: %.2f ", *cfg_seed_ratio);
         break;
       case 'm':
-        InteractU("Minimum peers: %d ", (int)cfg_min_peers);
+        InteractU("Minimum peers: %d ", (int)*cfg_min_peers);
         break;
       case 'M':
-        InteractU("Maximum peers: %d ", (int)cfg_max_peers);
+        InteractU("Maximum peers: %d ", (int)*cfg_max_peers);
         break;
       case 'C':
-        InteractU("Maximum cache: %d MB ", (int)cfg_cache_size);
+        InteractU("Maximum cache: %d MB ", (int)*cfg_cache_size);
         break;
       default:
         break;
@@ -659,14 +655,15 @@ int Console::OperatorMenu(const char *param)
     Interact(" Status Line Formats:");
     for( int i=0; i < STATUSLINES; i++ ){
       (this->*m_statusline[i])(buffer, sizeof(buffer));
-      Interact(" %c%d) %s", (i==m_status_format) ? '*' : ' ', ++n_opt, buffer);
+      Interact(" %c%d) %s",
+        (i==*cfg_status_format) ? '*' : ' ', ++n_opt, buffer);
     }
     Interact(" Other options:");
     Interact(" %2d) View detailed status", ++n_opt);
     if( WORLD.IsPaused() )
       Interact(" %2d) Resume (continue upload/download)", ++n_opt);
     else Interact(" %2d) Pause (suspend upload/download)", ++n_opt);
-    if( !arg_daemon )
+    if( !*cfg_daemon )
       Interact(" %2d) Become daemon (fork to background)", ++n_opt);
     Interact(" %2d) Update tracker stats & get peers", ++n_opt);
     Interact(" %2d) Restart (recover) the tracker session", ++n_opt);
@@ -698,22 +695,22 @@ int Console::OperatorMenu(const char *param)
       oper_mode = 2;
       return 0;
     }else if( sel <= O_NCHANNELS+1 + STATUSLINES ){
-      m_status_format = sel - (O_NCHANNELS+1) - 1;
+      cfg_status_format = sel - (O_NCHANNELS+1) - 1;
       oper_mode = 0;
       return OperatorMenu("");
     }else if( sel == 1 + O_NCHANNELS+1 + STATUSLINES ){  // detailed status
       m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
       Interact("");
-      Interact("Torrent: %s", arg_metainfo_file);
+      Interact("Torrent: %s", BTCONTENT.GetMetainfoFile());
       ShowFiles();
-      if( arg_file_to_download && !BTCONTENT.Seeding() )
-        Interact("Downloading: %s", arg_file_to_download);
+      if( *cfg_file_to_download && !BTCONTENT.Seeding() )
+        Interact("Downloading: %s", *cfg_file_to_download);
       Interact("");
       Interact("Download rate: %dB/s   Limit: %dB/s   Total: %llu",
-        (int)Self.RateDL(), (int)cfg_max_bandwidth_down,
+        (int)Self.RateDL(), (int)*cfg_max_bandwidth_down,
         (unsigned long long)Self.TotalDL());
       Interact("  Upload rate: %dB/s   Limit: %dB/s   Total: %llu",
-        (int)Self.RateUL(), (int)cfg_max_bandwidth_up,
+        (int)Self.RateUL(), (int)*cfg_max_bandwidth_up,
         (unsigned long long)Self.TotalUL());
       time_t t = Tracker.GetReportTime();
       if( t ){
@@ -734,28 +731,27 @@ int Console::OperatorMenu(const char *param)
         (int)BTCONTENT.GetUnwantedBlocks());
       Interact("");
       Interact("Peers: %d   Min: %d   Max: %d",
-        (int)WORLD.GetPeersCount(), (int)cfg_min_peers, (int)cfg_max_peers);
+        (int)WORLD.GetPeersCount(), (int)*cfg_min_peers, (int)*cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
       Interact("Announce URL: %s", BTCONTENT.GetAnnounce());
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
         (double)Self.TotalUL() / ( Self.TotalDL() ? Self.TotalDL() :
                                      BTCONTENT.GetTotalFilesLength() ),
-        (unsigned long)cfg_seed_hours, cfg_seed_ratio);
+        (unsigned long)*cfg_seed_hours, *cfg_seed_ratio);
       Interact("Cache in use: %dKB  Wants: %dKB  Max: %dMB",
         (int)(BTCONTENT.CacheUsed()/1024), (int)(BTCONTENT.CacheSize()/1024),
-        (int)cfg_cache_size);
-      if(arg_ctcs) Interact("CTCS Server: %s", arg_ctcs);
-      if(arg_verbose) cpu();
+        (int)*cfg_cache_size);
+      if(*cfg_ctcs) Interact("CTCS Server: %s", *cfg_ctcs);
+      if(*cfg_verbose) cpu();
       oper_mode = 0;
       return 1;
     }else if( sel == 2 + O_NCHANNELS+1 + STATUSLINES ){  // pause/resume
-      if( WORLD.IsPaused() ) WORLD.Resume();
-      else WORLD.Pause();
+      cfg_pause = !*cfg_pause;
       oper_mode = 0;
       return 1;
     }else if( sel == 3 + O_NCHANNELS+1 + STATUSLINES ){  // daemon
-      Daemonize();
+      cfg_daemon = true;
       oper_mode = 0;
       return 1;
     }else if( sel == 4 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
@@ -788,6 +784,7 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
 {
   ConStream *dest = (ConStream *)0;
 
+  if( !param ) return -1;
   if( 0==strcasecmp(param, m_stdout.GetName()) ) dest = &m_stdout;
   else if( 0==strcasecmp(param, m_stderr.GetName()) ) dest = &m_stderr;
   else if( 0==strcasecmp(param, m_stdin.GetName()) ) dest = &m_stdin;
@@ -828,7 +825,7 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
       if( !in_use ) delete m_streams[channel];
       else if( O_INPUT==channel ) m_streams[O_INPUT]->RestoreMode();
     }
-    if( notify && (!arg_daemon || !m_streams[channel]->IsTTY()) ){
+    if( notify && (!*cfg_daemon || !m_streams[channel]->IsTTY()) ){
       switch( channel ){
       case O_NORMAL:
         Print("Output channel is now %s", dest->GetName());
@@ -882,9 +879,9 @@ void Console::Status(int immediate)
   if( m_pre_dlrate.TimeUsed() || immediate ){
     if( m_skip_status ) m_skip_status = 0;
     else if( !m_streams[O_NORMAL]->IsSuspended() ||
-             (arg_verbose && !m_streams[O_DEBUG]->IsSuspended()) ){
+             (*cfg_verbose && !m_streams[O_DEBUG]->IsSuspended()) ){
       // optimized to generate the status line only if it will be output
-      (this->*m_statusline[m_status_format])(buffer, sizeof(buffer));
+      (this->*m_statusline[*cfg_status_format])(buffer, sizeof(buffer));
 
       if( !m_status_last ) Print_n("");
       int tmplen = 0;
@@ -914,9 +911,9 @@ void Console::Status(int immediate)
       Update("%*.*s", -tmplen, tmplen, buffer);
       m_status_last = 1;
 
-      if(arg_verbose)
+      if(*cfg_verbose)
         Debug("Cache: %dK/%dM  Hits: %d  Miss: %d  %d%%  Pre: %d/%d",
-          (int)(BTCONTENT.CacheUsed()/1024), (int)cfg_cache_size,
+          (int)(BTCONTENT.CacheUsed()/1024), (int)*cfg_cache_size,
           (int)BTCONTENT.CacheHits(), (int)BTCONTENT.CacheMiss(),
           BTCONTENT.CacheHits() ? (int)(100 * BTCONTENT.CacheHits() /
             (BTCONTENT.CacheHits()+BTCONTENT.CacheMiss())) : 0,
@@ -927,6 +924,14 @@ void Console::Status(int immediate)
     m_pre_dlrate = Self.GetDLRate();
     m_pre_ulrate = Self.GetULRate();
   }
+}
+
+
+const char *Console::StatusLine()
+{
+  static char buffer[80];
+  (this->*m_statusline[*cfg_status_format])(buffer, sizeof(buffer));
+  return buffer;
 }
 
 
@@ -1047,14 +1052,15 @@ void Console::StatusLine1(char buffer[], size_t length)
       else remain = 99999;
     }
   }else{  // seeding
-    if( cfg_seed_hours )
-      remain = (long)cfg_seed_hours * 60 - (now - BTCONTENT.GetSeedTime()) / 60;
+    if( *cfg_seed_time )
+      remain = (long)( (*cfg_seed_time / 60) -
+                       (now - BTCONTENT.GetSeedTime()) / 60 );
     else if( Self.RateUL() ){
       // don't overflow remain
-      if( cfg_seed_ratio *
+      if( *cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
           Self.TotalUL() < (dt_datalen_t)Self.RateUL() << 22 ){
-        remain = (long)( cfg_seed_ratio *
+        remain = (long)( *cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -
           Self.TotalUL() ) / Self.RateUL() / 60;
       }else remain = 99999;
@@ -1118,7 +1124,7 @@ void Console::Print(const char *message, ...)
       SyncNewlines(O_NORMAL);
     va_end(ap);
   }
-  if( arg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
+  if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
     if( m_streams[O_DEBUG]->Output(message, ap) )
       SyncNewlines(O_DEBUG);
@@ -1146,7 +1152,7 @@ void Console::Print_n(const char *message, ...)
       SyncNewlines(O_NORMAL);
     va_end(ap);
   }
-  if( arg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
+  if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
     if( m_streams[O_DEBUG]->Output_n(message, ap) )
       SyncNewlines(O_DEBUG);
@@ -1172,7 +1178,7 @@ void Console::Update(const char *message, ...)
       SyncNewlines(O_NORMAL);
     va_end(ap);
   }
-  if( arg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
+  if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
     if( m_streams[O_DEBUG]->Update(message, ap) )
       SyncNewlines(O_DEBUG);
@@ -1195,14 +1201,14 @@ void Console::Warning(int sev, const char *message, ...)
   if( m_streams[O_WARNING]->Output(message, ap) )
     SyncNewlines(O_WARNING);
   va_end(ap);
-  if( arg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_WARNING]) ){
+  if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_WARNING]) ){
     va_start(ap, message);
     if( m_streams[O_DEBUG]->Output(message, ap) )
       SyncNewlines(O_DEBUG);
     va_end(ap);
   }
 
-  if( sev && arg_ctcs ){
+  if( sev && *cfg_ctcs ){
     char cmsg[CTCS_BUFSIZE];
     va_start(ap, message);
     vsnprintf(cmsg, CTCS_BUFSIZE, message, ap);
@@ -1215,7 +1221,7 @@ void Console::Warning(int sev, const char *message, ...)
 void Console::Debug(const char *message, ...)
 {
   static char buffer[80];
-  if( !arg_verbose ) return;
+  if( !*cfg_verbose ) return;
 
   char *format = (char *)0;
   size_t buflen;
@@ -1251,7 +1257,7 @@ void Console::Debug_n(const char *message, ...)
 {
   static char buffer[80];
   static int f_new_line = 1;
-  if( !arg_verbose ) return;
+  if( !*cfg_verbose ) return;
 
   va_list ap;
 
@@ -1363,7 +1369,7 @@ void Console::SyncNewlines(int master)
 
 void Console::cpu()
 {
-  if(arg_verbose)
+  if(*cfg_verbose)
     Debug( "%.2f CPU seconds used; %lu seconds elapsed (%.2f%% usage)",
       clock() / (double)CLOCKS_PER_SEC,
       (unsigned long)(time((time_t *)0) - BTCONTENT.GetStartTime()),
@@ -1411,18 +1417,19 @@ void Console::Daemonize()
   pid_t r;
   int nullfd = -1;
 
-  if( cfg_cache_size && BTCONTENT.CacheUsed() ){
-    orig_cache_size = cfg_cache_size;
+  if( *cfg_cache_size && BTCONTENT.CacheUsed() ){
+    orig_cache_size = *cfg_cache_size;
     cfg_cache_size /= 2;
-    BTCONTENT.CacheConfigure();
   }
 
   if( (r = fork()) < 0 ){
     Warning(2, "warn, fork to background failed:  %s", strerror(errno));
-    arg_daemon = 0;
+    cfg_daemon = false;
     goto restorecache;
-  }else if( r ) exit(EXIT_SUCCESS);
-  if( !arg_daemon ) arg_daemon = 1;
+  }else if( r ){
+    g_secondary_process = g_daemon_parent = true;
+    exit(EXIT_SUCCESS);
+  }
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
     if( m_streams[i]->IsTTY() && ChangeChannel((dt_conchan_t)i, "off", 0) < 0 )
@@ -1444,13 +1451,15 @@ void Console::Daemonize()
       "warn, final fork failed (continuing in background):  %s",
       strerror(errno));
     goto restorecache;
-  }else if( r ) exit(EXIT_SUCCESS);
-  else if(arg_verbose) Debug("Running in daemon (background) mode.");
+  }else if( r ){
+    g_secondary_process = true;
+    exit(EXIT_SUCCESS);
+  }
+  else if(*cfg_verbose) Debug("Running in daemon (background) mode.");
 
  restorecache:
   if( orig_cache_size ){
     cfg_cache_size = orig_cache_size;
-    BTCONTENT.CacheConfigure();
   }
 #endif
 }
@@ -1458,7 +1467,7 @@ void Console::Daemonize()
 
 int Console::OpenNull(int nullfd, ConStream *stream, int sfd)
 {
-  if( stream->IsTTY() || arg_daemon == 1 ){
+  if( stream->IsTTY() || !*cfg_redirect_io ){
     int mfd = stream->Fileno();
     if( mfd < 0 ) mfd = sfd;
     stream->Close();

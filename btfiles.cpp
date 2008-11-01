@@ -26,12 +26,6 @@
 #include "compat.h"
 #endif
 
-enum dt_alloc_t{
-  DT_ALLOC_SPARSE = 0,
-  DT_ALLOC_FULL   = 1,
-  DT_ALLOC_NONE   = 2
-};
-
 #define MAX_OPEN_FILES 20                // max simultaneous open data files
 #define OPT_IO_SIZE (256*1024)           // optimal I/O size for large ops
 #define MAX_STAGEFILE_SIZE (2*1024*1024) // [soft] size limit of a staging file
@@ -60,7 +54,7 @@ btFiles::~btFiles()
 
   _btf_destroy();
 
-  if( !cfg_child_process &&
+  if( !g_secondary_process &&
       0==stat(m_staging_path, &sb) && S_ISDIR(sb.st_mode) &&
       (dp = opendir(m_staging_path)) ){
     while( (dirp = readdir(dp)) ){
@@ -71,7 +65,7 @@ btFiles::~btFiles()
     }
     closedir(dp);
     if( f_remove ){
-      if(arg_verbose) CONSOLE.Debug("Remove dir \"%s\"", m_staging_path);
+      if(*cfg_verbose) CONSOLE.Debug("Remove dir \"%s\"", m_staging_path);
       if( remove(m_staging_path) < 0 )
         CONSOLE.Warning(2, "warn, remove directory \"%s\" failed:  %s",
           m_staging_path, strerror(errno));
@@ -106,7 +100,7 @@ int btFiles::_btf_close(BTFILE *pbf)
 {
   if( !pbf->bf_flag_opened ) return 0;
 
-  if(arg_verbose) CONSOLE.Debug("Close file \"%s\"", pbf->bf_filename);
+  if(*cfg_verbose) CONSOLE.Debug("Close file \"%s\"", pbf->bf_filename);
 
   if( fclose(pbf->bf_fp) == EOF )
     CONSOLE.Warning(2, "warn, error closing file \"%s\":  %s",
@@ -136,7 +130,7 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
     if( _btf_close_oldest() < 0 ) return -1;
   }
 
-  if(arg_verbose) CONSOLE.Debug("Open mode=%s %sfile \"%s\"", mode,
+  if(*cfg_verbose) CONSOLE.Debug("Open mode=%s %sfile \"%s\"", mode,
     pbf->bf_flag_staging ? "staging " : "", pbf->bf_filename);
 
   if( pbf->bf_flag_staging ){
@@ -250,7 +244,7 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
           char fn[MAXPATHLEN], tmpdir[m_fsizelen+1];
           sprintf(tmpdir, "%.*llu", (int)m_fsizelen, (unsigned long long)off);
           snprintf(fn, MAXPATHLEN, "%s%c%s", m_staging_path, PATH_SP, tmpdir);
-          if(arg_verbose) CONSOLE.Debug("Create dir \"%s\"", fn);
+          if(*cfg_verbose) CONSOLE.Debug("Create dir \"%s\"", fn);
           if( mkdir(fn, 0755) < 0 ){
             CONSOLE.Warning(1, "error, create directory \"%s\" failed:  %s",
               fn, strerror(errno));
@@ -365,12 +359,12 @@ int btFiles::MergeStaging(BTFILE *dst)
   int f_remove = 0;
 
   if( src->bf_offset + src->bf_size <= dst->bf_offset + dst->bf_size ){
-    if(arg_verbose)
+    if(*cfg_verbose)
       CONSOLE.Debug("Staging file %s range already present in \"%s\"",
         src->bf_filename, dst->bf_filename);
     goto delsrc;
   }
-  if(arg_verbose) CONSOLE.Debug("Merge file %s to \"%s\"", src->bf_filename,
+  if(*cfg_verbose) CONSOLE.Debug("Merge file %s to \"%s\"", src->bf_filename,
     dst->bf_filename);
 
   if( !src->bf_flag_opened && _btf_open(src, 0) < 0 ){
@@ -428,7 +422,7 @@ int btFiles::MergeStaging(BTFILE *dst)
  delsrc:
   _btf_close(src);
   sprintf(buf, "%s%c%s", m_staging_path, PATH_SP, src->bf_filename);
-  if(arg_verbose) CONSOLE.Debug("Delete file \"%s\"", buf);
+  if(*cfg_verbose) CONSOLE.Debug("Delete file \"%s\"", buf);
   if( remove(buf) < 0 ){
     CONSOLE.Warning(2, "error deleting file \"%s\":  %s", buf, strerror(errno));
   }
@@ -457,7 +451,7 @@ int btFiles::MergeStaging(BTFILE *dst)
       }
       closedir(dp);
       if( f_remove ){
-        if(arg_verbose) CONSOLE.Debug("Remove dir \"%s\"", buf);
+        if(*cfg_verbose) CONSOLE.Debug("Remove dir \"%s\"", buf);
         if( remove(buf) < 0 )
           CONSOLE.Warning(2, "warn, remove directory \"%s\" failed:  %s", buf,
             strerror(errno));
@@ -586,7 +580,7 @@ int btFiles::ExtendFile(BTFILE *pbf)
     return 0;
   }
 
-  if( arg_allocate == DT_ALLOC_FULL ){
+  if( *cfg_allocate == DT_ALLOC_FULL ){
     off_t pos = pbf->bf_size;
     if( fseeko(pbf->bf_fp, pos, SEEK_SET) < 0 ){
       CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
@@ -612,7 +606,7 @@ int btFiles::_btf_ftruncate(int fd, dt_datalen_t length)
 
   if( length == 0 ) return 0;
 
-  if( arg_allocate == DT_ALLOC_FULL ){  // preallocate to disk (-a)
+  if( *cfg_allocate == DT_ALLOC_FULL ){  // preallocate to disk (-a)
     char *c = new char[OPT_IO_SIZE];
     if( !c ){
       errno = ENOMEM;
@@ -830,6 +824,8 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
     return -1;
   }
 
+  cfg_convert_filenames.Lock();
+
   memcpy(path, s, q);
   path[q] = '\0';
 
@@ -858,7 +854,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
       if( !tmpfn ) return -1;
 #endif
       if( (f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5)) ){
-        if( arg_flg_convert_filenames ){
+        if( *cfg_convert_filenames ){
           m_directory = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
           if( !m_directory ){
@@ -874,7 +870,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
         }
       }
       delete []tmpfn;
-      if( !f_conv || !arg_flg_convert_filenames ){
+      if( !f_conv || !*cfg_convert_filenames ){
         m_directory = new char[strlen(path) + 1];
 #ifndef WINDOWS
         if( !m_directory ) return -1;
@@ -911,7 +907,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
       if( !tmpfn ) return -1;
 #endif
       if( (f_conv = ConvertFilename(tmpfn, path, strlen(path)*2+5)) ){
-        if( arg_flg_convert_filenames ){
+        if( *cfg_convert_filenames ){
           pbf->bf_filename = new char[strlen(tmpfn) + 1];
 #ifndef WINDOWS
           if( !pbf->bf_filename ){
@@ -927,7 +923,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
         }
       }
       delete []tmpfn;
-      if( !f_conv || !arg_flg_convert_filenames ){
+      if( !f_conv || !*cfg_convert_filenames ){
         pbf->bf_filename = new char[strlen(path) + 1];
 #ifndef WINDOWS
         if( !pbf->bf_filename ) return -1;
@@ -957,7 +953,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
       if( !m_btfhead->bf_filename ) return -1;
 #endif
       strcpy(m_btfhead->bf_filename, saveas);
-    }else if( arg_flg_convert_filenames ){
+    }else if( *cfg_convert_filenames ){
       char *tmpfn = new char[strlen(path)*2+5];
 #ifndef WINDOWS
       if( !tmpfn ) return -1;
@@ -1060,7 +1056,7 @@ int btFiles::SetupFiles(const char *torrentid)
           pbf->bf_flag_staging = 1;
           pbf->bf_offset = offset;
           pbf->bf_size = sb.st_size;
-          if(arg_verbose) CONSOLE.Debug("Found staging file %s size %llu",
+          if(*cfg_verbose) CONSOLE.Debug("Found staging file %s size %llu",
             pbf->bf_filename, (unsigned long long)pbf->bf_size);
           m_stagecount++;
           if( pbf->bf_size > 0 ) files_exist = 1;
@@ -1118,7 +1114,10 @@ int btFiles::CreateFiles()
   BTFILE *pbf;
   dt_datalen_t idxoff, fend, idxend;
 
-  if( (arg_allocate == DT_ALLOC_NONE || !BTCONTENT.pBMasterFilter->IsEmpty()) &&
+  cfg_allocate.Lock();
+
+  if( (*cfg_allocate == DT_ALLOC_NONE ||
+        !BTCONTENT.pBMasterFilter->IsEmpty()) &&
       stat(m_staging_path, &sb) < 0 ){
     if( ENOENT == errno ){
       if( MkPath(m_staging_path) < 0 || mkdir(m_staging_path, 0755) < 0 ){
@@ -1134,7 +1133,7 @@ int btFiles::CreateFiles()
   }
 
   // Create/allocate files.
-  if( arg_allocate == DT_ALLOC_FULL || arg_allocate == DT_ALLOC_SPARSE ){
+  if( *cfg_allocate == DT_ALLOC_FULL || *cfg_allocate == DT_ALLOC_SPARSE ){
     CONSOLE.Interact_n("");
     CONSOLE.Interact_n("Allocating files");
     MergeAll();
@@ -1164,7 +1163,7 @@ int btFiles::CreateFiles()
       if( idxend <= fend ) pBFPieces->Set(idx);
     }
   }
-  if(arg_verbose)
+  if(*cfg_verbose)
     CONSOLE.Debug("Files contain %d pieces", (int)pBFPieces->Count());
 
   return pBFPieces->IsEmpty() ? 0 : 1;
@@ -1178,14 +1177,14 @@ int btFiles::ExtendAll()
 
   for( ; pbf; pbf = pbf->bf_nextreal, i++ ){
     if( pbf->bf_size > 0 && pbf->bf_size >= pbf->bf_length ) continue;
-    if( arg_file_to_download ){
+    if( *cfg_file_to_download ){
       SetFilter(i, &tmpFilter, BTCONTENT.GetPieceLength());
       tmpFilter.Invert();
       tmpFilter.And(BTCONTENT.pBMasterFilter);
       if( !tmpFilter.IsEmpty() )
         continue;
     }
-    if( arg_allocate != DT_ALLOC_FULL ) CONSOLE.Interact_n(".");
+    if( *cfg_allocate != DT_ALLOC_FULL ) CONSOLE.Interact_n(".");
     if( ExtendFile(pbf) < 0 ) return -1;
   }
   return 0;

@@ -12,7 +12,7 @@
 
 #define BUF_DEF_SIZ 256
 #define BUF_INC_SIZ 256
-#define BUF_MAX_SIZ (cfg_max_slice_size + BUF_DEF_SIZ + BUF_INC_SIZ)
+#define BUF_MAX_SIZ (MAX_SLICE_SIZE + BUF_DEF_SIZ + BUF_INC_SIZ)
 
 class BufIo
 {

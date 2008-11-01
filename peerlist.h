@@ -36,6 +36,8 @@ class PeerList
   dt_rate_t m_prev_limit_up;
   char m_listen[22];
   dt_count_t m_readycnt;      // cumulative count of ready peers
+  uint16_t m_max_listen_port;
+  uint16_t m_min_listen_port;
 
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;
@@ -45,6 +47,7 @@ class PeerList
   unsigned char m_f_idled:1;     // idle action taken this cycle
   unsigned char m_reserved:2;
 
+  int InitialListenPort();
   int Accepter();
   int UnchokeCheck(btPeer *peer, btPeer *peer_array[]);
   int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
@@ -61,7 +64,7 @@ class PeerList
   ~PeerList();
 
   // TotalPeers() is now GetPeersCount() for consistency
-  int Initial_ListenPort();
+  int Init();
   const char *GetListen() const { return m_listen; }
 
   int IsEmpty() const { return m_peers_count ? 0 : 1; }
@@ -81,11 +84,11 @@ class PeerList
 
   int BandwidthLimitUp(double grace=0) const {
     return BandwidthLimited(Self.LastSendTime(), Self.LastSizeSent(),
-                            cfg_max_bandwidth_up, grace);
+                            *cfg_max_bandwidth_up, grace);
   }
   int BandwidthLimitDown(double grace=0) const {
     return BandwidthLimited(Self.LastRecvTime(), Self.LastSizeRecv(),
-                            cfg_max_bandwidth_down, grace);
+                            *cfg_max_bandwidth_down, grace);
   }
   int BandwidthLimited(double lasttime, bt_length_t lastsize, dt_rate_t limit,
     double grace) const;

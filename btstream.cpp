@@ -46,7 +46,7 @@ void put_bt_int(char *to, bt_int_t from)
 void btStream::Close()
 {
   if( INVALID_SOCKET != sock ){
-    if( !cfg_child_process )
+    if( !g_secondary_process )
       shutdown(sock, SHUT_RDWR);
     CLOSE_SOCKET(sock);
     sock_was = sock;
@@ -142,7 +142,7 @@ int btStream::HaveMessage() const
   bt_msglen_t msglen;
   if( BT_LEN_PRE <= in_buffer.Count() ){
     msglen = get_bt_msglen(in_buffer.BasePointer());
-    if( cfg_max_slice_size + BT_LEN_PRE + BT_MSGLEN_PIECE < msglen )
+    if( MAX_SLICE_SIZE + BT_LEN_PRE + BT_MSGLEN_PIECE < msglen )
       return -1;  // message too long
     if( msglen + BT_LEN_PRE <= in_buffer.Count() ) return 1;
   }
@@ -170,7 +170,7 @@ ssize_t btStream::Feed(size_t limit, Rate *rate)
         change = nbytes - m_oldbytes;
         m_oldbytes = nbytes;
       }
-      rate->RateAdd(change, cfg_max_bandwidth_down, rightnow);
+      rate->RateAdd(change, *cfg_max_bandwidth_down, rightnow);
     }
   }
   return retval;

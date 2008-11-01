@@ -441,9 +441,9 @@ bt_length_t RequestQueue::Slice_Length(bt_index_t idx, dt_count_t sidx) const
 {
   bt_length_t plen = BTCONTENT.GetPieceLength(idx);
 
-  return (sidx == ( plen / cfg_req_slice_size)) ?
-    (plen % cfg_req_slice_size) :
-    cfg_req_slice_size;
+  return (sidx == ( plen / *cfg_req_slice_size)) ?
+    (plen % *cfg_req_slice_size) :
+    *cfg_req_slice_size;
 }
 
 dt_count_t RequestQueue::NSlices(bt_index_t idx) const
@@ -452,8 +452,8 @@ dt_count_t RequestQueue::NSlices(bt_index_t idx) const
   dt_count_t n;
 
   len = BTCONTENT.GetPieceLength(idx);
-  n = len / cfg_req_slice_size;
-  return ( len % cfg_req_slice_size ) ? n + 1 : n;
+  n = len / *cfg_req_slice_size;
+  return ( len % *cfg_req_slice_size ) ? n + 1 : n;
 }
 
 int RequestQueue::IsValidRequest(bt_index_t idx, bt_offset_t off,
@@ -462,7 +462,7 @@ int RequestQueue::IsValidRequest(bt_index_t idx, bt_offset_t off,
   return ( idx < BTCONTENT.GetNPieces() &&
            len &&
            (off + len) <= BTCONTENT.GetPieceLength(idx) &&
-           len <= cfg_max_slice_size ) ?
+           len <= MAX_SLICE_SIZE ) ?
     1 : 0;
 }
 
@@ -547,7 +547,7 @@ int PendingQueue::Pending(RequestQueue *prq)
     return -1;
   }
   if( prq->Qlen(prq->GetRequestIdx()) >=
-      BTCONTENT.GetPieceLength() / cfg_req_slice_size ){
+      BTCONTENT.GetPieceLength() / *cfg_req_slice_size ){
     /* This shortcut relies on the fact that we don't add to a queue if it
        already contains a full piece. */
     prq->Empty();

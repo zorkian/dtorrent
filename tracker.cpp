@@ -51,7 +51,7 @@ btTracker::btTracker()
 btTracker::~btTracker()
 {
   if( m_sock != INVALID_SOCKET ){
-    if( !cfg_child_process )
+    if( !g_secondary_process )
       shutdown(m_sock, SHUT_RDWR);
     CLOSE_SOCKET(m_sock);
   }
@@ -62,9 +62,9 @@ void btTracker::Reset(time_t new_interval)
   if( new_interval ) m_interval = new_interval;
 
   if( INVALID_SOCKET != m_sock ){
-    if( arg_verbose && DT_TRACKER_READY==m_status )
+    if( *cfg_verbose && DT_TRACKER_READY==m_status )
       CONSOLE.Debug("Disconnected from tracker");
-    if( !cfg_child_process )
+    if( !g_secondary_process )
       shutdown(m_sock, SHUT_RDWR);
     CLOSE_SOCKET(m_sock);
     m_sock = INVALID_SOCKET;
@@ -172,7 +172,7 @@ int btTracker::_UpdatePeerList(const char *buf, size_t bufsiz)
                    DT_QUERY_INT) ){
     m_peers_count = m_seeds_count + bint;
   }else{
-    if( arg_verbose && 0==m_seeds_count )
+    if( *cfg_verbose && 0==m_seeds_count )
       CONSOLE.Debug("Tracker did not supply peers count.");
     m_peers_count = m_seeds_count;
   }
@@ -241,7 +241,7 @@ int btTracker::_UpdatePeerList(const char *buf, size_t bufsiz)
     m_peers_count = cnt + 1;  // include myself
     m_f_boguspeercnt = 1;
   }else m_f_boguspeercnt = 0;
-  if(arg_verbose) CONSOLE.Debug("new peers=%d; next check in %d sec",
+  if(*cfg_verbose) CONSOLE.Debug("new peers=%d; next check in %d sec",
     (int)cnt, (int)m_interval);
   return 0;
 }
@@ -299,7 +299,7 @@ int btTracker::CheckResponse()
         char *c = strstr(m_path, "?info_hash=");
         if( !c ) c = strstr(m_path, "&info_hash=");
         if( c ) *c = '\0';
-        if(arg_verbose) CONSOLE.Debug("tracker redirect to %s", redirect);
+        if(*cfg_verbose) CONSOLE.Debug("tracker redirect to %s", redirect);
         if( BuildBaseRequest() < 0 ) return -1;
       }
 
@@ -348,19 +348,19 @@ int btTracker::Initial()
 
   /* get local ip address */
   struct sockaddr_in addr;
-  if( cfg_public_ip ){  // Get specified public address.
-    if( (addr.sin_addr.s_addr = inet_addr(cfg_public_ip)) == INADDR_NONE ){
+  if( *cfg_public_ip ){  // Get specified public address.
+    if( (addr.sin_addr.s_addr = inet_addr(*cfg_public_ip)) == INADDR_NONE ){
       struct hostent *h;
-      h = gethostbyname(cfg_public_ip);
+      h = gethostbyname(*cfg_public_ip);
       memcpy(&addr.sin_addr, h->h_addr, sizeof(struct in_addr));
     }
     Self.SetIp(addr);
     goto next_step;
   }
-  if( cfg_listen_ip ){  // Get specified listen address.
-    addr.sin_addr.s_addr = cfg_listen_ip;
+  if( *cfg_listen_ip ){  // Get specified listen address.
+    addr.sin_addr.s_addr = *cfg_listen_ip;
     Self.SetIp(addr);
-    if( !IsPrivateAddress(cfg_listen_ip) ) goto next_step;
+    if( !IsPrivateAddress(*cfg_listen_ip) ) goto next_step;
   }
   { // Try to get address corresponding to the hostname.
     struct hostent *h;
@@ -372,7 +372,7 @@ int btTracker::Initial()
 //      CONSOLE.Debug("Host name: %s", h->h_name);
 //      CONSOLE.Debug("Address: %s", inet_ntoa(*((struct in_addr *)h->h_addr)));
         if( !IsPrivateAddress(((struct in_addr *)h->h_addr)->s_addr) ||
-            !cfg_listen_ip ){
+            !*cfg_listen_ip ){
           memcpy(&addr.sin_addr, h->h_addr, sizeof(struct in_addr));
           Self.SetIp(addr);
         }
@@ -404,10 +404,11 @@ int btTracker::BuildBaseRequest()
   else format = REQ_URL_P1_FMT;
 
   char *opt = (char *)0;
-  if( cfg_public_ip ){
-    opt = new char[5+strlen(cfg_public_ip)];
+  cfg_public_ip.Lock();
+  if( *cfg_public_ip ){
+    opt = new char[5+strlen(*cfg_public_ip)];
     strcpy(opt, "&ip=");
-    strcat(opt, cfg_public_ip);
+    strcat(opt, *cfg_public_ip);
   }else{
     struct sockaddr_in addr;
     Self.GetAddress(&addr);
@@ -423,7 +424,7 @@ int btTracker::BuildBaseRequest()
                   Http_url_encode(ih_buf, (char *)BTCONTENT.GetInfoHash(), 20),
                   Http_url_encode(pi_buf, (char *)BTCONTENT.GetPeerId(), 20),
                   opt ? opt : "",
-                  cfg_listen_port,
+                  (int)*cfg_listen_port,
                   m_key) ){
     return -1;
   }
@@ -446,7 +447,7 @@ int btTracker::Connect()
 
   /* we only need to bind if we have specified an ip
      we need it to bind here before the connect! */
-  if( cfg_listen_ip != 0 ){
+  if( *cfg_listen_ip != 0 ){
     struct sockaddr_in addr;
     // clear the struct as requested in the manpages
     memset(&addr, 0, sizeof(sockaddr_in));
@@ -455,7 +456,7 @@ int btTracker::Connect()
     // we want the system to choose port
     addr.sin_port = 0;
     // set the defined ip from the commandline
-    addr.sin_addr.s_addr = cfg_listen_ip;
+    addr.sin_addr.s_addr = *cfg_listen_ip;
     // bind it or return...
     if( bind(m_sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))
           != 0 ){
@@ -477,7 +478,7 @@ int btTracker::Connect()
   }else if( r == -2 ){
     m_status = DT_TRACKER_CONNECTING;
   }else{
-    if(arg_verbose) CONSOLE.Debug("Connected to tracker");
+    if(*cfg_verbose) CONSOLE.Debug("Connected to tracker");
     if( 0 == SendRequest() ) m_status = DT_TRACKER_READY;
     else{
       CLOSE_SOCKET(m_sock);
@@ -516,7 +517,7 @@ int btTracker::SendRequest()
                    (unsigned long long)(m_totalul = Self.TotalUL()),
                    (unsigned long long)m_totaldl,
                    (unsigned long long)BTCONTENT.GetLeftBytes(),
-                   (int)cfg_max_peers) ){
+                   (int)*cfg_max_peers) ){
     return -1;
   }
 
@@ -531,7 +532,7 @@ int btTracker::SendRequest()
   }
 
   strcat(REQ_BUFFER, "\r\nUser-Agent: ");
-  strcat(REQ_BUFFER, cfg_user_agent);
+  strcat(REQ_BUFFER, *cfg_user_agent);
 
   strcat(REQ_BUFFER, "\r\n\r\n");
 //CONSOLE.Warning(0, "SendRequest: %s", REQ_BUFFER);
@@ -548,7 +549,7 @@ int btTracker::SendRequest()
     m_report_time = now;
     m_report_dl = m_totaldl;
     m_report_ul = m_totalul;
-    if(arg_verbose)
+    if(*cfg_verbose)
       CONSOLE.Debug("Reported to tracker:  %llu uploaded, %llu downloaded",
         (unsigned long long)m_report_ul, (unsigned long long)m_report_dl);
   }
@@ -566,8 +567,8 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
     }
     if( now - m_last_timestamp >= m_interval ||
         // Connect to tracker early if we run low on peers.
-        (WORLD.GetPeersCount() < cfg_min_peers &&
-          m_prevpeers >= cfg_min_peers && now - m_last_timestamp >= 15) ){
+        (WORLD.GetPeersCount() < *cfg_min_peers &&
+          m_prevpeers >= *cfg_min_peers && now - m_last_timestamp >= 15) ){
       m_prevpeers = WORLD.GetPeersCount();
 
       if( Connect() < 0 ){
@@ -606,14 +607,14 @@ int btTracker::SocketReady(fd_set *rfdp, fd_set *wfdp, int *nfds,
       error = errno;
     if( error ){
       if( ECONNREFUSED == error ){
-        if(arg_verbose) CONSOLE.Debug("tracker connection refused");
+        if(*cfg_verbose) CONSOLE.Debug("tracker connection refused");
         m_connect_refuse_click++;
       }else CONSOLE.Warning(2,
           "warn, connect to tracker failed:  %s", strerror(error));
       Reset(15);
       return -1;
     }else{
-      if(arg_verbose) CONSOLE.Debug("Connected to tracker");
+      if(*cfg_verbose) CONSOLE.Debug("Connected to tracker");
       if( SendRequest() == 0 ) m_status = DT_TRACKER_READY;
       else{
         Reset(15);

@@ -49,7 +49,7 @@ void Downloader()
       if( Tracker.IsQuitting() && !Tracker.IsRestarting() ){
         stopped = 1;
         WORLD.Pause();
-        if( arg_ctcs ) CTCS.Send_Status();
+        if( *cfg_ctcs ) CTCS.Send_Status();
       }
     }
 
@@ -66,7 +66,7 @@ void Downloader()
       WORLD.DontWaitBW();
       r = Tracker.IntervalCheck(&rfd, &wfd);
       if( r > maxfd ) maxfd = r;
-      if( arg_ctcs ){
+      if( *cfg_ctcs ){
         r = CTCS.IntervalCheck(&rfd, &wfd);
         if( r > maxfd ) maxfd = r;
       }

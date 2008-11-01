@@ -11,6 +11,12 @@
 #include "bitfield.h"
 #include "btconfig.h"
 
+enum dt_alloc_t{
+  DT_ALLOC_SPARSE = 0,
+  DT_ALLOC_FULL   = 1,
+  DT_ALLOC_NONE   = 2
+};
+
 typedef struct _btfile{
   char *bf_filename;         // full path of file
   FILE *bf_fp;
