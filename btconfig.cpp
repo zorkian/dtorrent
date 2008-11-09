@@ -475,6 +475,8 @@ bool Configuration::Save(const char *filename) const
   FILE *fp;
   ConfigGen *config;
   const char *cfgtype;
+  const char *debugcomment = 
+    "# Debug stuff is first to aid in debugging this file.\n";
 
   fp = fopen(filename, "w");
   if( !fp ){
@@ -482,6 +484,17 @@ bool Configuration::Save(const char *filename) const
       filename, strerror(errno));
     return false;
   }
+
+  if( (config = CONFIG["verbose"]) && config->Saving() ){
+    fprintf(fp, debugcomment);
+    debugcomment = (const char *)0;
+    fprintf(fp, "%s=%s\n", config->Tag(), config->Sval());
+  }
+  if( (config = CONFIG["channel.debug"]) && config->Saving() ){
+    if( debugcomment ) fprintf(fp, debugcomment);
+    fprintf(fp, "%s=%s\n", config->Tag(), config->Sval());
+  }
+  if( !debugcomment ) fprintf(fp, "\n");
 
   for( config = CONFIG.First(); config; config = CONFIG.Next(config) ){
     if( config->Saving() ){
@@ -514,7 +527,7 @@ bool Configuration::Load(const char *filename)
   ConfigGen *config;
   char buffer[MAXPATHLEN] = "";
   char *current = buffer, *endpos, *valpos, *tmppos;
-  size_t buflen = 0, count;
+  size_t buflen = 0, curlen = 0, count;
 
   fp = fopen(filename, "r");
   if( !fp ){
@@ -527,15 +540,17 @@ bool Configuration::Load(const char *filename)
   CONSOLE.Debug("Reading configuration from %s", filename);
 
   while( true ){
-    if( 0==buflen || !memchr(buffer, '\n', buflen) ){
+    curlen = buflen - (current - buffer);
+    if( 0==curlen || !memchr(current, '\n', curlen) ){
       if( current != buffer ){
-        memmove(buffer, current, buflen);
+        if( curlen ) memmove(buffer, current, curlen);
         current = buffer;
+        buflen = curlen;
       }else buflen = 0;
       count = fread(buffer + buflen, 1, sizeof(buffer) - buflen - 1, fp);
       if( 0==count ) break;
       buflen += count;
-      buffer[sizeof(buffer)] = '\0';
+      buffer[buflen] = '\0';
     }
     while(isspace(*current)) current++;
     if( (endpos = strpbrk(current, "\r\n")) ){
@@ -550,8 +565,9 @@ bool Configuration::Load(const char *filename)
           config->Save();
         }else CONSOLE.Debug("Unrecognized tag \"%s\" in config file", current);
       }
-      current = endpos;
-      while(strchr("\r\n", *++current));
+      current = endpos + 1;
+      if( (size_t)(current - buffer) >= buflen ) continue;
+      while(strchr("\r\n", *current)) current++;
     }
   }
 
