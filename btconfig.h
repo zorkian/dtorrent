@@ -4,7 +4,7 @@
 // btconfig.h:  Copyright 2008 Dennis Holmes  (dholmes@rahul.net)
 
 #include <time.h>
-#include <stdlib.h>  // atof(), strtoll()
+#include <stdlib.h>  // atof(), strtoll(), getenv()
 #include <limits.h>  // strtoll()
 #include <string.h>
 #include <stdio.h>   // snprintf()
@@ -16,6 +16,24 @@
 
 #include "bttypes.h"
 #include "console.h"
+
+/* According to specs the max slice size is 128K.  While most clients now do
+   not accept a value that large, we want max compatibility. */
+#define MAX_SLICE_SIZE (128*1024)
+#define MIN_SLICE_SIZE (1024)
+#define DEFAULT_SLICE_SIZE (16*1024)
+
+#define PEER_ID_LEN 20
+
+
+/* Is this a secondary process which should not disturb the terminal, existing
+   connections, etc? */
+extern bool g_secondary_process;
+extern bool g_config_only;
+
+extern bool arg_flg_force_seed_mode;
+extern bool arg_flg_check_only;
+extern bool arg_flg_exam_only;
 
 
 /****************************************************************************
@@ -90,6 +108,7 @@ class ConfigGen
   char *m_desc;     // descriptive name/identification
   size_t m_maxlen;
   bool m_hidden, m_locked;
+  bool m_save;
 
  protected:
   char *m_info;     // additional brief info/description
@@ -108,6 +127,8 @@ class ConfigGen
   void Unlock(){ m_locked = false; }
   void Hide(){ m_hidden = true; }
   void Unhide(){ m_hidden = false; }
+  void Save() { m_save = true; }
+  void Unsave() { m_save = false; }
 
   virtual dt_config_t Type() const = 0;
 
@@ -123,6 +144,7 @@ class ConfigGen
   size_t MaxLen() const { return m_maxlen; }
   bool Hidden() const { return m_hidden; }
   bool Locked() const { return m_locked; }
+  bool Saving() const { return m_save; }
 
   bool Match(const char *query) const { return (0==strcmp(m_tag, query)); }
 };
@@ -149,8 +171,8 @@ template<class T> class Config:public ConfigGen
   */
   void (*m_infomaker)(Config<T> *config);
 
-  void Handler(){ if( m_handler ) (*m_handler)(this); }
-  void Infomaker(){ if( m_infomaker ) (*m_infomaker)(this); }
+  void Handler(){ if( m_handler && !g_config_only ) (*m_handler)(this); }
+  void Infomaker(){ if( m_infomaker && !g_config_only ) (*m_infomaker)(this); }
 
   const char *Sprint(char **buffer, T value);
 
@@ -309,7 +331,8 @@ template<class T> bool Config<T>::Valid(T value) const
 
   if( m_minval <= m_maxval && m_maxval > 0 )
     if( value < m_minval || value > m_maxval ) valid = false;
-  if( valid && m_validator ) valid = (*m_validator)(this, value);
+  if( valid && m_validator && !g_config_only )
+    valid = (*m_validator)(this, value);
   return valid;
 }
 
@@ -394,6 +417,9 @@ class Configuration
   ConfigGen *First() const;
   ConfigGen *Next(const ConfigGen *current) const;
 
+  bool Save(const char *filename) const;
+  bool Load(const char *filename);
+
   void Dump() const;
 };
 
@@ -403,24 +429,6 @@ extern Configuration CONFIG;
 
 //===========================================================================
 // Global declarations
-
-/* According to specs the max slice size is 128K.  While most clients now do
-   not accept a value that large, we want max compatibility. */
-#define MAX_SLICE_SIZE (128*1024)
-#define MIN_SLICE_SIZE (1024)
-#define DEFAULT_SLICE_SIZE (16*1024)
-
-#define PEER_ID_LEN 20
-
-
-/* Is this a secondary process which should not disturb the terminal, existing
-   connections, etc? */
-extern bool g_secondary_process;
-
-extern bool arg_flg_force_seed_mode;
-extern bool arg_flg_check_only;
-extern bool arg_flg_exam_only;
-
 
 extern Config<unsigned int> cfg_cache_size;  // megabytes
 
@@ -477,7 +485,11 @@ extern Config<bool> cfg_convert_filenames;
 
 extern Config<int> cfg_status_format;
 
+extern Config<const char *> cfg_config_file;
 
+
+void CfgAllocate(Config<unsigned char> *config);
+void CfgCTCS(Config<const char *> *config);
 void InitConfig();
 
 

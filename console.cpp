@@ -87,7 +87,7 @@ void ConStream::Associate(FILE *stream, const char *name, int mode)
 }
 
 
-int ConStream::SameDev(ConStream *master) const
+int ConStream::SameDev(const ConStream *master) const
 {
   struct stat sbone, sbtwo;
 
@@ -103,6 +103,39 @@ int ConStream::SameDev(ConStream *master) const
 inline int ConStream::IsTTY() const
 {
   return ( Fileno() >= 0 ) ? isatty(Fileno()) : 0;
+}
+
+
+int ConStream::GetSize(bool getrows) const
+{
+  int rows = 0, cols = 0;
+
+  if( IsTTY() ){
+#ifdef TIOCGWINSZ
+    struct winsize tsize;
+    if( ioctl(Fileno(), TIOCGWINSZ, &tsize) >= 0 ){
+      rows = tsize.ws_row;
+      cols = tsize.ws_col;
+    }
+#else
+#ifdef TIOCGSIZE
+    struct ttysize tsize;
+    if( ioctl(Fileno(), TIOCGSIZE, &tsize) >= 0 ){
+      rows = tsize.ts_lines;
+      cols = tsize.ts_cols;
+    }
+#else
+#ifdef WIOCGETD
+    struct uwdata tsize;
+    if( ioctl(Fileno(), WIOCGETD, &tsize) >= 0 ){
+      rows = tsize.uw_height / tsize.uw_vs;
+      cols = tsize.uw_width / tsize.uw_hs;
+    }
+#endif
+#endif
+#endif
+  }
+  return getrows ? rows : cols;
 }
 
 
@@ -246,10 +279,16 @@ int ConStream::Update(const char *message, va_list ap)
 
 char *ConStream::Input(char *field, size_t length)
 {
+  char *result, *tmp;
+
   if( m_suspend ) return (char *)0;
 
   m_newline = 1;
-  return fgets(field, length, m_stream);
+  if( (result = fgets(field, length, m_stream)) &&
+      (tmp = strpbrk(field, "\r\n")) ){
+    *tmp = '\0';
+  }
+  return result;
 }
 
 
@@ -321,6 +360,8 @@ Console::Console()
 
   m_status_len = 80;
 
+  opermenu.mode = configmenu.mode = 0;
+
   m_stdout.Associate(stdout, "stdout", 1);
   m_stderr.Associate(stderr, "stderr", 1);
   m_stdin.Associate(stdin, "stdin", 0);
@@ -389,8 +430,9 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
     FD_CLR(m_streams[O_INPUT]->Fileno(), rfdnextp);
     (*nready)--;
     if( DT_CONMODE_LINES == m_streams[O_INPUT]->GetInputMode() ){  // cmd param
+      char *got = m_streams[O_INPUT]->Input(param, sizeof(param));
       SyncNewlines(O_INPUT);
-      if( m_streams[O_INPUT]->Input(param, sizeof(param)) ){
+      if( got ){
         if( (s = strchr(param, '\n')) ) *s = '\0';
         if( '0'==pending ){
           if( OperatorMenu(param) ) pending = '\0';
@@ -591,7 +633,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       case '0':  // operator menu
       case 0x1b:  // Escape key
         pending = '0';
-        OperatorMenu("");
+        OperatorMenu();
         break;
       default:
         Status(1);
@@ -633,58 +675,55 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
 // Return non-zero to exit operator menu mode.
 int Console::OperatorMenu(const char *param)
 {
-  static int oper_mode = 0;
-  static dt_conchan_t channel;
-  static int n_opt;
-
-  if( 0==oper_mode ){
+  if( 0==opermenu.mode ){
     Interact("Operator Menu");
-    n_opt = 0;
+    opermenu.n_opt = 0;
     Interact(" Console Channels:");
-    Interact(" %2d) Normal/status:  %s", ++n_opt,
+    Interact(" %2d) Normal/status:  %s", ++opermenu.n_opt,
                                          m_streams[O_NORMAL]->GetName());
-    Interact(" %2d) Interactive:    %s", ++n_opt,
+    Interact(" %2d) Interactive:    %s", ++opermenu.n_opt,
                                          m_streams[O_INTERACT]->GetName());
-    Interact(" %2d) Error/warning:  %s", ++n_opt,
+    Interact(" %2d) Error/warning:  %s", ++opermenu.n_opt,
                                          m_streams[O_WARNING]->GetName());
-    Interact(" %2d) Debug/verbose:  %s", ++n_opt,
+    Interact(" %2d) Debug/verbose:  %s", ++opermenu.n_opt,
                                          m_streams[O_DEBUG]->GetName());
-    Interact(" %2d) Input:          %s", ++n_opt,
+    Interact(" %2d) Input:          %s", ++opermenu.n_opt,
                                          m_streams[O_INPUT]->GetName());
     char buffer[80];
     Interact(" Status Line Formats:");
     for( int i=0; i < STATUSLINES; i++ ){
       (this->*m_statusline[i])(buffer, sizeof(buffer));
       Interact(" %c%d) %s",
-        (i==*cfg_status_format) ? '*' : ' ', ++n_opt, buffer);
+        (i==*cfg_status_format) ? '*' : ' ', ++opermenu.n_opt, buffer);
     }
     Interact(" Other options:");
-    Interact(" %2d) View detailed status", ++n_opt);
+    Interact(" %2d) View detailed status", ++opermenu.n_opt);
     if( WORLD.IsPaused() )
-      Interact(" %2d) Resume (continue upload/download)", ++n_opt);
-    else Interact(" %2d) Pause (suspend upload/download)", ++n_opt);
+      Interact(" %2d) Resume (continue upload/download)", ++opermenu.n_opt);
+    else Interact(" %2d) Pause (suspend upload/download)", ++opermenu.n_opt);
     if( !*cfg_daemon )
-      Interact(" %2d) Become daemon (fork to background)", ++n_opt);
-    Interact(" %2d) Update tracker stats & get peers", ++n_opt);
-    Interact(" %2d) Restart (recover) the tracker session", ++n_opt);
+      Interact(" %2d) Become daemon (fork to background)", ++opermenu.n_opt);
+    Interact(" %2d) Update tracker stats & get peers", ++opermenu.n_opt);
+    Interact(" %2d) Restart (recover) the tracker session", ++opermenu.n_opt);
+    Interact(" %2d) Configuration", ++opermenu.n_opt);
     Interact_n("Enter selection: ");
     m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
-    oper_mode = 1;
+    opermenu.mode = 1;
     return 0;
   }
-  else if( 1==oper_mode ){
-    if( !*param ){
-      oper_mode = 0;
+  else if( 1==opermenu.mode ){
+    if( !param || !*param ){
+      opermenu.mode = 0;
       Interact("Exiting menu");
       return 1;
     }
     int sel = atoi(param);
-    if( sel < 1 || sel > n_opt ){
+    if( sel < 1 || sel > opermenu.n_opt ){
       Interact_n("Enter selection: ");
       return 0;
     }
     if( sel <= O_NCHANNELS+1 ){  // change i/o channel
-      channel = (dt_conchan_t)(sel - 1);
+      opermenu.channel = (dt_conchan_t)(sel - 1);
       Interact("Possible values are:");
       Interact(" %s", m_stdout.GetName());
       Interact(" %s", m_stderr.GetName());
@@ -692,12 +731,12 @@ int Console::OperatorMenu(const char *param)
       Interact(" a filename");
       Interact_n("Enter a destination: ");
       m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
-      oper_mode = 2;
+      opermenu.mode = 2;
       return 0;
     }else if( sel <= O_NCHANNELS+1 + STATUSLINES ){
       cfg_status_format = sel - (O_NCHANNELS+1) - 1;
-      oper_mode = 0;
-      return OperatorMenu("");
+      opermenu.mode = 0;
+      return OperatorMenu();
     }else if( sel == 1 + O_NCHANNELS+1 + STATUSLINES ){  // detailed status
       m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
       Interact("");
@@ -744,41 +783,224 @@ int Console::OperatorMenu(const char *param)
         (int)*cfg_cache_size);
       if(*cfg_ctcs) Interact("CTCS Server: %s", *cfg_ctcs);
       if(*cfg_verbose) cpu();
-      oper_mode = 0;
+      opermenu.mode = 0;
       return 1;
     }else if( sel == 2 + O_NCHANNELS+1 + STATUSLINES ){  // pause/resume
       cfg_pause = !*cfg_pause;
-      oper_mode = 0;
+      opermenu.mode = 0;
       return 1;
     }else if( sel == 3 + O_NCHANNELS+1 + STATUSLINES ){  // daemon
       cfg_daemon = true;
-      oper_mode = 0;
+      opermenu.mode = 0;
       return 1;
     }else if( sel == 4 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
       if( Tracker.GetStatus() == DT_TRACKER_FREE ) Tracker.Reset(15);
       else Interact("Already connecting, please be patient...");
-      oper_mode = 0;
+      opermenu.mode = 0;
       return 1;
     }else if( sel == 5 + O_NCHANNELS+1 + STATUSLINES ){  // update tracker
       Tracker.RestartTracker();
-      oper_mode = 0;
+      opermenu.mode = 0;
       return 1;
+    }else if( sel == 6 + O_NCHANNELS+1 + STATUSLINES ){  // configuration
+      configmenu.mode = 0;  // safeguard
+      Configure();
+      opermenu.mode = 3;
+      return 0;
     }
   }
-  else if( 2==oper_mode ){
+  else if( 2==opermenu.mode ){
     if( !*param ){
-      oper_mode = 0;
-      return OperatorMenu("");
+      opermenu.mode = 0;
+      return OperatorMenu();
     }
-    ChangeChannel(channel, param);
-    oper_mode = 0;
-    return OperatorMenu("");
+    ChangeChannel(opermenu.channel, param);
+    opermenu.mode = 0;
+    return OperatorMenu();
+  }
+  else if( 3==opermenu.mode ){
+    if( Configure(param) ){
+      opermenu.mode = 0;
+      return OperatorMenu();
+    }else return 0;
   }
 
   Interact("Exiting menu");
+  opermenu.mode = 0;
   return 1;
 }
 
+
+// Return non-zero to exit configuration menu.
+int Console::Configure(const char *param)
+{
+  ConfigGen *config;
+  int ttyrows = 0, lines = 0, configcount = 0, nextopt = 0;
+  bool more = false;
+
+  if( 0==configmenu.mode ||
+      (99==configmenu.mode && 0==configmenu.next_start) ){
+    configmenu.next_start = 0;
+    configmenu.n_opt = 0;
+    Interact("Configuration Menu");
+    lines++;
+    if( !g_config_only ){
+      Interact("Some options are not configurable while running.  To set and");
+      Interact("save these values, run the client without a torrent file.");
+      lines += 2;
+    }
+    configmenu.mode = 99;
+  }
+  if( 99==configmenu.mode ){  // continue the menu
+    int otherlines = 4;
+    configmenu.current_start = configmenu.next_start;
+    configmenu.start_opt = configmenu.n_opt + 1;
+    ttyrows = m_streams[O_INTERACT]->Rows() - 1;
+    configcount = 0;
+    for( config = CONFIG.First(); config; config = CONFIG.Next(config) ){
+      if( configcount >= configmenu.next_start ){
+        if( ttyrows > otherlines && lines >= ttyrows - otherlines ){
+          if( !config->Hidden() ){
+            more = true;
+            if( !config->Locked() ) nextopt++;
+          }
+          continue;
+        }
+        if( !config->Hidden() ){
+          Interact_n(" %c", config->Saving() ? '*' : ' ');
+          if( !config->Locked() ) Interact_n("%2d)", ++configmenu.n_opt);
+          else Interact_n("   ");
+          Interact_n(" %s:  %s  %s", config->Desc(), config->Sval(),
+            config->Info());
+          Interact_n("");
+          lines++;
+        }
+      }
+      configcount++;
+    }
+    if( more || configmenu.next_start ){
+      Interact("   M) More options (%d-%d)",
+        more ? configmenu.n_opt + 1 : 1, configmenu.n_opt + nextopt);
+    }
+    configmenu.next_start = more ? configcount : 0;
+    Interact("   S) Save marked options (*) to file");
+    lines++;
+    Interact("   X) Exit");
+    configmenu.mode = 98;
+  }
+  if( 98==configmenu.mode ){  // selection prompt
+    if( lines <= 1 )
+      Interact("Configuration Menu (Press Enter to redisplay menu)");
+    Interact_n("Enter selection: ");
+    m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
+    configmenu.mode = 1;
+    return 0;
+  }
+  else if( 1==configmenu.mode ){  // option selected
+    if( !param || !*param ){  // redisplay menu
+      configmenu.next_start = configmenu.current_start;
+      configmenu.n_opt = configmenu.start_opt - 1;
+      configmenu.mode = 99;
+      return Configure();
+    }
+    if( *param == 'x' || *param == 'X' ){
+      configmenu.mode = 0;
+      Interact("Exiting menu");
+      return 1;
+    }
+    if( *param == 'm' || *param == 'M' ){
+      configmenu.mode = 99;
+      return Configure();
+    }
+    if( *param == 's' || *param == 'S' ){
+      Interact_n("Filename (default %s): ", *cfg_config_file);
+      m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
+      configmenu.mode = 4;
+      return 0;
+    }
+    int sel = atoi(param);
+    if( sel < 1 || sel > configmenu.n_opt ){
+      Interact_n("Enter selection: ");
+      return 0;
+    }
+
+    // Find the selected Config and show manipulation options.
+    int count = 0;
+    for( config = CONFIG.First(); config; config = CONFIG.Next(config) ){
+      if( !config->Hidden() && !config->Locked() ) count++;
+      if( count == sel ) break;
+    }
+    Interact("%s:  %s  %s", config->Desc(), config->Sval(), config->Info());
+    configmenu.selected = config;
+
+    Interact(" C) Change value");
+    Interact(" R) Reset to default (%s)", configmenu.selected->Sdefault());
+    Interact(" S) %s for save",
+      configmenu.selected->Saving() ? "Unmark" : "Mark");
+    if( configmenu.selected->Type() == DT_CONFIG_STRING )
+      Interact(" Z) Null value");
+    Interact_n("Enter selection: ");
+    m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
+    configmenu.mode = 2;
+    return 0;
+  }
+  else if( 2==configmenu.mode ){  // manipulate option
+    if( !param || !*param ){
+      configmenu.mode = 98;
+      return Configure();
+    }
+    switch( *param ){
+      case 'c':
+      case 'C':
+        Interact_n("New value: ");
+        m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
+        configmenu.mode = 3;
+        return 0;
+      case 'r':
+      case 'R':
+        configmenu.selected->Reset();
+        break;
+      case 's':
+      case 'S':
+        if( configmenu.selected->Saving() ) configmenu.selected->Unsave();
+        else configmenu.selected->Save();
+        break;
+      case 'z':
+      case 'Z':
+        if( configmenu.selected->Type() == DT_CONFIG_STRING )
+          configmenu.selected->Scan("");
+        configmenu.selected->Save();
+        break;
+      default:
+        break;
+    }
+    return Configure();
+  }
+  else if( 3==configmenu.mode ){  // change value
+    if( param && *param ){
+      ConfigGen *config;
+      if( configmenu.selected->Scan(param) )
+        configmenu.selected->Save();
+      config = configmenu.selected;
+      Interact("%s:  %s  %s", config->Desc(), config->Sval(), config->Info());
+    }
+    else Interact("Not changed");
+    configmenu.mode = 98;
+    return Configure();
+  }
+  else if( 4==configmenu.mode ){  // save to file
+    if( param && *param ) cfg_config_file = param;
+    if( CONFIG.Save(*cfg_config_file) )
+      Interact("Configuration saved");
+    configmenu.mode = 98;
+    return Configure();
+  }
+
+  Interact("Exiting menu");
+  configmenu.mode = 0;
+  return 1;
+}
+ 
 
 int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
 {
@@ -884,27 +1106,8 @@ void Console::Status(int immediate)
       (this->*m_statusline[*cfg_status_format])(buffer, sizeof(buffer));
 
       if( !m_status_last ) Print_n("");
-      int tmplen = 0;
-      if( m_streams[O_NORMAL]->IsTTY() ){
-#ifdef TIOCGWINSZ
-        struct winsize tsize;
-        if( ioctl(m_streams[O_NORMAL]->Fileno(), TIOCGWINSZ, &tsize) >= 0 )
-          tmplen = tsize.ws_col - 1;
-#else
-#ifdef TIOCGSIZE
-        struct ttysize tsize;
-        if( ioctl(m_streams[O_NORMAL]->Fileno(), TIOCGSIZE, &tsize) >= 0 )
-          tmplen = tsize.ts_cols - 1;
-#else
-#ifdef WIOCGETD
-        struct uwdata tsize;
-        if( ioctl(m_streams[O_NORMAL]->Fileno(), WIOCGETD, &tsize) >= 0 )
-          tmplen = tsize.uw_width / tsize.uw_hs - 1;
-#endif
-#endif
-#endif
-        if( tmplen > 80 ) tmplen = 80;
-      }
+      int tmplen = m_streams[O_NORMAL]->Cols() - 1;
+      if( tmplen > 79 ) tmplen = 79;
       int len = strlen(buffer);
       if( 0==tmplen ) tmplen = (len < m_status_len) ? m_status_len : len;
       m_status_len = len;
@@ -1349,10 +1552,14 @@ void Console::InteractU(const char *message, ...)
 char *Console::Input(const char *prompt, char *field, size_t length)
 {
   char *retval;
-  Interact_n("");
-  Interact_n("%s", prompt);
+
+  if( prompt && *prompt ){
+    Interact_n("");
+    Interact_n("%s", prompt);
+  }
   m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
   retval = m_streams[O_INPUT]->Input(field, length);
+  SyncNewlines(O_INPUT);
   m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
   return retval;
 }

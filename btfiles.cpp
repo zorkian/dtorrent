@@ -1115,6 +1115,7 @@ int btFiles::CreateFiles()
   dt_datalen_t idxoff, fend, idxend;
 
   cfg_allocate.Lock();
+  CfgAllocate(&cfg_allocate);  // set default info
 
   if( (*cfg_allocate == DT_ALLOC_NONE ||
         !BTCONTENT.pBMasterFilter->IsEmpty()) &&

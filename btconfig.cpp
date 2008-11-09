@@ -1,5 +1,7 @@
 #include <sys/types.h>
 #include <string.h>
+#include <errno.h>
+#include <ctype.h>      // ctype()
 
 #include "btconfig.h"
 #include "bttime.h"
@@ -25,6 +27,7 @@ ConfigGen::ConfigGen()
   m_svalbuf = m_sminbuf = m_smaxbuf = m_sdefbuf = (char *)0;
   m_maxlen = 0;
   m_hidden = m_locked = false;
+  m_save = false;
 }
 
 
@@ -467,14 +470,106 @@ ConfigGen *Configuration::Next(const ConfigGen *current) const
 }
 
 
+bool Configuration::Save(const char *filename) const
+{
+  FILE *fp;
+  ConfigGen *config;
+  const char *cfgtype;
+
+  fp = fopen(filename, "w");
+  if( !fp ){
+    CONSOLE.Warning(2, "error opening configuration save file \"%s\":  %s",
+      filename, strerror(errno));
+    return false;
+  }
+
+  for( config = CONFIG.First(); config; config = CONFIG.Next(config) ){
+    if( config->Saving() ){
+      switch( config->Type() ){
+        case DT_CONFIG_INT: cfgtype = "int"; break;
+        case DT_CONFIG_FLOAT: cfgtype = "float"; break;
+        case DT_CONFIG_BOOL: cfgtype = "flag"; break;
+        default:
+        case DT_CONFIG_STRING: cfgtype = "string";
+      }
+      fprintf(fp, "# %s (%s):  %s%s%s\n", config->Tag(), cfgtype,
+        config->Desc(), (config->Info() && *config->Info()) ? ", " : "",
+        config->Info());
+      fprintf(fp, "%s=%s\n", config->Tag(), config->Sval());
+    }
+  }
+
+  if( fclose(fp) != 0 ){
+    CONSOLE.Warning(2, "error saving configuration to file \"%s\":  %s",
+      filename, strerror(errno));
+    return false;
+  }
+  return true;
+}
+
+
+bool Configuration::Load(const char *filename)
+{
+  FILE *fp;
+  ConfigGen *config;
+  char buffer[MAXPATHLEN] = "";
+  char *current = buffer, *endpos, *valpos, *tmppos;
+  size_t buflen = 0, count;
+
+  fp = fopen(filename, "r");
+  if( !fp ){
+    if( 0 != strcmp(filename, cfg_config_file.Sdefault()) ){
+      CONSOLE.Warning(2, "error opening configuration file \"%s\":  %s",
+        filename, strerror(errno));
+    }
+    return false;
+  }
+  CONSOLE.Debug("Reading configuration from %s", filename);
+
+  while( true ){
+    if( 0==buflen || !memchr(buffer, '\n', buflen) ){
+      if( current != buffer ){
+        memmove(buffer, current, buflen);
+        current = buffer;
+      }else buflen = 0;
+      count = fread(buffer + buflen, 1, sizeof(buffer) - buflen - 1, fp);
+      if( 0==count ) break;
+      buflen += count;
+      buffer[sizeof(buffer)] = '\0';
+    }
+    while(isspace(*current)) current++;
+    if( (endpos = strpbrk(current, "\r\n")) ){
+      *endpos = '\0';
+      if( *current != '#' && (valpos = strchr(current, '=')) ){
+        tmppos = valpos;
+        while(isspace(*++valpos));
+        while(isspace(*--tmppos));
+        *++tmppos = '\0';
+        if( (config = CONFIG[current]) ){
+          config->Scan(valpos);
+          config->Save();
+        }else CONSOLE.Debug("Unrecognized tag \"%s\" in config file", current);
+      }
+      current = endpos;
+      while(strchr("\r\n", *++current));
+    }
+  }
+
+  if( fclose(fp) != 0 ){
+    CONSOLE.Warning(2, "error closing configuration file \"%s\":  %s",
+      filename, strerror(errno));
+    return false;
+  }
+  return true;
+}
+
+
 void Configuration::Dump() const
 {
   if( !*cfg_verbose ) return;
 
   CONSOLE.Debug("CONFIGURATION DUMP");
-  for( ConfigGen *config = First();
-       config;
-       config = Next(config) ){
+  for( ConfigGen *config = First(); config; config = Next(config) ){
     CONSOLE.Debug("  %s:  %s", config->Tag(), config->Sval());
   }
 }
@@ -484,6 +579,7 @@ void Configuration::Dump() const
 // Global flags
 
 bool g_secondary_process = false;
+bool g_config_only = false;
 
 bool arg_flg_force_seed_mode = false;
 bool arg_flg_check_only = false;
@@ -787,7 +883,7 @@ static void CfgDaemon(Config<bool> *config)
 
 Config<unsigned char> cfg_allocate = 0;
 
-static void CfgAllocate(Config<unsigned char> *config)
+void CfgAllocate(Config<unsigned char> *config)
 {
   const char *info;
   char tmp[32];
@@ -879,10 +975,17 @@ static void InfoCfgStatusFormat(Config<int> *config)
   config->SetInfo(info);
 }
 
+//---------------------------------------------------------------------------
+
+Config<const char *> cfg_config_file;
+
+
 //===========================================================================
 
 void InitConfig()
 {
+  char tmp[MAXPATHLEN], *tmpenv;
+
   cfg_cache_size.Init("Cache size [-C]", "megabytes max");
   cfg_cache_size.Setup(CfgCacheSize, 0, InfoCfgCacheSize);
   cfg_cache_size.SetMax((unsigned int)-1);
@@ -967,7 +1070,7 @@ void InitConfig()
   cfg_verbose.Setup(CfgVerbose);
   CONFIG.Add("verbose", cfg_verbose);
 
-  cfg_ctcs.Init("CTCS server [-S]");
+  cfg_ctcs.Init("CTCS server [-S]", "host:port");
   cfg_ctcs.Setup(CfgCTCS, ValCfgCTCS);
   CONFIG.Add("ctcs_server", cfg_ctcs);
 
@@ -994,8 +1097,7 @@ void InitConfig()
   cfg_redirect_io.Init("I/O redirection [-dd]", "For daemon mode");
   CONFIG.Add("daemon.redirect", cfg_redirect_io);
 
-  cfg_allocate.Init("File allocation mode [-a]");
-  CfgAllocate(&cfg_allocate);  // set default info
+  cfg_allocate.Init("File allocation mode [-a]", "0=Sparse/1=Full/2=None");
   cfg_allocate.Setup(CfgAllocate);
   cfg_allocate.SetMax(2);
   CONFIG.Add("allocate", cfg_allocate);
@@ -1035,9 +1137,19 @@ void InitConfig()
   cfg_convert_filenames.Init("Convert foreign filenames [-T]");
   CONFIG.Add("convert_names", cfg_convert_filenames);
 
-  cfg_status_format.Init("Status line format");
+  sprintf(tmp, "0-%d", STATUSLINES - 1);
+  cfg_status_format.Init("Status line format", tmp);
   cfg_status_format.Setup(CfgStatusFormat, 0, InfoCfgStatusFormat);
   cfg_status_format.SetMax(STATUSLINES - 1);
   CONFIG.Add("status.format", cfg_status_format);
+
+  cfg_config_file.Init("Configuration file");
+  strcpy(tmp, ".");
+  if( (tmpenv = getenv("HOME")) ) strcpy(tmp, tmpenv);
+  strcat(tmp, "/.dtorrentrc");
+  cfg_config_file = tmp;
+  cfg_config_file.SetDefault(*cfg_config_file);
+  cfg_config_file.Hide();
+  CONFIG.Add("config_file", cfg_config_file);
 }
 

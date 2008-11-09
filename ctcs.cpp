@@ -333,11 +333,11 @@ int Ctcs::Send_Config()
          config = CONFIG.Next(config) ){
       if( !config->Hidden() ){
         switch( config->Type() ){
-          case DT_CONFIG_STRING: cfgtype = "S"; break;
           case DT_CONFIG_INT: cfgtype = "I"; break;
           case DT_CONFIG_FLOAT: cfgtype = "F"; break;
           case DT_CONFIG_BOOL: cfgtype = "B"; break;
-          default: cfgtype = "S";
+          default:
+          case DT_CONFIG_STRING: cfgtype = "S";
         }
 
         if( config->Type() == DT_CONFIG_STRING )

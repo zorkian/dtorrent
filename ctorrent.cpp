@@ -51,11 +51,25 @@ int main(int argc, char **argv)
   CONSOLE.Init();
   InitConfig();
 
-  if( argc < 2 ){
-    usage();
-    exit(1);
-  }else if( param_check(argc, argv) < 0 ){
-    exit(1);
+  if( argc > 1 ){
+    if( param_check(argc, argv) < 0 ) exit(1);
+  }
+
+  if( !arg_metainfo_file || !*arg_metainfo_file ){
+    CONSOLE.Warning(1,
+      "No torrent file specified--entering configuration mode");
+    CONSOLE.Warning(1, "Use -h for help/usage.");
+    g_config_only = true;
+  }
+
+  CONFIG.Load(*cfg_config_file);
+
+  if( g_config_only ){
+    char param[MAXPATHLEN] = "";
+
+    while( CONSOLE.Configure(param) == 0 &&
+           CONSOLE.Input("", param, sizeof(param)) );
+    exit(0);
   }
 
   if( *cfg_verbose ) CONFIG.Dump();
@@ -126,10 +140,14 @@ int param_check(int argc, char **argv)
 
   if( 0==strncmp(argv[1], "-t", 2) )
     opts = "tc:l:ps:u:";
-  else opts = "aA:b:cC:dD:e:E:fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
+  else opts = "aA:b:cC:dD:e:E:f:Fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
 
   while( (c=getopt(argc, argv, opts)) != -1 )
     switch( c ){
+    case 'f':  // configuration file
+      cfg_config_file = optarg;
+      break;
+
     case 'a':  // change allocation mode
       cfg_allocate++;
       break;
@@ -216,7 +234,7 @@ int param_check(int argc, char **argv)
       cfg_file_to_download = optarg;
       break;
 
-    case 'f':  // force bitfield accuracy or seeding, skip initial hash check
+    case 'F':  // force bitfield accuracy or seeding, skip initial hash check
       arg_flg_force_seed_mode = true;
       break;
 
@@ -322,11 +340,11 @@ int param_check(int argc, char **argv)
   argc -= optind;
   argv += optind;
   if( argc != 1 ){
-    if( arg_flg_make_torrent )
+    if( arg_flg_make_torrent ){
       CONSOLE.Warning(1,
         "Must specify torrent contents (one file or directory)");
-    else CONSOLE.Warning(1, "Must specify one torrent file");
-    return -1;
+      return -1;
+    }else return 0;
   }
   arg_metainfo_file = new char[strlen(*argv) + 1];
 #ifndef WINDOWS
@@ -356,6 +374,8 @@ void usage()
     "WARNING: THERE IS NO WARRANTY FOR CTorrent. USE AT YOUR OWN RISK!!!\n");
   fprintf(stderr, "\nGeneral Options:\n");
   fprintf(stderr, "%-15s %s\n", "-h/-H", "Show this message");
+  fprintf(stderr, "%-15s %s %s)\n", "-f filename",
+    "Configuration file (default", cfg_config_file.Sdefault());
   fprintf(stderr, "%-15s %s\n", "-x",
     "Decode metainfo (torrent) file only, don't download");
   fprintf(stderr, "%-15s %s\n", "-c", "Check pieces only, don't download");
@@ -378,7 +398,7 @@ void usage()
     "Download (\"save as\") to a different file or directory");
   fprintf(stderr, "%-15s %s %sMB)\n", "-C cache_size",
     "Cache size, unit MB (default", cfg_cache_size.Sdefault());
-  fprintf(stderr, "%-15s %s\n", "-f",
+  fprintf(stderr, "%-15s %s\n", "-F",
     "Force saved bitfield or seed mode (skip initial hash check)");
   fprintf(stderr, "%-15s %s\n", "-b filename",
     "Specify bitfield save file (default is torrent+\".bf\")");

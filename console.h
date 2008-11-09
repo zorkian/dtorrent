@@ -17,6 +17,8 @@
 #include "bttypes.h"
 #include "rate.h"
 
+class ConfigGen;
+
 // Number of status line formats
 #define STATUSLINES 2
 
@@ -61,6 +63,7 @@ class ConStream
   void _newline();
   int _convprintf(const char *format, va_list ap);
   void Error(int sev, const char *message, ...);
+  int GetSize(bool getrows) const;
 
  public:
   ConStream();
@@ -72,17 +75,19 @@ class ConStream
   int GetMode() const { return m_filemode ? 1 : 0; }
   int Fileno() const { return m_stream ? fileno(m_stream) : -1; }
   int GetNewline() const { return m_newline ? 1 : 0; }
-  void SyncNewline(ConStream *master){ m_newline = master->GetNewline(); }
+  void SyncNewline(const ConStream *master){ m_newline = master->GetNewline(); }
   void Suspend(){ m_suspend = 1; }
   void Resume(){ m_suspend = 0; }
   int IsSuspended(){ return m_suspend ? 1 : 0; }
 
-  int SameDev(ConStream *master) const;
+  int SameDev(const ConStream *master) const;
   dt_conmode_t GetInputMode() const { return m_inputmode; }
   void SetInputMode(dt_conmode_t keymode);
   void PreserveMode();
   void RestoreMode();
   int IsTTY() const;
+  int Rows() const { return GetSize(true); }
+  int Cols() const { return GetSize(false); }
 
   int Output(const char *message, va_list ap);
   int Output_n(const char *message, va_list ap);
@@ -108,6 +113,16 @@ class Console
   int m_oldfd;
   int m_status_len;
 
+  struct{
+    int mode, n_opt;
+    dt_conchan_t channel;
+  } opermenu;
+
+  struct{
+    int mode, n_opt, start_opt, current_start, next_start;
+    ConfigGen *selected;
+  } configmenu;
+
   typedef void (Console::*statuslinefn)(char buffer[], size_t length);
   statuslinefn m_statusline[STATUSLINES];
 
@@ -118,7 +133,7 @@ class Console
 
   int OpenNull(int nullfd, ConStream *stream, int sfd);
   void SyncNewlines(int master);
-  int OperatorMenu(const char *param);
+  int OperatorMenu(const char *param=(char *)0);
   void ShowFiles();
   void StatusLine0(char buffer[], size_t length);
   void StatusLine1(char buffer[], size_t length);
@@ -154,6 +169,8 @@ class Console
 
   RETSIGTYPE Signal(int sig_no);
   void Daemonize();
+
+  int Configure(const char *param=(char *)0);
 };
 
 extern Console CONSOLE;
