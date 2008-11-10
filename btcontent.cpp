@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <ctype.h>
 
+#include "ctorrent.h"
 #include "btconfig.h"
 #include "bencode.h"
 #include "peer.h"
@@ -440,9 +441,8 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
     CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)pBF->Count(),
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
     if( !arg_flg_force_seed_mode ){
-      SaveBitfield();
       if( *cfg_completion_exit ) CompletionCommand();
-      exit(0);
+      return 0;
     }
   }else if( check_pieces ){  // files exist already
     if( *cfg_bitfield_file && pBRefer->SetReferFile(*cfg_bitfield_file) < 0 ){
@@ -1457,7 +1457,7 @@ void btContent::CompletionCommand()
       CONSOLE.Warning(2, "warn, failure running completion command:  %s",
         strerror(errno));
 #ifdef HAVE_WORKING_FORK
-    exit(EXIT_SUCCESS);
+    Exit(EXIT_SUCCESS);
   }
 #endif
   delete []cmdstr;

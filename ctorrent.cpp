@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <limits.h>
 
+#include "ctorrent.h"
 #include "btconfig.h"
 #include "btcontent.h"
 #include "downloader.h"
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
   InitConfig();
 
   if( argc > 1 ){
-    if( param_check(argc, argv) < 0 ) exit(1);
+    if( param_check(argc, argv) < 0 ) Exit(EXIT_FAILURE);
   }
 
   if( !arg_metainfo_file || !*arg_metainfo_file ){
@@ -69,7 +70,7 @@ int main(int argc, char **argv)
 
     while( CONSOLE.Configure(param) == 0 &&
            CONSOLE.Input("", param, sizeof(param)) );
-    exit(0);
+    Exit(EXIT_SUCCESS);
   }
 
   if( *cfg_verbose ) CONFIG.Dump();
@@ -77,21 +78,21 @@ int main(int argc, char **argv)
   if( arg_flg_make_torrent ){
     if( !arg_announce ){
       CONSOLE.Warning(1, "Please use -u to specify an announce URL!");
-      exit(1);
+      Exit(EXIT_FAILURE);
     }
     if( !arg_save_as ){
       CONSOLE.Warning(1, "Please use -s to specify a metainfo file name!");
-      exit(1);
+      Exit(EXIT_FAILURE);
     }
     if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_announce,
                                 arg_piece_length) < 0 ||
         BTCONTENT.CreateMetainfoFile(arg_save_as, arg_comment, arg_flg_private)
           < 0 ){
       CONSOLE.Warning(1, "create metainfo failed.");
-      exit(1);
+      Exit(EXIT_FAILURE);
     }
     CONSOLE.Print("Create metainfo file %s successful.", arg_save_as);
-    exit(0);
+    Exit(EXIT_SUCCESS);
   }
 
   cfg_daemon = arg_daemon;  // triggers action
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
   if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as, arg_announce)
         < 0 ){
     CONSOLE.Warning(1, "error, initial meta info failed.");
-    exit(1);
+    Exit(EXIT_FAILURE);
   }
 
   if( !arg_flg_exam_only && (!arg_flg_check_only || arg_flg_force_seed_mode) ){
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
 
     if( Tracker.Initial() < 0 ){
       CONSOLE.Warning(1, "error, tracker setup failed.");
-      exit(1);
+      Exit(EXIT_FAILURE);
     }
 
     sig_setup();  // setup signal handling
@@ -128,7 +129,7 @@ int main(int argc, char **argv)
   if( !arg_flg_exam_only ) BTCONTENT.SaveBitfield();
 
   if(*cfg_verbose) CONSOLE.cpu();
-  exit(0);
+  Exit(EXIT_SUCCESS);
 }
 
 
@@ -445,5 +446,12 @@ void usage()
   fprintf(stderr, "see also: http://www.rahul.net/dholmes/ctorrent/\n");
   fprintf(stderr, "bug report: %s\n", PACKAGE_BUGREPORT);
   fprintf(stderr, "original author: bsdi@sina.com\n\n");
+}
+
+
+void Exit(int status)
+{
+  CONSOLE.Shutdown();
+  exit(status);
 }
 

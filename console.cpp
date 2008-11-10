@@ -1,8 +1,6 @@
 #include "console.h"  // def.h
 
-#include <stdlib.h>     // atoi()
-#include <sys/types.h>  // fstat(), FD_SET(), fork()
-#include <sys/stat.h>   // fstat()
+#include <stdlib.h>     // atoi(), exit()
 #include <unistd.h>     // isatty(), fork(), setsid()
 #include <string.h>
 #include <errno.h>
@@ -17,6 +15,7 @@
 #include <sys/ioctl.h>
 #endif
 
+#include "ctorrent.h"
 #include "btconfig.h"
 #include "ctcs.h"
 #include "btcontent.h"
@@ -32,13 +31,80 @@
 #include "compat.h"
 #endif
 
+//===========================================================================
 // console.cpp:  Copyright 2007-2008 Dennis Holmes  (dholmes@rahul.net)
+//===========================================================================
 
 const char LIVE_CHAR[4] = { '-', '\\', '|', '/' };
 
 Console CONSOLE;
 static bool g_console_ready = false;
 static bool g_daemon_parent = false;
+static struct condev_node{
+  condev_node *next;
+  ConDevice *device;
+} *g_condevs = (condev_node *)0;
+
+
+//===========================================================================
+// ConDevice class functions
+
+
+ConDevice::ConDevice(const struct stat *sb)
+{
+  m_newline = 1;
+  m_lines = 0;
+  m_st_dev = 0;
+  m_st_ino = 0;
+  m_streams = (stream_node *)0;
+
+  m_st_dev = sb->st_dev;
+  m_st_ino = sb->st_ino;
+}
+
+
+ConDevice::~ConDevice()
+{
+  stream_node *p;
+
+  while( m_streams ){
+    p = m_streams;
+    m_streams = m_streams->next;
+    delete p;
+  }
+}
+
+
+int ConDevice::Register(const ConStream *stream)
+{
+  stream_node *p;
+
+  if( (p = new stream_node) ){
+    p->stream = stream;
+    p->next = m_streams;
+    m_streams = p;
+  }else return -1;
+
+  return 0;
+}
+
+
+// Return value indicates whether this device should be deleted.
+bool ConDevice::Deregister(const ConStream *stream)
+{
+  stream_node *p, *pp;
+
+  pp = (stream_node *)0;
+  for( p = m_streams; p; pp = p, p = p->next ){
+    if( p->stream == stream ){
+      if( pp ) pp->next = p->next;
+      else m_streams = p->next;
+      delete p;
+      break;
+    }
+  }
+  return (m_streams ? false : true);
+}
 
 
 //===========================================================================
@@ -50,7 +116,6 @@ ConStream::ConStream()
   m_stream = (FILE *)0;
   m_name = (char *)0;
   m_restore = 0;
-  m_newline = 1;
   m_suspend = 0;
   m_inputmode = DT_CONMODE_LINES;
 }
@@ -58,11 +123,7 @@ ConStream::ConStream()
 
 ConStream::~ConStream()
 {
-  if( !g_secondary_process || g_daemon_parent ){
-    if( m_restore ) RestoreMode();
-    if( !m_suspend ) _newline();
-    if( m_stream ) fclose(m_stream);
-  }
+  Close();
   if( m_name ) delete []m_name;
 }
 
@@ -70,33 +131,88 @@ ConStream::~ConStream()
 void ConStream::Close()
 {
   if( m_stream ){
+    if( !g_secondary_process || g_daemon_parent ){
+      if( m_restore ) RestoreMode();
+      if( !m_suspend && m_filemode ) _newline();
+    }
     fclose(m_stream);
     m_stream = (FILE *)0;
+  }
+  if( m_device ){
+    if( m_device->Deregister(this) ){
+      condev_node *p, *pp = (condev_node *)0;
+      for( p = g_condevs; p; pp = p, p = p->next ){
+        if( p->device == m_device ){
+          if( pp ) pp->next = p->next;
+          else g_condevs = p->next;
+          break;
+        }
+      }
+      delete m_device;
+      if( p ) delete p;
+    }
+    m_device = (ConDevice *)0;
   }
   m_suspend = 1;
 }
 
 
-void ConStream::Associate(FILE *stream, const char *name, int mode)
+int ConStream::Associate(FILE *stream, const char *name, int mode)
 {
+  FILE *old_stream = m_stream;
+  int old_mode = m_filemode;
+  char *old_name = m_name;
+  bool failed = false;
+
   m_stream = stream;
   m_filemode = mode;
   if( (m_name = new char[strlen(name)+1]) )
     strcpy(m_name, name);
-  else Error(1, "Failed to allocate memory for output filename.");
-}
+  else{
+    Error(1, "Failed to allocate memory for output filename.");
+    failed = true;
+  }
 
+  if( !failed && Fileno() >= 0 ){
+    struct stat sb;
+    if( 0==fstat(Fileno(), &sb) ){
+      condev_node *p;
+      for( p = g_condevs; p; p = p->next ){
+        if( p->device->SameDev(&sb) ) break;
+      }
+      if( p ) m_device = p->device;
+      else{
+        if( (p = new condev_node) &&
+            (m_device = new ConDevice(&sb)) ){
+          p->device = m_device;
+          p->next = g_condevs;
+          g_condevs = p;
+        }else{
+          if( p ) delete p;
+          Error(1, "Failed to allocate memory for console device.");
+          failed = true;
+        }
+      }
+      if( !failed && m_device->Register(this) < 0 ){
+        Error(1, "Failed to register stream to console device.");
+        failed = true;
+      }
+    }
+  }
 
-int ConStream::SameDev(const ConStream *master) const
-{
-  struct stat sbone, sbtwo;
+  if( failed ){
+    m_stream = old_stream;
+    m_filemode = old_mode;
+    if( m_name ){
+      delete []m_name;
+      m_name = (char *)0;
+    }
+    m_name = old_name;
+    return -1;
+  }
 
-  if( master == this || Fileno() == master->Fileno() ) return 1;
-  else if( Fileno() < 0 || master->Fileno() < 0 ) return 0;
-
-  if( !fstat(Fileno(), &sbone) && !fstat(master->Fileno(), &sbtwo) )
-    return ( sbone.st_dev==sbtwo.st_dev && sbone.st_ino==sbtwo.st_ino ) ? 1 : 0;
-  else return 0;
+  if( old_name ) delete []old_name;
+  return 0;
 }
 
 
@@ -240,40 +356,34 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
 }
 
 
-int ConStream::Output(const char *message, va_list ap)
+void ConStream::Output(const char *message, va_list ap)
 {
-  if( m_suspend ) return 0;
-
-  int old_newline = m_newline;
-  _newline();
-  _convprintf(message, ap);
-  _newline();
-  fflush(m_stream);
-  return ( old_newline==m_newline ) ? 0 : 1;
+  if( !m_suspend ){
+    _newline();
+    _convprintf(message, ap);
+    _newline();
+    fflush(m_stream);
+  }
 }
 
 
-int ConStream::Output_n(const char *message, va_list ap)
+void ConStream::Output_n(const char *message, va_list ap)
 {
-  if( m_suspend ) return 0;
-
-  int old_newline = m_newline;
-  if( !message || !*message ) _newline();
-  else _convprintf(message, ap);
-  fflush(m_stream);
-  return ( old_newline==m_newline ) ? 0 : 1;
+  if( !m_suspend ){
+    if( !message || !*message ) _newline();
+    else _convprintf(message, ap);
+    fflush(m_stream);
+  }
 }
 
 
-int ConStream::Update(const char *message, va_list ap)
+void ConStream::Update(const char *message, va_list ap)
 {
-  if( m_suspend ) return 0;
-
-  int old_newline = m_newline;
-  if( !m_newline ) fprintf(m_stream, IsTTY() ? "\r" : "\n");
-  _convprintf(message, ap);
-  fflush(m_stream);
-  return ( old_newline==m_newline ) ? 0 : 1;
+  if( !m_suspend ){
+    if( !m_device->Newline() ) fprintf(m_stream, IsTTY() ? "\r" : "\n");
+    _convprintf(message, ap);
+    fflush(m_stream);
+  }
 }
 
 
@@ -283,36 +393,37 @@ char *ConStream::Input(char *field, size_t length)
 
   if( m_suspend ) return (char *)0;
 
-  m_newline = 1;
   if( (result = fgets(field, length, m_stream)) &&
       (tmp = strpbrk(field, "\r\n")) ){
     *tmp = '\0';
-  }
+    m_device->AddLine();
+  }else m_device->ClearNewline();
+
   return result;
 }
 
 
 int ConStream::CharIn()
 {
-  if( m_suspend ) return 0;
-
-  return fgetc(m_stream);
+  return (m_suspend ? 0 : fgetc(m_stream));
 }
 
 
 inline void ConStream::_newline()
 {
-  if( !m_newline ){
+  if( !m_device->Newline() ){
     fprintf(m_stream, "\n");
-    m_newline = 1;
+    m_device->AddLine();
   }
 }
 
 
 inline int ConStream::_convprintf(const char *format, va_list ap)
 {
-  int r = ( '\n' == format[strlen(format)-1] );
-  m_newline = r;
+  if( '\n' == format[strlen(format)-1] )
+    m_device->AddLine();
+  else m_device->ClearNewline();
+
   return vfprintf(m_stream, format, ap);
 }
 
@@ -352,10 +463,10 @@ Console::Console()
   m_statusline[i++] = &Console::StatusLine1;
   if( STATUSLINES > i ){
     fprintf(stderr, "Unassigned status line in Console() constructor!\n");
-    exit(1);
+    exit(EXIT_FAILURE);
   }else if( STATUSLINES < i ){
     fprintf(stderr, "Value of STATUSLINES is too small!\n");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   m_status_len = 80;
@@ -398,6 +509,22 @@ void Console::Init()
 }
 
 
+void Console::Shutdown()
+{
+  for( int i=0; i < O_NCHANNELS; i++ ){
+    if( m_streams[i] &&
+        m_streams[i] != &m_stdout && m_streams[i] != &m_stderr &&
+        m_streams[i] != &m_stdin && m_streams[i] != &m_off ){
+      delete m_streams[i];
+    }
+    m_streams[i] = &m_off;
+  }
+  m_stdin.Close();
+  m_stdout.Close();
+  m_stderr.Close();
+}
+
+
 int Console::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   Status(0);
@@ -421,8 +548,6 @@ int Console::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
   fd_set *rfdnextp, fd_set *wfdnextp)
 {
-  static char pending = '\0';
-  static int inc, count;
   char c, param[MAXPATHLEN], *s;
 
   if( m_streams[O_INPUT]->Fileno() >= 0 &&
@@ -430,15 +555,13 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
     FD_CLR(m_streams[O_INPUT]->Fileno(), rfdnextp);
     (*nready)--;
     if( DT_CONMODE_LINES == m_streams[O_INPUT]->GetInputMode() ){  // cmd param
-      char *got = m_streams[O_INPUT]->Input(param, sizeof(param));
-      SyncNewlines(O_INPUT);
-      if( got ){
+      if( m_streams[O_INPUT]->Input(param, sizeof(param)) ){
         if( (s = strchr(param, '\n')) ) *s = '\0';
-        if( '0'==pending ){
-          if( OperatorMenu(param) ) pending = '\0';
+        if( '0' == m_user.pending ){
+          if( OperatorMenu(param) ) m_user.pending = '\0';
         }else{
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
-          if( *param ) switch( pending ){
+          if( *param ) switch( m_user.pending ){
           case 'n':  // get1file
             cfg_file_to_download = param;
             break;
@@ -470,7 +593,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           else Interact("Input error:  %s", strerror(errno));
         }else Interact("Input error!");
       }
-      if( '0' != pending ){
+      if( '0' != m_user.pending ){
           m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
           Status(1);
       }
@@ -489,7 +612,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         }else Interact("Input error!");
         return;
       }
-      if( c!='+' && c!='-' ) pending = c;
+      if( c!='+' && c!='-' ) m_user.pending = c;
       switch( c ){
       case 'h':  // help
       case '?':  // help
@@ -517,8 +640,8 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       case 'm':  // min peers
       case 'M':  // max peers
       case 'C':  // max cache size
-        inc = 1;
-        count = 0;
+        m_user.inc = 1;
+        m_user.count = 0;
         Interact_n("");
         break;
       case 'n':  // get1file
@@ -568,71 +691,77 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       case '+':  // increase value
       case '-':  // decrease value
-        if( ('+'==c && inc<0) || ('-'==c && inc>0) ) inc *= -1;
-        switch( pending ){
+        if( ('+' == c && m_user.inc < 0) || ('-' == c && m_user.inc > 0) )
+          m_user.inc *= -1;
+        switch( m_user.pending ){
         case 'd':
-          if( inc < 0 && (unsigned int)abs(inc) > *cfg_max_bandwidth_down ){
+          if( m_user.inc < 0 &&
+              (unsigned int)abs(m_user.inc) > *cfg_max_bandwidth_down ){
             cfg_max_bandwidth_down = 0;
             break;
           }
-          if( inc > 0 &&
-              *cfg_max_bandwidth_down + inc < *cfg_max_bandwidth_down ){
+          if( m_user.inc > 0 &&
+              *cfg_max_bandwidth_down + m_user.inc < *cfg_max_bandwidth_down ){
             cfg_max_bandwidth_down = cfg_max_bandwidth_down.Max();
             break;
           }
           cfg_max_bandwidth_down +=
-            (*cfg_max_bandwidth_down * (abs(inc)/100.0) < 1) ? inc :
-              (*cfg_max_bandwidth_down * (inc/100.0));
+            (*cfg_max_bandwidth_down * (abs(m_user.inc)/100.0) < 1) ?
+              m_user.inc : (*cfg_max_bandwidth_down * (m_user.inc/100.0));
           break;
         case 'u':
-          if( inc < 0 && (unsigned int)abs(inc) > *cfg_max_bandwidth_up ){
+          if( m_user.inc < 0 &&
+              (unsigned int)abs(m_user.inc) > *cfg_max_bandwidth_up ){
             cfg_max_bandwidth_up = 0;
             break;
           }
-          if( inc > 0 &&
-              *cfg_max_bandwidth_up + inc < *cfg_max_bandwidth_up ){
+          if( m_user.inc > 0 &&
+              *cfg_max_bandwidth_up + m_user.inc < *cfg_max_bandwidth_up ){
             cfg_max_bandwidth_up = cfg_max_bandwidth_up.Max();
             break;
           }
           cfg_max_bandwidth_up +=
-            (*cfg_max_bandwidth_up * (abs(inc)/100.0) < 1) ? inc :
-              (*cfg_max_bandwidth_up * (inc/100.0));
+            (*cfg_max_bandwidth_up * (abs(m_user.inc)/100.0) < 1) ?
+              m_user.inc : (*cfg_max_bandwidth_up * (m_user.inc/100.0));
           break;
         case 'e':
-          if( cfg_seed_remain.Hidden() ) cfg_seed_hours += inc;
-          else cfg_seed_remain += inc;
+          if( cfg_seed_remain.Hidden() ) cfg_seed_hours += m_user.inc;
+          else cfg_seed_remain += m_user.inc;
           break;
         case 'E':
-          cfg_seed_ratio += inc / 10.0;
+          cfg_seed_ratio += m_user.inc / 10.0;
           break;
         case 'm':
-          cfg_min_peers += inc;
+          cfg_min_peers += m_user.inc;
           break;
         case 'M':
-          cfg_max_peers += inc;
+          cfg_max_peers += m_user.inc;
           break;
         case 'C':
-          if( inc < 0 && (unsigned int)abs(inc) > *cfg_cache_size ){
+          if( m_user.inc < 0 &&
+              (unsigned int)abs(m_user.inc) > *cfg_cache_size ){
             cfg_cache_size = 0;
             break;
           }
-          if( inc > 0 && *cfg_cache_size + inc < *cfg_cache_size ){
+          if( m_user.inc > 0 &&
+              *cfg_cache_size + m_user.inc < *cfg_cache_size ){
             cfg_cache_size = cfg_cache_size.Max();
             break;
           }
-          cfg_cache_size += inc;
+          cfg_cache_size += m_user.inc;
           break;
         default:
           Status(1);
           break;
         }
-        if( 10==++count ) inc *= 2;
-        else if( 5==count ) inc *= 5;
-        if( *cfg_ctcs && 'd' != pending && 'u' != pending ) CTCS.Send_Config();
+        if( 10 == ++m_user.count ) m_user.inc *= 2;
+        else if( 5 == m_user.count ) m_user.inc *= 5;
+        if( *cfg_ctcs && 'd' != m_user.pending && 'u' != m_user.pending )
+          CTCS.Send_Config();
         break;
       case '0':  // operator menu
       case 0x1b:  // Escape key
-        pending = '0';
+        m_user.pending = '0';
         OperatorMenu();
         break;
       default:
@@ -640,7 +769,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         break;
       }
 
-      switch( pending ){
+      switch( m_user.pending ){
       case 'd':
         InteractU("DL Limit: %u B/s ", (unsigned int)*cfg_max_bandwidth_down);
         break;
@@ -689,10 +818,10 @@ int Console::OperatorMenu(const char *param)
                                          m_streams[O_DEBUG]->GetName());
     Interact(" %2d) Input:          %s", ++opermenu.n_opt,
                                          m_streams[O_INPUT]->GetName());
-    char buffer[80];
     Interact(" Status Line Formats:");
+    const char *buffer;
     for( int i=0; i < STATUSLINES; i++ ){
-      (this->*m_statusline[i])(buffer, sizeof(buffer));
+      buffer = StatusLine(i);
       Interact(" %c%d) %s",
         (i==*cfg_status_format) ? '*' : ' ', ++opermenu.n_opt, buffer);
     }
@@ -707,6 +836,7 @@ int Console::OperatorMenu(const char *param)
     Interact(" %2d) Restart (recover) the tracker session", ++opermenu.n_opt);
     Interact(" %2d) Configuration", ++opermenu.n_opt);
     Interact_n("Enter selection: ");
+    m_streams[O_INTERACT]->Clear();
     m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
     opermenu.mode = 1;
     return 0;
@@ -720,6 +850,7 @@ int Console::OperatorMenu(const char *param)
     int sel = atoi(param);
     if( sel < 1 || sel > opermenu.n_opt ){
       Interact_n("Enter selection: ");
+      m_streams[O_INTERACT]->Clear();
       return 0;
     }
     if( sel <= O_NCHANNELS+1 ){  // change i/o channel
@@ -730,6 +861,7 @@ int Console::OperatorMenu(const char *param)
       Interact(" %s", m_off.GetName());
       Interact(" a filename");
       Interact_n("Enter a destination: ");
+      m_streams[O_INTERACT]->Clear();
       m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
       opermenu.mode = 2;
       return 0;
@@ -835,7 +967,7 @@ int Console::OperatorMenu(const char *param)
 int Console::Configure(const char *param)
 {
   ConfigGen *config;
-  int ttyrows = 0, lines = 0, configcount = 0, nextopt = 0;
+  int ttyrows = 0, configcount = 0, nextopt = 0;
   bool more = false;
 
   if( 0==configmenu.mode ||
@@ -843,11 +975,9 @@ int Console::Configure(const char *param)
     configmenu.next_start = 0;
     configmenu.n_opt = 0;
     Interact("Configuration Menu");
-    lines++;
     if( !g_config_only ){
       Interact("Some options are not configurable while running.  To set and");
       Interact("save these values, run the client without a torrent file.");
-      lines += 2;
     }
     configmenu.mode = 99;
   }
@@ -855,11 +985,12 @@ int Console::Configure(const char *param)
     int otherlines = 4;
     configmenu.current_start = configmenu.next_start;
     configmenu.start_opt = configmenu.n_opt + 1;
-    ttyrows = m_streams[O_INTERACT]->Rows() - 1;
+    ttyrows = m_streams[O_INTERACT]->Rows();
     configcount = 0;
     for( config = CONFIG.First(); config; config = CONFIG.Next(config) ){
       if( configcount >= configmenu.next_start ){
-        if( ttyrows > otherlines && lines >= ttyrows - otherlines ){
+        if( ttyrows > otherlines &&
+            m_streams[O_INTERACT]->Lines() >= ttyrows - otherlines ){
           if( !config->Hidden() ){
             more = true;
             if( !config->Locked() ) nextopt++;
@@ -873,7 +1004,6 @@ int Console::Configure(const char *param)
           Interact_n(" %s:  %s  %s", config->Desc(), config->Sval(),
             config->Info());
           Interact_n("");
-          lines++;
         }
       }
       configcount++;
@@ -884,14 +1014,14 @@ int Console::Configure(const char *param)
     }
     configmenu.next_start = more ? configcount : 0;
     Interact("   S) Save marked options (*) to file");
-    lines++;
     Interact("   X) Exit");
     configmenu.mode = 98;
   }
   if( 98==configmenu.mode ){  // selection prompt
-    if( lines <= 1 )
+    if( m_streams[O_INTERACT]->Lines() <= 4 )
       Interact("Configuration Menu (Press Enter to redisplay menu)");
     Interact_n("Enter selection: ");
+    m_streams[O_INTERACT]->Clear();
     m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
     configmenu.mode = 1;
     return 0;
@@ -921,6 +1051,7 @@ int Console::Configure(const char *param)
     int sel = atoi(param);
     if( sel < 1 || sel > configmenu.n_opt ){
       Interact_n("Enter selection: ");
+      m_streams[O_INTERACT]->Clear();
       return 0;
     }
 
@@ -940,6 +1071,7 @@ int Console::Configure(const char *param)
     if( configmenu.selected->Type() == DT_CONFIG_STRING )
       Interact(" Z) Null value");
     Interact_n("Enter selection: ");
+    m_streams[O_INTERACT]->Clear();
     m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
     configmenu.mode = 2;
     return 0;
@@ -972,8 +1104,12 @@ int Console::Configure(const char *param)
         configmenu.selected->Save();
         break;
       default:
-        break;
+        Interact_n("Enter selection: ");
+        m_streams[O_INTERACT]->Clear();
+        m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
+        return 0;
     }
+    configmenu.mode = 98;
     return Configure();
   }
   else if( 3==configmenu.mode ){  // change value
@@ -1026,14 +1162,18 @@ int Console::ChangeChannel(dt_conchan_t channel, const char *param, int notify)
           delete m_streams[channel];
           m_streams[channel] = &m_off;
         }
-        if( (stream = fopen(param, (channel==O_INPUT) ? "r" : "a")) )
-          dest->Associate(stream, param, (channel==O_INPUT) ? 0 : 1);
-        else{
-          Interact("Error opening file: %s", strerror(errno));
+        if( (stream = fopen(param, (channel==O_INPUT) ? "r" : "a")) ){
+          if( dest->Associate(stream, param, (channel==O_INPUT) ? 0 : 1) < 0 ){
+            fclose(stream);
+            delete dest;
+            dest = (ConStream *)0;
+          }
+        }else{
+          Warning(2, "Error opening %s:  %s", param, strerror(errno));
           delete dest;
           dest = (ConStream *)0;
         }
-      }else Interact("Failed to allocate memory.");
+      }else Warning(1, "Failed to allocate memory for console channel.");
     }
   }
   if( dest ){
@@ -1095,7 +1235,7 @@ void Console::ShowFiles()
 
 void Console::Status(int immediate)
 {
-  static char buffer[80];
+  const char *buffer;
 
   if( immediate ) m_skip_status = 0;
   if( m_pre_dlrate.TimeUsed() || immediate ){
@@ -1103,7 +1243,7 @@ void Console::Status(int immediate)
     else if( !m_streams[O_NORMAL]->IsSuspended() ||
              (*cfg_verbose && !m_streams[O_DEBUG]->IsSuspended()) ){
       // optimized to generate the status line only if it will be output
-      (this->*m_statusline[*cfg_status_format])(buffer, sizeof(buffer));
+      buffer = StatusLine();
 
       if( !m_status_last ) Print_n("");
       int tmplen = m_streams[O_NORMAL]->Cols() - 1;
@@ -1112,9 +1252,10 @@ void Console::Status(int immediate)
       if( 0==tmplen ) tmplen = (len < m_status_len) ? m_status_len : len;
       m_status_len = len;
       Update("%*.*s", -tmplen, tmplen, buffer);
+      m_streams[O_NORMAL]->Clear();
       m_status_last = 1;
 
-      if(*cfg_verbose)
+      if(*cfg_verbose){
         Debug("Cache: %dK/%dM  Hits: %d  Miss: %d  %d%%  Pre: %d/%d",
           (int)(BTCONTENT.CacheUsed()/1024), (int)*cfg_cache_size,
           (int)BTCONTENT.CacheHits(), (int)BTCONTENT.CacheMiss(),
@@ -1122,6 +1263,8 @@ void Console::Status(int immediate)
             (BTCONTENT.CacheHits()+BTCONTENT.CacheMiss())) : 0,
           (int)BTCONTENT.CachePre(),
             (int)(Self.TotalUL() / DEFAULT_SLICE_SIZE));
+        m_streams[O_DEBUG]->Clear();
+      }
     }
 
     m_pre_dlrate = Self.GetDLRate();
@@ -1130,11 +1273,11 @@ void Console::Status(int immediate)
 }
 
 
-const char *Console::StatusLine()
+const char *Console::StatusLine(int format)
 {
-  static char buffer[80];
-  (this->*m_statusline[*cfg_status_format])(buffer, sizeof(buffer));
-  return buffer;
+  if( format < 0 ) format = *cfg_status_format;
+  (this->*m_statusline[format])(m_buffer, sizeof(m_buffer));
+  return m_buffer;
 }
 
 
@@ -1323,14 +1466,12 @@ void Console::Print(const char *message, ...)
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
     va_start(ap, message);
-    if( m_streams[O_NORMAL]->Output(message, ap) )
-      SyncNewlines(O_NORMAL);
+    m_streams[O_NORMAL]->Output(message, ap);
     va_end(ap);
   }
   if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
-    if( m_streams[O_DEBUG]->Output(message, ap) )
-      SyncNewlines(O_DEBUG);
+    m_streams[O_DEBUG]->Output(message, ap);
     va_end(ap);
   }
 }
@@ -1351,14 +1492,12 @@ void Console::Print_n(const char *message, ...)
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
     va_start(ap, message);
-    if( m_streams[O_NORMAL]->Output_n(message, ap) )
-      SyncNewlines(O_NORMAL);
+    m_streams[O_NORMAL]->Output_n(message, ap);
     va_end(ap);
   }
   if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
-    if( m_streams[O_DEBUG]->Output_n(message, ap) )
-      SyncNewlines(O_DEBUG);
+    m_streams[O_DEBUG]->Output_n(message, ap);
     va_end(ap);
   }
 }
@@ -1377,14 +1516,12 @@ void Console::Update(const char *message, ...)
       (!m_streams[O_NORMAL]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_NORMAL]->SameDev(m_streams[O_INPUT])) ){
     va_start(ap, message);
-    if( m_streams[O_NORMAL]->Update(message, ap) )
-      SyncNewlines(O_NORMAL);
+    m_streams[O_NORMAL]->Update(message, ap);
     va_end(ap);
   }
   if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_NORMAL]) ){
     va_start(ap, message);
-    if( m_streams[O_DEBUG]->Update(message, ap) )
-      SyncNewlines(O_DEBUG);
+    m_streams[O_DEBUG]->Update(message, ap);
     va_end(ap);
   }
 }
@@ -1401,13 +1538,11 @@ void Console::Warning(int sev, const char *message, ...)
   va_list ap;
 
   va_start(ap, message);
-  if( m_streams[O_WARNING]->Output(message, ap) )
-    SyncNewlines(O_WARNING);
+  m_streams[O_WARNING]->Output(message, ap);
   va_end(ap);
   if( *cfg_verbose && !m_streams[O_DEBUG]->SameDev(m_streams[O_WARNING]) ){
     va_start(ap, message);
-    if( m_streams[O_DEBUG]->Output(message, ap) )
-      SyncNewlines(O_DEBUG);
+    m_streams[O_DEBUG]->Output(message, ap);
     va_end(ap);
   }
 
@@ -1423,7 +1558,6 @@ void Console::Warning(int sev, const char *message, ...)
 
 void Console::Debug(const char *message, ...)
 {
-  static char buffer[80];
   if( !*cfg_verbose ) return;
 
   char *format = (char *)0;
@@ -1435,20 +1569,20 @@ void Console::Debug(const char *message, ...)
       (!m_streams[O_DEBUG]->SameDev(m_streams[O_INTERACT]) &&
        !m_streams[O_DEBUG]->SameDev(m_streams[O_INPUT])) ){
     size_t need = strlen(message)+1 + 10*sizeof(unsigned long)/4;
-    if( need > sizeof(buffer) && (format = new char[need]) ) buflen = need;
+    if( need > sizeof(m_debug_buffer) && (format = new char[need]) )
+      buflen = need;
     else{
-      format = buffer;
-      buflen = sizeof(buffer);
+      format = m_debug_buffer;
+      buflen = sizeof(m_debug_buffer);
     }
 
     snprintf(format, buflen, "%lu %s", (unsigned long)now, message);
 
     va_start(ap, message);
-    if( m_streams[O_DEBUG]->Output(format, ap) )
-      SyncNewlines(O_DEBUG);
+    m_streams[O_DEBUG]->Output(format, ap);
     va_end(ap);
 
-    if( format && format != buffer ) delete []format;
+    if( format && format != m_debug_buffer ) delete []format;
   }
 }
 
@@ -1458,8 +1592,6 @@ void Console::Debug(const char *message, ...)
 */
 void Console::Debug_n(const char *message, ...)
 {
-  static char buffer[80];
-  static int f_new_line = 1;
   if( !*cfg_verbose ) return;
 
   va_list ap;
@@ -1472,32 +1604,28 @@ void Console::Debug_n(const char *message, ...)
       if( m_status_last && message && *message ) Debug_n("");
       m_status_last = 0;
     }
-    if( f_new_line && message && *message ){
+    if( m_streams[O_DEBUG]->Newline() ){
       char *format = (char *)0;
       size_t buflen;
       size_t need = strlen(message)+1 + 10*sizeof(unsigned long)/4;
-      if( need > sizeof(buffer) && (format = new char[need]) ) buflen = need;
+      if( need > sizeof(m_debug_buffer) && (format = new char[need]) )
+        buflen = need;
       else{
-        format = buffer;
-        buflen = sizeof(buffer);
+        format = m_debug_buffer;
+        buflen = sizeof(m_debug_buffer);
       }
 
       snprintf(format, buflen, "%lu %s", (unsigned long)now, message);
 
       va_start(ap, message);
-      if( m_streams[O_DEBUG]->Output_n(format, ap) )
-        SyncNewlines(O_DEBUG);
+      m_streams[O_DEBUG]->Output_n(format, ap);
       va_end(ap);
-      if( format && format != buffer ) delete []format;
+      if( format && format != m_debug_buffer ) delete []format;
     }else{
       va_start(ap, message);
-      if( m_streams[O_DEBUG]->Output_n(message, ap) )
-        SyncNewlines(O_DEBUG);
+      m_streams[O_DEBUG]->Output_n(message, ap);
       va_end(ap);
     }
-
-    if( message && *message ) f_new_line = 0;
-    else f_new_line = 1;
   }
 }
 
@@ -1507,8 +1635,7 @@ void Console::Interact(const char *message, ...)
   va_list ap;
 
   va_start(ap, message);
-  if( m_streams[O_INTERACT]->Output(message, ap) )
-    SyncNewlines(O_INTERACT);
+  m_streams[O_INTERACT]->Output(message, ap);
   va_end(ap);
 }
 
@@ -1525,8 +1652,7 @@ void Console::Interact_n(const char *message, ...)
     m_status_last = 0;
   }
   va_start(ap, message);
-  if( m_streams[O_INTERACT]->Output_n(message, ap) )
-    SyncNewlines(O_INTERACT);
+  m_streams[O_INTERACT]->Output_n(message, ap);
   va_end(ap);
 }
 
@@ -1542,8 +1668,7 @@ void Console::InteractU(const char *message, ...)
     m_status_last = 0;
   }
   va_start(ap, message);
-  if( m_streams[O_INTERACT]->Update(message, ap) )
-    SyncNewlines(O_INTERACT);
+  m_streams[O_INTERACT]->Update(message, ap);
   va_end(ap);
 }
 
@@ -1559,18 +1684,8 @@ char *Console::Input(const char *prompt, char *field, size_t length)
   }
   m_streams[O_INPUT]->SetInputMode(DT_CONMODE_LINES);
   retval = m_streams[O_INPUT]->Input(field, length);
-  SyncNewlines(O_INPUT);
   m_streams[O_INPUT]->SetInputMode(DT_CONMODE_CHARS);
   return retval;
-}
-
-
-void Console::SyncNewlines(int master)
-{
-  for( int i=0; i < O_NCHANNELS; i++ ){
-    if( i != master && m_streams[i]->SameDev(m_streams[master]) )
-      m_streams[i]->SyncNewline(m_streams[master]);
-  }
 }
 
 
@@ -1635,7 +1750,7 @@ void Console::Daemonize()
     goto restorecache;
   }else if( r ){
     g_secondary_process = g_daemon_parent = true;
-    exit(EXIT_SUCCESS);
+    Exit(EXIT_SUCCESS);
   }
 
   for( int i=0; i <= O_NCHANNELS; i++ ){
@@ -1660,7 +1775,7 @@ void Console::Daemonize()
     goto restorecache;
   }else if( r ){
     g_secondary_process = true;
-    exit(EXIT_SUCCESS);
+    Exit(EXIT_SUCCESS);
   }
   else if(*cfg_verbose) Debug("Running in daemon (background) mode.");
 
