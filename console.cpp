@@ -472,6 +472,7 @@ Console::Console()
   m_status_len = 80;
 
   opermenu.mode = configmenu.mode = 0;
+  m_user.pending = '\0';
 
   m_stdout.Associate(stdout, "stdout", 1);
   m_stderr.Associate(stderr, "stderr", 1);
