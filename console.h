@@ -151,6 +151,7 @@ class Console
   int m_oldfd;
   int m_status_len;
   char m_buffer[80], m_debug_buffer[80];
+  time_t m_active;
 
   struct{
     int mode, n_opt;

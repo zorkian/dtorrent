@@ -484,6 +484,7 @@ extern Config<bt_length_t> cfg_req_slice_size_k;
 extern Config<bool> cfg_convert_filenames;
 
 extern Config<int> cfg_status_format;
+extern Config<time_t> cfg_status_snooze;
 
 extern Config<const char *> cfg_config_file;
 

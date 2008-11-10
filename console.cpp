@@ -36,6 +36,7 @@
 //===========================================================================
 
 const char LIVE_CHAR[4] = { '-', '\\', '|', '/' };
+const char SNOOZE_CHAR[4] = { '.', 'o', 'O', 'o' };
 
 Console CONSOLE;
 static bool g_console_ready = false;
@@ -456,6 +457,7 @@ Console::Console()
 {
   m_skip_status = m_status_last = 0;
   m_live_idx = 0;
+  m_active = (time_t)0;
   m_oldfd = -1;
 
   int i = 0;
@@ -501,6 +503,8 @@ Console::~Console()
 
 void Console::Init()
 {
+  m_active = time((time_t *)0);
+
   // Activate config defaults
   ChangeChannel(O_NORMAL, *cfg_channel_normal, 0);
   ChangeChannel(O_WARNING, *cfg_channel_error, 0);
@@ -555,6 +559,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
       FD_ISSET(m_streams[O_INPUT]->Fileno(), rfdp) ){
     FD_CLR(m_streams[O_INPUT]->Fileno(), rfdnextp);
     (*nready)--;
+    m_active = now;
     if( DT_CONMODE_LINES == m_streams[O_INPUT]->GetInputMode() ){  // cmd param
       if( m_streams[O_INPUT]->Input(param, sizeof(param)) ){
         if( (s = strchr(param, '\n')) ) *s = '\0';
@@ -629,9 +634,9 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         Interact(" %-9s%-30s %-9s%s", "e[+/-]", "Adjust seed exit time",
           "v", "Toggle verbose mode");
         Interact(" %-9s%-30s %-9s%s", "E[+/-]", "Adjust seed exit ratio",
-          "Q", "Quit");
+          "z", "Snooze status line");
         Interact(" %-9s%-30s %-9s%s", "X", "Completion command",
-          "", "");
+          "Q", "Quit");
         break;
       case 'd':  // download bw limit
       case 'u':  // upload bw limit
@@ -682,6 +687,10 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         cfg_verbose = !*cfg_verbose;
         if( !m_streams[O_INTERACT]->SameDev(m_streams[O_DEBUG]) )
           Interact("Verbose output %s", *cfg_verbose ? "on" : "off");
+        break;
+      case 'z':  // snooze
+        if( *cfg_verbose ) CONSOLE.Interact("Cannot snooze in verbose mode");
+        else m_active = (time_t)0;
         break;
       case 'Q':  // quit
         if( !Tracker.IsQuitting() ){
@@ -1244,7 +1253,15 @@ void Console::Status(int immediate)
     else if( !m_streams[O_NORMAL]->IsSuspended() ||
              (*cfg_verbose && !m_streams[O_DEBUG]->IsSuspended()) ){
       // optimized to generate the status line only if it will be output
-      buffer = StatusLine();
+      if( !*cfg_verbose &&
+          (0==m_active ||
+           (*cfg_status_snooze > 0 && now - m_active > *cfg_status_snooze)) ){
+        strcpy(m_buffer, "  Snooze");
+        m_buffer[0] = SNOOZE_CHAR[m_live_idx++];
+        buffer = m_buffer;
+      }else{
+        buffer = StatusLine();
+      }
 
       if( !m_status_last ) Print_n("");
       int tmplen = m_streams[O_NORMAL]->Cols() - 1;
