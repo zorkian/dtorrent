@@ -12,6 +12,8 @@
 
 
 #ifndef HAVE_VSNPRINTF
+#include <stdio.h>
+#include <string.h>
 int vsnprintf(char *str, size_t size, const char *format, va_list ap)
 {
   int r;
@@ -27,6 +29,9 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap)
 
 
 #ifndef HAVE_SNPRINTF
+#ifdef HAVE_VSNPRINTF
+#include <stdio.h>
+#endif
 int snprintf(char *str, size_t size, const char *format, ...)
 {
   int r;

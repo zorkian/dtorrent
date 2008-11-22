@@ -278,7 +278,7 @@ int param_check(int argc, char **argv)
 
     case 't':  // make torrent
       arg_flg_make_torrent = true;
-      CONSOLE.ChangeChannel(O_INPUT, "off", 0);
+      CONSOLE.NoInput();
       break;
 
     case 'l':  // piece length
@@ -293,7 +293,7 @@ int param_check(int argc, char **argv)
 
     case 'x':  // print torrent information only
       arg_flg_exam_only = true;
-      CONSOLE.ChangeChannel(O_INPUT, "off", 0);
+      CONSOLE.NoInput();
       break;
 
     case 'S':  // CTCS server
@@ -368,7 +368,7 @@ int param_check(int argc, char **argv)
 
 void usage()
 {
-  CONSOLE.ChangeChannel(O_INPUT, "off", 0);
+  CONSOLE.NoInput();
   fprintf(stderr, "%s   Original code Copyright: YuHong(992126018601033)\n",
     PACKAGE_STRING);
   fprintf(stderr,

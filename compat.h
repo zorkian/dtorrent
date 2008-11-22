@@ -1,19 +1,21 @@
 #ifndef COMPAT_H
 #define COMPAT_H
-/* compat.h:  Copyright 2007 Dennis Holmes  (dholmes@rahul.net) */
+/* compat.h:  Copyright 2007-2008 Dennis Holmes  (dholmes@rahul.net) */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#ifndef HAVE_VSNPRINTF
+#if !defined(HAVE_VSNPRINTF) || !defined(HAVE_SNPRINTF)
 #include <stdarg.h>
+#endif
+
+#ifndef HAVE_VSNPRINTF
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
 #endif
 
 #ifndef HAVE_SNPRINTF
-#include <stdarg.h>
 int snprintf(char *str, size_t size, const char *format, ...);
 #endif
 

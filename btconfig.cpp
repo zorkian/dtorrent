@@ -654,15 +654,15 @@ Config<const char *> cfg_channel_input = "stdin";
 static void CfgChannel(Config<const char *> *config)
 {
   if( strstr(config->Tag(), "normal") )
-    CONSOLE.ChangeChannel(O_NORMAL, config->Value());
+    CONSOLE.ChangeChannel(DT_CHAN_NORMAL, config->Value());
   else if( strstr(config->Tag(), "interact") )
-    CONSOLE.ChangeChannel(O_INTERACT, config->Value());
+    CONSOLE.ChangeChannel(DT_CHAN_INTERACT, config->Value());
   else if( strstr(config->Tag(), "error") )
-    CONSOLE.ChangeChannel(O_WARNING, config->Value());
+    CONSOLE.ChangeChannel(DT_CHAN_WARNING, config->Value());
   else if( strstr(config->Tag(), "debug") )
-    CONSOLE.ChangeChannel(O_DEBUG, config->Value());
+    CONSOLE.ChangeChannel(DT_CHAN_DEBUG, config->Value());
   else if( strstr(config->Tag(), "input") )
-    CONSOLE.ChangeChannel(O_INPUT, config->Value());
+    CONSOLE.ChangeChannel(DT_CHAN_INPUT, config->Value());
 }
 
 static bool ValCfgChannel(const Config<const char *> *config, const char *value)
@@ -1117,7 +1117,11 @@ void InitConfig()
   cfg_redirect_io.Init("I/O redirection [-dd]", "For daemon mode");
   CONFIG.Add("daemon.redirect", cfg_redirect_io);
 
-  cfg_allocate.Init("File allocation mode [-a]", "0=Sparse/1=Full/2=None");
+  snprintf(tmp, sizeof(tmp), "0=%s/1=%s/2=%s",
+    (0==DT_ALLOC_SPARSE) ? "Sparse" : ((0==DT_ALLOC_FULL) ? "Full" : "None"),
+    (1==DT_ALLOC_SPARSE) ? "Sparse" : ((1==DT_ALLOC_FULL) ? "Full" : "None"),
+    (2==DT_ALLOC_SPARSE) ? "Sparse" : ((2==DT_ALLOC_FULL) ? "Full" : "None"));
+  cfg_allocate.Init("File allocation mode [-a]", tmp);
   cfg_allocate.Setup(CfgAllocate);
   cfg_allocate.SetMax(2);
   CONFIG.Add("allocate", cfg_allocate);
