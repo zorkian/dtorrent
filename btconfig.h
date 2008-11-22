@@ -471,6 +471,7 @@ extern Config<bool> cfg_daemon;
 extern Config<bool> cfg_redirect_io;
 
 extern Config<unsigned char> cfg_allocate;
+extern Config<const char *> cfg_staging_dir;
 
 extern Config<const char *> cfg_public_ip;
 extern Config<in_addr_t> cfg_listen_ip;

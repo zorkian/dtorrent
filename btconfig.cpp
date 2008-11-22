@@ -923,6 +923,25 @@ void CfgAllocate(Config<unsigned char> *config)
 
 //---------------------------------------------------------------------------
 
+Config<const char *> cfg_staging_dir = "dtstaging";
+
+static void CfgStagingDir(Config<const char *> *config)
+{
+  if( !*(*cfg_staging_dir) ) config->Reset();
+  else if( PATH_SP == (*cfg_staging_dir)[strlen(*cfg_staging_dir) - 1] ){
+    char *value, *tmp;
+    if( (value = new char[strlen(*cfg_staging_dir) + 1]) ){
+      strcpy(value, *cfg_staging_dir);
+      tmp = &value[strlen(*cfg_staging_dir) - 1];
+      while( tmp >= value && PATH_SP == *tmp ) *tmp-- = '\0';
+      cfg_staging_dir = value;
+      delete []value;
+    }else CONSOLE.Warning(1, "Failed to allocate memory for config");
+  }
+}
+
+//---------------------------------------------------------------------------
+
 Config<const char *> cfg_public_ip;
 
 //---------------------------------------------------------------------------
@@ -1124,7 +1143,11 @@ void InitConfig()
   cfg_allocate.Init("File allocation mode [-a]", tmp);
   cfg_allocate.Setup(CfgAllocate);
   cfg_allocate.SetMax(2);
-  CONFIG.Add("allocate", cfg_allocate);
+  CONFIG.Add("allocate.mode", cfg_allocate);
+
+  cfg_staging_dir.Init("Staging directory", "For non-allocated mode");
+  cfg_staging_dir.Setup(CfgStagingDir);
+  CONFIG.Add("allocate.dir", cfg_staging_dir);
 
   cfg_public_ip.Init("Public IP [-I]");
   CONFIG.Add("listen.public_ip", cfg_public_ip);

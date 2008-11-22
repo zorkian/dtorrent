@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <ctype.h>  // isprint
 
+#include "btconfig.h"
 #include "bencode.h"
 #include "btcontent.h"
 #include "console.h"
@@ -1007,7 +1008,8 @@ int btFiles::SetupFiles(const char *torrentid)
     return -1;
   }
   strcpy(m_torrent_id, torrentid);
-  sprintf(m_staging_path, "%s%c%s", "dtstaging", PATH_SP, m_torrent_id);
+  sprintf(m_staging_path, "%s%c%s", *cfg_staging_dir, PATH_SP, m_torrent_id);
+  cfg_staging_dir.Lock();
 
   // Identify existing staging files.
   if( !(dp = opendir(m_staging_path)) && !arg_flg_check_only ){
