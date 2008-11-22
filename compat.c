@@ -12,17 +12,20 @@
 
 
 #ifndef HAVE_VSNPRINTF
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 int vsnprintf(char *str, size_t size, const char *format, va_list ap)
 {
-  int r;
-  char *buffer[4*MAXPATHLEN];  /* git-r-dun */
+  int r = 0;
+  char *buffer = (char *)0;
 
-  if( (r = vsprintf(buffer, format, ap)) >= 0 ){
+  if( (buffer = (char *)malloc(size * 2)) &&
+      (r = vsprintf(buffer, format, ap)) >= 0 ){
     strncpy(str, buffer, size);
-    str[size] = '\0';
+    str[size - 1] = '\0';
   }
+  if( buffer ) free(buffer);
   return r;
 }
 #endif
