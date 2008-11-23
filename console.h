@@ -320,7 +320,7 @@ class Console
   void Print_n(const char *message, ...);
   void Update(const char *message, ...);
   void Warning(int sev, const char *message, ...);
-  void Warning(int sev, const char *message, va_list ap);
+  void Error(int sev, const char *message, va_list ap);
   void Debug(const char *message, ...);
   void Debug_n(const char *message, ...);
   void Interact(const char *message, ...);

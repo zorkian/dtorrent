@@ -466,7 +466,7 @@ void ConStream::Error(int sev, const char *message, ...)
   va_list ap;
 
   va_start(ap, message);
-  if( g_console_ready ) CONSOLE.Warning(sev, message, ap);
+  if( g_console_ready ) CONSOLE.Error(sev, message, ap);
   else{
     vfprintf(stderr, message, ap);
     fflush(stderr);
@@ -1712,7 +1712,7 @@ void Console::Warning(int sev, const char *message, ...)
 }
 
 
-void Console::Warning(int sev, const char *message, va_list ap)
+void Console::Error(int sev, const char *message, va_list ap)
 {
   vsnprintf(m_buffer, sizeof(m_buffer), message, ap);
   m_channels[DT_CHAN_WARNING].Output("%s", m_buffer);
