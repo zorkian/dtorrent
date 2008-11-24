@@ -1494,6 +1494,9 @@ void btContent::SetFilter()
   Bitfield tmpFilter, *pfilter;
   BFNODE *node=m_filters, *pnode=(BFNODE *)0;
 
+  // Can be called from Config while processing options
+  if( !pBMasterFilter ) return;
+
   if( *cfg_file_to_download ){
     pBMasterFilter->SetAll();
     list = new char[strlen(*cfg_file_to_download) + 1];
