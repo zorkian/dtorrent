@@ -9,16 +9,6 @@
 #include <sys/param.h>
 #endif
 
-#if defined(USE_STANDALONE_SHA1)
-#include "sha1.h"
-#elif defined(HAVE_OPENSSL_SHA_H)
-#include <openssl/sha.h>
-#elif defined(HAVE_SSL_SHA_H)
-#include <ssl/sha.h>
-#elif defined(HAVE_SHA_H)
-#include <sha.h>
-#endif
-
 #include <stdio.h>
 #include <sys/stat.h>
 #include <stdlib.h>
@@ -38,6 +28,7 @@
 #include "console.h"
 #include "bttime.h"
 #include "util.h"
+#include "sha1.h"
 
 #define MAX_METAINFO_FILESIZ (4*1024*1024)
 #define FLUSH_RETRY_INTERVAL 300  // seconds to retry after disk write error
@@ -59,25 +50,6 @@
 
 btContent BTCONTENT;
 
-
-static void Sha1(char *ptr, size_t len, unsigned char *dm)
-{
-#if defined(USE_STANDALONE_SHA1)
-  SHA1_CTX context;
-  SHA1Init(&context);
-  SHA1Update(&context, (unsigned char *)ptr, len);
-  SHA1Final(dm, &context);
-#else
-#ifdef WINDOWS
-  ;
-#else
-  SHA_CTX context;
-  SHA1_Init(&context);
-  SHA1_Update(&context, (unsigned char *)ptr, len);
-  SHA1_Final(dm, &context);
-#endif
-#endif
-}
 
 btContent::btContent()
 {

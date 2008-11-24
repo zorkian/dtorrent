@@ -54,9 +54,12 @@ Modified 4/01
 By Saul Kravitz <Saul.Kravitz@celera.com>
 Still 100% PD
 Modified to run on Compaq Alpha hardware.  
-
-
 */
+
+/* This file has been modified from the original to integrate with Dtorrent.
+ * The original was obtained from:
+ * http://sea-to-sky.net/~sreid/
+ */
 
 /*
 Test Vectors (from FIPS PUB 180-1)
@@ -68,7 +71,24 @@ A million repetitions of "a"
   34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
 */
 
-#include "config.h"
+#include "sha1.h"
+
+void Sha1(const char *data, size_t len, unsigned char *result)
+{
+#if defined(USE_STANDALONE_SHA1)
+  SHA1_CTX context;
+  SHA1Init(&context);
+  SHA1Update(&context, (unsigned char *)data, len);
+  SHA1Final(result, &context);
+#else
+  SHA_CTX context;
+  SHA1_Init(&context);
+  SHA1_Update(&context, (unsigned char *)data, len);
+  SHA1_Final(result, &context);
+#endif
+}
+
+#ifdef USE_STANDALONE_SHA1
 
 /* #define SHA1HANDSOFF * Copies data before messing with it. */
 #define SHA1HANDSOFF
@@ -77,8 +97,6 @@ A million repetitions of "a"
 #include <stdio.h>
 #endif
 #include <string.h>
-
-#include "sha1.h"
 
 /* Use result of AC_C_BIGENDIAN autoconf test. */
 #ifndef WORDS_BIGENDIAN
@@ -191,7 +209,7 @@ void SHA1Init(SHA1_CTX* context)
 
 /* Run your data through this. */
 
-void SHA1Update(SHA1_CTX* context, unsigned char* data, uint32_t len)	/*
+void SHA1Update(SHA1_CTX* context, const unsigned char* data, uint32_t len)	/*
 JHB */
 {
 uint32_t i, j;	/* JHB */
@@ -248,4 +266,6 @@ unsigned char finalcount[8];
     SHA1Transform(context->state, context->buffer);
 #endif
 }
+
+#endif  // USE_STANDALONE_SHA1
 
