@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdio.h>   // snprintf()
 
-#include <sys/types.h>   // in_addr_t, inet_addr(), inet_ntoa()
+#include <sys/types.h>   // in_addr_t, inet_addr(), inet_ntoa(), stat()
 #include <sys/socket.h>  // in_addr_t, inet_addr(), inet_ntoa()
 #include <netinet/in.h>  // in_addr_t, inet_addr(), inet_ntoa()
 #include <arpa/inet.h>   // in_addr_t, inet_addr(), inet_ntoa()

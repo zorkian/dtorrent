@@ -1,7 +1,6 @@
-#include <sys/types.h>
-#include <string.h>
 #include <errno.h>
 #include <ctype.h>      // ctype()
+#include <sys/stat.h>   // chmod(), stat()
 
 #include "btconfig.h"
 #include "bttime.h"
@@ -473,10 +472,14 @@ ConfigGen *Configuration::Next(const ConfigGen *current) const
 bool Configuration::Save(const char *filename) const
 {
   FILE *fp;
+  struct stat sb;
+  bool exists = false;
   ConfigGen *config;
   const char *cfgtype;
   const char *debugcomment = 
     "# Debug stuff is first to aid in debugging this file.\n";
+
+  if( 0==stat(filename, &sb) ) exists = true;
 
   fp = fopen(filename, "w");
   if( !fp ){
@@ -484,6 +487,7 @@ bool Configuration::Save(const char *filename) const
       filename, strerror(errno));
     return false;
   }
+  if( !exists ) chmod(filename, S_IRUSR | S_IWUSR | S_IXOTH);
 
   if( (config = CONFIG["verbose"]) && config->Saving() ){
     fprintf(fp, debugcomment);
