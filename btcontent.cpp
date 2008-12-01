@@ -196,7 +196,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
   percent = m_npieces / 100;
   if( !percent ) percent = 1;
 
-  CONSOLE.Interact_n("");
+  CONSOLE.Interact_n();
   for( n = 0; n < m_npieces; n++ ){
     if( GetHashValue(n, m_hash_table + n * 20) < 0 ) return -1;
     if( n % percent == 0 || n == m_npieces-1 ){
@@ -1091,7 +1091,7 @@ int btContent::CheckExist()
 
   if( !percent ) percent = 1;
 
-  CONSOLE.Interact_n("");
+  CONSOLE.Interact_n();
   for( ; idx < m_npieces; idx++ ){
     if( m_btfiles.pBFPieces->IsSet(idx) ){
       if( GetHashValue(idx, md) < 0 ){

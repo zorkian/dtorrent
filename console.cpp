@@ -821,7 +821,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         case 'C':  // max cache size
           m_user.inc = 1;
           m_user.count = 0;
-          Interact_n("");
+          Interact_n();
           break;
         case 'n':  // get1file
           if( BTCONTENT.IsFull() )
@@ -838,7 +838,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           break;
         case 'S':  // CTCS server
           LineMode();
-          Interact_n("");
+          Interact_n();
           if( *cfg_ctcs ){
             Interact("Enter ':' to stop using CTCS.");
             Interact_n("CTCS server:port (currently %s): ", *cfg_ctcs);
@@ -868,7 +868,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
         case 'Q':  // quit
           if( !Tracker.IsQuitting() ){
             LineMode();
-            Interact_n("");
+            Interact_n();
             Interact_n("Quit:  Are you sure? ");
           }
           break;
@@ -1184,7 +1184,7 @@ int Console::Configure(const char *param)
           else Interact_n("   ");
           Interact_n(" %s:  %s  %s", config->Desc(), config->Sval(),
             config->Info());
-          Interact_n("");
+          Interact_n();
         }
       }
       configcount++;
@@ -1324,8 +1324,9 @@ void Console::LineMode()
       !m_channels[DT_CHAN_INPUT].SameDev(&m_channels[DT_CHAN_INTERACT]) ){
     for( int i=0; i < DT_NCHANNELS; i++ ){
       if( m_channels[i].IsOutput() &&
-          m_channels[DT_CHAN_INPUT].SameDev(&m_channels[i]) )
-        m_channels[i].Print_n("");
+          m_channels[DT_CHAN_INPUT].SameDev(&m_channels[i]) ){
+        m_channels[i].Print_n();
+      }
     }
   }
   m_channels[DT_CHAN_INPUT].SetInputMode(DT_CONMODE_LINES);
@@ -1404,7 +1405,7 @@ void Console::Status(int immediate)
         buffer = StatusLine();
       }
       if( !m_channels[DT_CHAN_NORMAL].IsSuspended() ){
-        if( !m_status_last ) Print_n("");
+        if( !m_status_last ) Print_n();
         int tmplen = m_channels[DT_CHAN_NORMAL].Cols() - 1;
         if( tmplen > 79 ) tmplen = 79;
         int len = strlen(buffer);
@@ -1643,7 +1644,7 @@ void Console::Print_n(const char *message, ...)
 {
   va_list ap;
 
-  if( m_status_last && message && *message ) Print_n("");
+  if( m_status_last && message && *message ) Print_n();
   m_status_last = 0;
 
   if( !WaitingInput(&m_channels[DT_CHAN_NORMAL]) ){
@@ -1758,8 +1759,15 @@ void Console::Debug(const char *message, ...)
 void Console::Debug_n(const char *message, ...)
 {
   if( !*cfg_verbose ) return;
-
   va_list ap;
+  va_start(ap, message);
+  VDebug_n(message, ap);
+  va_end(ap);
+}
+
+void Console::VDebug_n(const char *message, va_list ap)
+{
+  if( !*cfg_verbose ) return;
 
   if( !WaitingInput(&m_channels[DT_CHAN_DEBUG]) ){
     if( m_channels[DT_CHAN_DEBUG].Newline() ){
@@ -1775,15 +1783,34 @@ void Console::Debug_n(const char *message, ...)
 
       snprintf(format, buflen, "%lu %s", (unsigned long)now, message);
 
-      va_start(ap, message);
       m_channels[DT_CHAN_DEBUG].Output_n(format, ap);
-      va_end(ap);
       if( format && format != m_debug_buffer ) delete []format;
     }else{
-      va_start(ap, message);
       m_channels[DT_CHAN_DEBUG].Output_n(message, ap);
-      va_end(ap);
     }
+  }
+}
+
+
+void Console::Dump(const char *data, size_t length, const char *message, ...)
+{
+  if( !*cfg_verbose ) return;
+
+  char *buffer;
+  va_list ap;
+
+  Debug_n();
+  if( message ){
+    va_start(ap, message);
+    VDebug_n(message, ap);
+    va_end(ap);
+  }else{
+    Debug_n("Dump: ");
+  }
+  if( (buffer = new char[length + 1]) ){
+    snprintf(buffer, length + 1, "%s", data);
+    Debug_n("%s", buffer);
+    delete []buffer;
   }
 }
 
@@ -1829,7 +1856,7 @@ char *Console::Input(const char *prompt, char *field, size_t length)
   char *retval;
 
   if( prompt && *prompt ){
-    Interact_n("");
+    Interact_n();
     Interact_n("%s", prompt);
   }
   LineMode();
@@ -1857,7 +1884,7 @@ char *Console::Input(char *buffer, size_t size)
   }else if( DT_CONMODE_LINES == m_channels[DT_CHAN_INPUT].GetInputMode() &&
       !m_channels[DT_CHAN_INPUT].SameDev(&m_channels[DT_CHAN_INTERACT]) ){
     Interact_n("%s", buffer);
-    Interact_n("");
+    Interact_n();
   }
   return result;
 }

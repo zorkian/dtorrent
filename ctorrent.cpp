@@ -121,7 +121,7 @@ int main(int argc, char **argv)
     WORLD.CloseAll();
     if( *cfg_cache_size ) BTCONTENT.FlushCache();
     if( BTCONTENT.NeedMerge() ){
-      CONSOLE.Interact_n("");
+      CONSOLE.Interact_n();
       CONSOLE.Interact_n("Merging staged data");
       BTCONTENT.MergeAll();
     }

@@ -233,7 +233,7 @@ class ConChannel
   int Cols() const { return m_stream ? m_stream->Cols() : 0; }
 
   void Print(const char *message, ...);
-  void Print_n(const char *message, ...);
+  void Print_n(const char *message="", ...);
   void Output(const char *message, va_list ap){
     if( m_stream ) m_stream->Output(m_id, message, ap);
   }
@@ -317,14 +317,17 @@ class Console
   void Status(int immediate);
 
   void Print(const char *message, ...);
-  void Print_n(const char *message, ...);
+  void Print_n(const char *message="", ...);
   void Update(const char *message, ...);
   void Warning(int sev, const char *message, ...);
   void Error(int sev, const char *message, va_list ap);
   void Debug(const char *message, ...);
-  void Debug_n(const char *message, ...);
+  void Debug_n(const char *message="", ...);
+  void VDebug_n(const char *message, va_list ap);
+  void Dump(const char *data, size_t length, const char *message=(char *)0,
+    ...);
   void Interact(const char *message, ...);
-  void Interact_n(const char *message, ...);
+  void Interact_n(const char *message="", ...);
   void InteractU(const char *message, ...);
   char *Input(const char *prompt, char *field, size_t length);
 

@@ -53,7 +53,7 @@ int btBasic::IpEquiv(struct sockaddr_in addr)
 {
 //  CONSOLE.Debug_n("IpEquiv: %s <=> ", inet_ntoa(m_sin.sin_addr));
 //  CONSOLE.Debug_n("%s", inet_ntoa(addr.sin_addr));
-//  CONSOLE.Debug_n("");
+//  CONSOLE.Debug_n();
   return
     (memcmp(&m_sin.sin_addr, &addr.sin_addr, sizeof(struct in_addr)) == 0) ?
       1 : 0;
@@ -619,7 +619,7 @@ int btPeer::SendRequest()
   }
   if( ps && m_req_out < m_req_send ){
     if(*cfg_verbose){
-      CONSOLE.Debug_n("");
+      CONSOLE.Debug_n();
       CONSOLE.Debug_n("Requesting #%d from %p (%d left, %d slots):",
         (int)ps->index, this, (int)request_q.Qsize(), (int)m_req_send);
     }
@@ -638,7 +638,7 @@ int btPeer::SendRequest()
       request_q.SetNextSend(ps->next);
       m_req_out++;
     }
-    if(*cfg_verbose) CONSOLE.Debug_n("");
+    if(*cfg_verbose) CONSOLE.Debug_n();
     m_receive_time = now;
   }
   return ( m_req_out < m_req_send && !m_standby ) ? RequestPiece() : 0;
@@ -1033,7 +1033,7 @@ int btPeer::HandShake()
     if( *cfg_verbose && r > 20 &&
         memcmp(stream.in_buffer.BasePointer()+20,
                BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8) != 0 ){
-      CONSOLE.Debug_n("");
+      CONSOLE.Debug_n();
       CONSOLE.Debug_n("peer %p gave 0x", this);
       for( int i = 20; i < r && i < 27; i++ ){
         CONSOLE.Debug_n("%2.2hx",
@@ -1046,13 +1046,13 @@ int btPeer::HandShake()
                     (r<48) ? r : 48) != 0 ){
       if(*cfg_verbose){
         CONSOLE.Debug("%p: handshake mismatch", this);
-        CONSOLE.Debug_n("");
+        CONSOLE.Debug_n();
         CONSOLE.Debug_n("mine: 0x");
         for( int i=0; i < r && i < 48; i++ ){
           CONSOLE.Debug_n("%2.2hx",
             (unsigned short)(unsigned char)BTCONTENT.GetShakeBuffer()[i]);
         }
-        CONSOLE.Debug_n("");
+        CONSOLE.Debug_n();
         CONSOLE.Debug_n("peer: 0x");
         for( int i=0; i < r && i < 48; i++ ){
           CONSOLE.Debug_n("%2.2hx",
@@ -1081,7 +1081,7 @@ int btPeer::HandShake()
   if( *cfg_verbose &&
       memcmp(stream.in_buffer.BasePointer()+20, BTCONTENT.GetShakeBuffer()+20,
              8) != 0 ){
-    CONSOLE.Debug_n("");
+    CONSOLE.Debug_n();
     CONSOLE.Debug_n("peer %p gave 0x", this);
     for( int i = 20; i < 27; i++ ){
       CONSOLE.Debug_n("%2.2hx",
@@ -1097,13 +1097,13 @@ int btPeer::HandShake()
              BTCONTENT.GetShakeBuffer() + 28, 20) != 0 ){
     if(*cfg_verbose){
       CONSOLE.Debug("%p: handshake mismatch", this);
-      CONSOLE.Debug_n("");
+      CONSOLE.Debug_n();
       CONSOLE.Debug_n("mine: 0x");
       for( int i=0; i < 48; i++ ){
         CONSOLE.Debug_n("%2.2hx",
           (unsigned short)(unsigned char)BTCONTENT.GetShakeBuffer()[i]);
       }
-      CONSOLE.Debug_n("");
+      CONSOLE.Debug_n();
       CONSOLE.Debug_n("peer: 0x");
       for( int i=0; i < 48; i++ ){
         CONSOLE.Debug_n("%2.2hx",

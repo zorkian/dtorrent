@@ -1137,7 +1137,7 @@ int btFiles::CreateFiles()
 
   // Create/allocate files.
   if( *cfg_allocate == DT_ALLOC_FULL || *cfg_allocate == DT_ALLOC_SPARSE ){
-    CONSOLE.Interact_n("");
+    CONSOLE.Interact_n();
     CONSOLE.Interact_n("Allocating files");
     MergeAll();
     while( ExtendAll() >= 0 && MergeAll() );
@@ -1203,7 +1203,7 @@ void btFiles::PrintOut() const
   if( m_directory ) CONSOLE.Print("Directory: %s", m_directory);
   for( ; p; p = p->bf_nextreal ){
     ++id;
-    CONSOLE.Print_n("");
+    CONSOLE.Print_n();
     CONSOLE.Print_n("<%d> %s%s [%llu]", (int)id, m_directory ? " " : "",
       p->bf_filename, (unsigned long long)p->bf_length);
     if( !arg_flg_exam_only ){
