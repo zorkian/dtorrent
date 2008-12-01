@@ -18,7 +18,8 @@
 
 BufIo::BufIo()
 {
-  f_socket_remote_closed = 0;
+  m_valid = 1;
+  m_socket_remote_closed = 0;
   b = new char[BUF_DEF_SIZ];
 #ifndef WINDOWS
   if( !b ) throw 9;
@@ -89,7 +90,7 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf, size_t len)
 #endif
       return (EWOULDBLOCK == errno || EAGAIN == errno) ? (ssize_t)t : -1;
     }else if( 0 == r ){
-      f_socket_remote_closed = 1;
+      m_socket_remote_closed = 1;
       return (ssize_t)t;  // connection closed by remote
     }else{
       buf += r;
@@ -102,13 +103,14 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf, size_t len)
 
 ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
 {
-  ssize_t r;
+  if( !m_valid ) return -1;
+
   if( _left_buffer_size < len ){  // not enough space in buffer
-    r = FlushOut(sk);
-    if( r < 0 ) return r;
+    if( p && FlushOut(sk) < 0 ) return -1;
     while( _left_buffer_size < len ){  // still not enough space
       if( _realloc_buffer() < 0 ){
         errno = ENOMEM;
+        m_valid = 0;
         return -3;
       }
     }
@@ -118,39 +120,20 @@ ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
   return 0;
 }
 
-ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
-{
-  ssize_t r;
-
-  if( !_left_buffer_size && _realloc_buffer() < 0 ){
-    errno = ENOMEM;
-    return (ssize_t)-2;
-  }
-
-  if( 0==limit || limit > _left_buffer_size )
-    limit = _left_buffer_size;
-  r = _RECV(sk, b + p, limit);
-  if( r < 0 ) return -1;
-  else{
-    if( r ) p += r;
-    if( f_socket_remote_closed ) return -2;  // connection closed by remote
-  }
-  return (ssize_t)p;
-}
-
 ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
 {
-  if( _left_buffer_size < len && p ){
-    if( FlushOut(sk) < 0 ) return -1;
-  }
+  if( !m_valid ) return -1;
 
-  while( _left_buffer_size < len ){
-    if( _realloc_buffer() < 0 ){
-      errno = ENOMEM;
-      return -3;
+  if( _left_buffer_size < len ){
+    if( p && FlushOut(sk) < 0 ) return -1;
+    while( _left_buffer_size < len ){
+      if( _realloc_buffer() < 0 ){
+        errno = ENOMEM;
+        m_valid = 0;
+        return -3;
+      }
     }
   }
-
   memcpy(b + p, buf, len);
   p += len;
   return FlushOut(sk);
@@ -163,10 +146,37 @@ ssize_t BufIo::FlushOut(SOCKET sk)
   if( !p ) return 0;  // no data to send
 
   r = _SEND(sk, b, p);
-  if( r < 0 ) return r;
-  else if( r > 0 ){
+  if( r < 0 ){
+    m_valid = 0;
+    return r;
+  }else if( r > 0 ){
     p -= r;
     if( p ) memmove(b, b + r, p);
+  }
+  return (ssize_t)p;
+}
+
+ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
+{
+  ssize_t r;
+
+  if( !m_valid ) return -1;
+
+  if( !_left_buffer_size && _realloc_buffer() < 0 ){
+    errno = ENOMEM;
+    m_valid = 0;
+    return (ssize_t)-2;
+  }
+
+  if( 0==limit || limit > _left_buffer_size )
+    limit = _left_buffer_size;
+  r = _RECV(sk, b + p, limit);
+  if( r < 0 ){
+    m_valid = 0;
+    return -1;
+  }else{
+    if( r ) p += r;
+    if( m_socket_remote_closed ) return -2;  // connection closed by remote
   }
   return (ssize_t)p;
 }
@@ -178,3 +188,4 @@ ssize_t BufIo::PickUp(size_t len)
   if( p ) memmove(b, b + len, p);
   return 0;
 }
+

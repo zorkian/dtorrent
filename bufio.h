@@ -21,7 +21,9 @@ class BufIo
   size_t p;  // amount of data in the buffer
   size_t n;  // buffer size
 
-  int f_socket_remote_closed;
+  unsigned char m_valid:1;
+  unsigned char m_socket_remote_closed:1;
+  unsigned char m_reserved:6;
 
   ssize_t _realloc_buffer();
   ssize_t _SEND(SOCKET socket, const char *buf, size_t len);
@@ -33,7 +35,7 @@ class BufIo
 
   ssize_t SetSize(size_t len);
 
-  void Reset(){ p = 0; f_socket_remote_closed = 0; }
+  void Reset(){ p = 0; m_socket_remote_closed = 0; m_valid = 1; }
 
   void Close(){
     if( b ){ delete []b; b = (char *)0; }
