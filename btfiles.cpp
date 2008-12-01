@@ -1146,7 +1146,7 @@ int btFiles::CreateFiles()
   // Set up map of pieces that are available in the files.
   pbf = m_btfhead;
   for( bt_index_t idx = 0; idx < BTCONTENT.GetNPieces() && pbf; idx++ ){
-    idxoff = idx * BTCONTENT.GetPieceLength();
+    idxoff = idx * (dt_datalen_t)BTCONTENT.GetPieceLength();
     if( idxoff < pbf->bf_offset ) continue;
     fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
     while( pbf && pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next) ){
