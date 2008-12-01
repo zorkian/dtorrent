@@ -13,7 +13,7 @@
 #include "compat.h"
 #endif
 
-static void url_encode_char(char *b, char c)
+static void url_encode_char(char *b, unsigned char c)
 {
   char HEX_TABLE[] = "0123456789ABCDEF";
   b[0] = '%';
@@ -21,7 +21,7 @@ static void url_encode_char(char *b, char c)
   b[2] = HEX_TABLE[c & 0x0F];
 }
 
-char *Http_url_encode(char *s, const char *b, size_t n)
+char *Http_url_encode(char *s, const unsigned char *b, size_t n)
 {
   size_t r, i;
   for( r = 0, i = 0; i < n; i++ ){
@@ -29,7 +29,7 @@ char *Http_url_encode(char *s, const char *b, size_t n)
         ((b[i] >= 0x41 && b[i] <= 0x5a) ||   // A-Z [ASCII]
          (b[i] >= 0x61 && b[i] <= 0x7a) ||   // a-z
          (b[i] >= 0x30 && b[i] <= 0x39)) ){  // 0-9
-      s[r] = b[i];
+      s[r] = (char)b[i];
       r++;
     }else{
       url_encode_char(s + r, b[i]);

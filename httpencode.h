@@ -7,7 +7,7 @@
   "%s%s%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d HTTP/1.0"
 
 
-char *Http_url_encode(char *s, const char *b, size_t n);
+char *Http_url_encode(char *s, const unsigned char *b, size_t n);
 int Http_url_analyse(const char *url, char *host, int *port, char *path);
 size_t Http_split(const char *b, size_t n, char **pd, size_t *dlen);
 int Http_response_code(const char *b, size_t n);

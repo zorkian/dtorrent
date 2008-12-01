@@ -421,8 +421,8 @@ int btTracker::BuildBaseRequest()
 
   if( MAXPATHLEN < snprintf((char *)m_path, MAXPATHLEN, format,
                   tmppath,
-                  Http_url_encode(ih_buf, (char *)BTCONTENT.GetInfoHash(), 20),
-                  Http_url_encode(pi_buf, (char *)BTCONTENT.GetPeerId(), 20),
+                  Http_url_encode(ih_buf, BTCONTENT.GetInfoHash(), 20),
+                  Http_url_encode(pi_buf, BTCONTENT.GetPeerId(), 20),
                   opt ? opt : "",
                   (int)*cfg_listen_port,
                   m_key) ){
