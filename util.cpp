@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
 
 #if !defined(HAVE_SYS_TIME_H) || defined(TIME_WITH_SYS_TIME)
 #include <time.h>
@@ -72,5 +73,59 @@ double PreciseTime()
 #error No suitable precision timing functions appear to be available!
 #error Please report this problem and identify your system platform.
 #endif
+}
+
+
+char *hexencode(const unsigned char *data, size_t length, char *dstbuf)
+{
+  static char hexdigit[17] = "0123456789abcdef";
+  const unsigned char *src, *end;
+  char *dst;
+
+  if( 0==length ) length = strlen((char *)data);
+  end = data + length;
+  if( !dstbuf ) dstbuf = new char[length * 2 + 1];
+  dst = dstbuf;
+
+  if( dst ){
+    for( src = data; src < end; src++ ){
+      *dst++ = hexdigit[*src >> 4];
+      *dst++ = hexdigit[*src & 0x0f];
+    }
+    *dst = '\0';
+  }
+  return dstbuf;
+}
+
+
+char *hexencode(const char *data, size_t length, char *dstbuf)
+{
+  return hexencode((unsigned char *)data, length, dstbuf);
+}
+
+
+unsigned char *hexdecode(const char *data, size_t length, unsigned char *dstbuf)
+{
+  const char *src, *end;
+  unsigned char c, *dst;
+
+  if( 0==length ) length = strlen(data);
+  end = data + length;
+  if( !dstbuf ) dstbuf = new unsigned char[length / 2 + 1];
+  dst = dstbuf;
+
+  if( dst ){
+    for( src = data; src < end; src += 2, dst++ ){
+      c = *src;
+      if( c >= '0' && c <= '9' ) *dst = (c - '0') << 4;
+      else if( c >= 'a' && c <= 'f' ) *dst = (c - 'a' + 10) << 4;
+      else *dst = 0;
+      c = *(src + 1);
+      if( c >= '0' && c <= '9' ) *dst |= (c - '0');
+      else if( c >= 'a' && c <= 'f' ) *dst |= (c - 'a' + 10);
+    }
+    *dst = '\0';
+  }
+  return dstbuf;
 }
 

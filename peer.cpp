@@ -16,7 +16,7 @@
 #endif
 
 // Convert a peer ID to a printable string.
-int TextPeerID(const unsigned char *peerid, char *txtid)
+void TextPeerID(const unsigned char *peerid, char *txtid)
 {
   int i, j;
 
@@ -24,17 +24,14 @@ int TextPeerID(const unsigned char *peerid, char *txtid)
     if( i == j && isprint(peerid[i]) && !isspace(peerid[i]) )
       txtid[j++] = peerid[i];
     else{
-      if( i == j ){
-         sprintf(txtid + j, "0x");
-         j += 2;
-      }
-      snprintf(txtid + j, 3, "%.2X", (int)peerid[i]);
+      strcpy(txtid + j, "0x");
       j += 2;
+      break;
     }
   }
-  txtid[j] = '\0';
-
-  return 0;
+  if( i < PEER_ID_LEN )
+    hexencode(peerid + i, PEER_ID_LEN - i, txtid + j);
+  else txtid[j] = '\0';
 }
 
 btBasic Self;
@@ -1018,8 +1015,9 @@ void btPeer::CloseConnection()
 
 int btPeer::HandShake()
 {
-  char txtid[PEER_ID_LEN*2+3];
+  char hexbuf[49], txtid[PEER_ID_LEN*2+3];
   ssize_t r;
+  int len;
 
   if( (r = stream.Feed()) < 0 ){
     if(*cfg_verbose) CONSOLE.Debug("%p: %s", this,
@@ -1030,34 +1028,24 @@ int btPeer::HandShake()
     // If it's not BitTorrent, don't wait around for a complete handshake.
 
     // Report if the 8 reserved bytes following protocol ID differ.
+    len = (r < 28) ? r - 20 : 8;
     if( *cfg_verbose && r > 20 &&
-        memcmp(stream.in_buffer.BasePointer()+20,
-               BTCONTENT.GetShakeBuffer()+20, (r<28) ? (r-20) : 8) != 0 ){
-      CONSOLE.Debug_n();
-      CONSOLE.Debug_n("peer %p gave 0x", this);
-      for( int i = 20; i < r && i < 27; i++ ){
-        CONSOLE.Debug_n("%2.2hx",
-          (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-      }
-      CONSOLE.Debug_n(" as reserved bytes (partial)");
+        memcmp(stream.in_buffer.BasePointer() + 20,
+               BTCONTENT.GetShakeBuffer() + 20, len) != 0 ){
+      hexencode(stream.in_buffer.BasePointer() + 20, len, hexbuf);
+      CONSOLE.Debug("peer %p gave 0x%s as reserved bytes (partial)", this,
+        hexbuf);
     }
 
     if( r && memcmp(stream.in_buffer.BasePointer(), BTCONTENT.GetShakeBuffer(),
                     (r<48) ? r : 48) != 0 ){
       if(*cfg_verbose){
         CONSOLE.Debug("%p: handshake mismatch", this);
-        CONSOLE.Debug_n();
-        CONSOLE.Debug_n("mine: 0x");
-        for( int i=0; i < r && i < 48; i++ ){
-          CONSOLE.Debug_n("%2.2hx",
-            (unsigned short)(unsigned char)BTCONTENT.GetShakeBuffer()[i]);
-        }
-        CONSOLE.Debug_n();
-        CONSOLE.Debug_n("peer: 0x");
-        for( int i=0; i < r && i < 48; i++ ){
-          CONSOLE.Debug_n("%2.2hx",
-            (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-        }
+        hexencode(BTCONTENT.GetShakeBuffer(), 48, hexbuf);
+        CONSOLE.Debug("mine: 0x%s", hexbuf);
+        len = (r < 48) ? r : 48;
+        hexencode(stream.in_buffer.BasePointer(), len, hexbuf);
+        CONSOLE.Debug("peer: 0x%s", hexbuf);
         if( r > 48 ){
           TextPeerID((unsigned char *)(stream.in_buffer.BasePointer()+48),
             txtid);
@@ -1081,13 +1069,8 @@ int btPeer::HandShake()
   if( *cfg_verbose &&
       memcmp(stream.in_buffer.BasePointer()+20, BTCONTENT.GetShakeBuffer()+20,
              8) != 0 ){
-    CONSOLE.Debug_n();
-    CONSOLE.Debug_n("peer %p gave 0x", this);
-    for( int i = 20; i < 27; i++ ){
-      CONSOLE.Debug_n("%2.2hx",
-        (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-    }
-    CONSOLE.Debug_n(" as reserved bytes" );
+    hexencode(stream.in_buffer.BasePointer() + 20, 8, hexbuf);
+    CONSOLE.Debug("peer %p gave 0x%s as reserved bytes", this, hexbuf);
   }
 
   // Compare the handshake, ignoring the reserved bytes.
@@ -1097,18 +1080,10 @@ int btPeer::HandShake()
              BTCONTENT.GetShakeBuffer() + 28, 20) != 0 ){
     if(*cfg_verbose){
       CONSOLE.Debug("%p: handshake mismatch", this);
-      CONSOLE.Debug_n();
-      CONSOLE.Debug_n("mine: 0x");
-      for( int i=0; i < 48; i++ ){
-        CONSOLE.Debug_n("%2.2hx",
-          (unsigned short)(unsigned char)BTCONTENT.GetShakeBuffer()[i]);
-      }
-      CONSOLE.Debug_n();
-      CONSOLE.Debug_n("peer: 0x");
-      for( int i=0; i < 48; i++ ){
-        CONSOLE.Debug_n("%2.2hx",
-          (unsigned short)(unsigned char)stream.in_buffer.BasePointer()[i]);
-      }
+      hexencode(BTCONTENT.GetShakeBuffer(), 48, hexbuf);
+      CONSOLE.Debug("mine: 0x%s", hexbuf);
+      hexencode(stream.in_buffer.BasePointer(), 48, hexbuf);
+      CONSOLE.Debug("peer: 0x%s", hexbuf);
     }
     return -1;
   }
