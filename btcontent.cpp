@@ -1310,6 +1310,7 @@ int btContent::SeedTimeout()
     if( now >= m_updated_remain + 1 ){
       cfg_seed_remain.Override( (*cfg_seed_time - (now - m_seed_timestamp)) /
                                 3600.0 );
+      cfg_seed_remain.SetDefault(*cfg_seed_remain);
       m_updated_remain = now;
     }
   }else{
