@@ -319,12 +319,12 @@ int Ctcs::Send_bw()
 int Ctcs::Send_Config()
 {
   char message[CTCS_BUFSIZE];
-  const char *cfgtype, *info;
-  char range[32];
-  char tmpinfo[CTCS_BUFSIZE];
 
   if( m_protocol >= 3 ){
     int r = 0;
+    const char *cfgtype, *info;
+    char range[32], tmpinfo[CTCS_BUFSIZE];
+    const char *value;
 
     if( (r=SendMessage("CTCONFIGSTART")) < 0 ) return r;
 
@@ -351,8 +351,12 @@ int Ctcs::Send_Config()
           info = tmpinfo;
         }else info = config->Info();
 
-        if( (r=SendMessage(ConfigMsg(config->Tag(), cfgtype, range,
-                       config->Sval(), config->Desc(), info))) < 0 ){
+        value = config->Sval();
+        if( m_protocol == 3 && DT_CONFIG_BOOL == config->Type() )
+          value = strchr("1TtYy", *value) ? "1" : "0";
+
+        if( (r=SendMessage(ConfigMsg(config->Tag(), cfgtype, range, value,
+                 config->Desc(), info))) < 0 ){
           return r;
         }
       }

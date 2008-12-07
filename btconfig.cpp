@@ -277,10 +277,10 @@ template<> const char *Config<const char *>::Sprint(char ** buffer,
 template<> const char *Config<bool>::Sprint(char **buffer, bool value)
 {
   if( !*buffer ){
-    if( (*buffer = new char[2]) )
-      (*buffer)[1] = '\0';
+    if( (*buffer = new char[6]) )
+      (*buffer)[0] = '\0';
   }
-  if( *buffer ) (*buffer)[0] = value ? '1' : '0';
+  if( *buffer ) strcpy(*buffer, value ? "true" : "false");
   return *buffer ? *buffer : "Out of memory";
 }
 
