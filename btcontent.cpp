@@ -826,13 +826,29 @@ void btContent::FlushEntry(BTCACHE *p)
 // Returns -1 for convenience (can return this function's value)
 int btContent::WriteFail()
 {
+  dt_datalen_t needbytes;
+
+  if( !pBMasterFilter || pBMasterFilter->IsEmpty() )
+    needbytes = m_left_bytes;
+  else{
+    Bitfield tmpBitfield;
+    tmpBitfield = *pBF;
+    tmpBitfield.Invert();                // what I don't have...
+    tmpBitfield.Except(pBMasterFilter);  // ...that I want
+    needbytes = (dt_datalen_t)m_piece_length * (tmpBitfield.Count() - 1) +
+      (tmpBitfield.IsSet(m_npieces - 1) ? GetPieceLength(m_npieces - 1) :
+                                          m_piece_length);
+  }
+  for( BTCACHE *p = m_cache_oldest; p; p = p->age_next )
+    if( p->bc_f_flush ) needbytes += p->bc_len;
+
   m_flush_tried = now;
   if( !m_flush_failed )
     m_cache_size += *cfg_req_slice_size * WORLD.GetDownloads() * 2;
   CONSOLE.Warning(1, "warn, write file failed while flushing data.");
   CONSOLE.Warning(1,
     "You need to have at least %llu bytes free on this filesystem!",
-    (unsigned long long)(m_left_bytes + m_cache_used));
+    (unsigned long long)needbytes);
   CONSOLE.Warning(1,
     "This could also be caused by a conflict or disk error.");
   if( !IsFull() ||
