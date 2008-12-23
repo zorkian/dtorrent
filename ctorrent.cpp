@@ -345,6 +345,9 @@ int param_check(int argc, char **argv)
       CONSOLE.Warning(1,
         "Must specify torrent contents (one file or directory)");
       return -1;
+    }else if( argc > 1 ){
+      CONSOLE.Warning(1, "Must specify exactly one torrent file");
+      return -1;
     }else return 0;
   }
   arg_metainfo_file = new char[strlen(*argv) + 1];
