@@ -828,17 +828,8 @@ int btContent::WriteFail()
 {
   dt_datalen_t needbytes;
 
-  if( !pBMasterFilter || pBMasterFilter->IsEmpty() )
-    needbytes = m_left_bytes;
-  else{
-    Bitfield tmpBitfield;
-    tmpBitfield = *pBF;
-    tmpBitfield.Invert();                // what I don't have...
-    tmpBitfield.Except(pBMasterFilter);  // ...that I want
-    needbytes = (dt_datalen_t)m_piece_length * (tmpBitfield.Count() - 1) +
-      (tmpBitfield.IsSet(m_npieces - 1) ? GetPieceLength(m_npieces - 1) :
-                                          m_piece_length);
-  }
+  needbytes = GetNeedBytes();
+
   for( BTCACHE *p = m_cache_oldest; p; p = p->age_next )
     if( p->bc_f_flush ) needbytes += p->bc_len;
 
@@ -1621,6 +1612,26 @@ const Bitfield *btContent::GetNextFilter(const Bitfield *pfilter) const
 
   if( p ) return &(p->bitfield);
   else return (Bitfield *)0;
+}
+
+
+dt_datalen_t btContent::GetNeedBytes() const
+{
+  dt_datalen_t needbytes;
+
+  if( !pBMasterFilter || pBMasterFilter->IsEmpty() )
+    needbytes = m_left_bytes;
+  else{
+    Bitfield tmpBitfield;
+    tmpBitfield = *pBF;
+    tmpBitfield.Invert();                // what I don't have...
+    tmpBitfield.Except(pBMasterFilter);  // ...that I want
+
+    needbytes = (dt_datalen_t)m_piece_length * tmpBitfield.Count() -
+      (tmpBitfield.IsSet(m_npieces - 1) ?
+        m_piece_length - GetPieceLength(m_npieces - 1) : 0);
+  }
+  return needbytes;
 }
 
 

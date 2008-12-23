@@ -1553,15 +1553,15 @@ void Console::StatusLine1(char buffer[], size_t length)
   if( !BTCONTENT.Seeding() || BTCONTENT.FlushFailed() ){  // downloading
     if( Self.RateDL() ){
       // don't overflow remain
-      if( BTCONTENT.GetLeftBytes() < (dt_datalen_t)Self.RateDL() << 22 )
-        remain = BTCONTENT.GetLeftBytes() / Self.RateDL() / 60;
+      if( BTCONTENT.GetNeedBytes() < (dt_datalen_t)Self.RateDL() << 22 )
+        remain = BTCONTENT.GetNeedBytes() / Self.RateDL() / 60;
       else remain = 99999;
     }
   }else{  // seeding
-    if( *cfg_seed_time )
+    if( *cfg_seed_time ){
       remain = (long)( (*cfg_seed_time / 60) -
                        (now - BTCONTENT.GetSeedTime()) / 60 );
-    else if( Self.RateUL() ){
+    }else if( Self.RateUL() ){
       // don't overflow remain
       if( *cfg_seed_ratio *
           (Self.TotalDL() ? Self.TotalDL() : BTCONTENT.GetTotalFilesLength()) -

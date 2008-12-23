@@ -157,6 +157,7 @@ class btContent
   dt_datalen_t GetTotalFilesLength() const {
     return m_btfiles.GetTotalLength(); }
   dt_datalen_t GetLeftBytes() const { return m_left_bytes; }
+  dt_datalen_t GetNeedBytes() const;
 
   int APieceComplete(bt_index_t idx);
   int GetHashValue(bt_index_t idx, unsigned char *md);
