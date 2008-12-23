@@ -1394,7 +1394,7 @@ void Console::Status(int immediate)
              (*cfg_verbose && !m_channels[DT_CHAN_DEBUG].IsSuspended() &&
               !WaitingInput(&m_channels[DT_CHAN_DEBUG])) ){
       // optimized to generate the status line only if it will be output
-      if( !*cfg_verbose && Tracker.IsQuitting() &&
+      if( !*cfg_verbose && !Tracker.IsQuitting() &&
           (0==m_active ||
            (*cfg_status_snooze > 0 && now - m_active > *cfg_status_snooze)) ){
         m_active = (time_t)0;
