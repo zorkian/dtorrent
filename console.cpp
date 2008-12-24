@@ -316,7 +316,7 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
 {
   if( IsSuspended() ) return;
 
-  m_device->SetInputMode(keymode);
+  if( m_device ) m_device->SetInputMode(keymode);
   if( !IsTTY() || keymode == DT_CONMODE_NONE ) return;
 
 #if defined(USE_TERMIOS)
