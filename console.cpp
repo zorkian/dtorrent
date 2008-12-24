@@ -100,11 +100,12 @@ void ConStream::Close()
 {
   if( m_file ){
     if( !g_secondary_process || g_daemon_parent ){
-      if( m_restore ) RestoreMode();
+      RestoreMode();
       if( !IsSuspended() && CanWrite() ) _newline();
     }
     fclose(m_file);
     m_file = (FILE *)0;
+    m_restore = 0;
   }
   Suspend();
   Disassociate();
@@ -138,11 +139,13 @@ int ConStream::Associate(FILE *file, const char *name, bool reading,
   FILE *old_file = m_file;
   int old_read = m_read;
   int old_write = m_write;
+  int old_restore = m_restore;
   char *old_name = m_name;
   bool failed = false;
 
   m_file = file;
   SetMode(reading, writing);
+  m_restore = 0;
   if( (m_name = new char[strlen(name)+1]) )
     strcpy(m_name, name);
   else{
@@ -184,6 +187,7 @@ int ConStream::Associate(FILE *file, const char *name, bool reading,
     m_file = old_file;
     m_read = old_read;
     m_write = old_write;
+    m_restore = old_restore;
     if( m_name ){
       delete []m_name;
       m_name = (char *)0;
@@ -203,7 +207,6 @@ int ConStream::Associate(FILE *file, const char *name, bool reading,
 int ConStream::Reassociate()
 {
   Disassociate();
-  m_restore = 0;
   return Associate(m_file, m_name, CanRead(), CanWrite());
 }
 
@@ -272,6 +275,7 @@ void ConStream::PreserveMode()
 {
   int r;
 
+  m_restore = 0;
   if( !IsTTY() ) return;
 
 #if defined(USE_TERMIOS)
@@ -292,7 +296,7 @@ void ConStream::RestoreMode()
 {
   int r;
 
-  if( !IsTTY() ) return;
+  if( !m_restore || !IsTTY() ) return;
 
 #if defined(USE_TERMIOS)
   r = tcsetattr(Fileno(), TCSANOW, &m_original);

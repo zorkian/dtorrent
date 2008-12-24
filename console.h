@@ -133,7 +133,7 @@ class ConStream
   bool CanRead() const { return m_read ? true : false; }
   bool CanWrite() const { return m_write ? true : false; }
   int Fileno() const { return m_file ? fileno(m_file) : -1; }
-  void Suspend(){ m_suspend = 1; SetInputMode(DT_CONMODE_NONE); }
+  void Suspend(){ SetInputMode(DT_CONMODE_NONE); m_suspend = 1; }
   void Resume(){ m_suspend = 0; SetInputMode(DT_CONMODE_CHARS); }
   bool IsSuspended() const { return m_suspend ? true : false; }
   void SetPermanent(){ m_permanent = 1; }
