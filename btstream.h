@@ -49,12 +49,13 @@ class btStream
 private:
   SOCKET sock, sock_was;
   size_t m_oldbytes;
+  bt_msglen_t m_msglen;
 
 public:
   BufIo in_buffer;
   BufIo out_buffer;
 
-  btStream(){ sock = sock_was = INVALID_SOCKET; m_oldbytes = 0; }
+  btStream(){ sock = sock_was = INVALID_SOCKET; m_oldbytes = 0; m_msglen = 0; }
   ~btStream(){ Close(); }
 
   SOCKET GetSocket() const { return (INVALID_SOCKET==sock) ? sock_was : sock; }
