@@ -574,7 +574,7 @@ int Ctcs::Send_Peers()
 
   r=SendMessage((m_protocol >= 3) ? "CTPEERSTART" : "CTPEERS");
   while( r==0 && (peer = WORLD.GetNextPeer(peer)) ){
-    TextPeerID(peer->id, txtid);
+    TextPeerID(peer->GetPeerID(), txtid);
      peer->GetAddress(&psin);
 
      snprintf(message, CTCS_BUFSIZE, "CTPEER %s %s %c%c%c%c %d %d %llu %llu %d",

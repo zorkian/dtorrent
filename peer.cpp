@@ -1088,7 +1088,7 @@ int btPeer::HandShake()
     return -1;
   }
 
-  memcpy(id, stream.in_buffer.BasePointer()+48, PEER_ID_LEN);
+  memcpy(m_id, stream.in_buffer.BasePointer()+48, PEER_ID_LEN);
   if(*cfg_verbose){
     TextPeerID((unsigned char *)(stream.in_buffer.BasePointer()+48), txtid);
     CONSOLE.Debug("Peer %p ID: %s", this, txtid);

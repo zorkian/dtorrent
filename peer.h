@@ -146,6 +146,8 @@ class btPeer:public btBasic
   bt_index_t m_last_req_piece;
   bt_index_t m_haveq[HAVEQ_SIZE];  // need to send HAVE for these pieces
 
+  unsigned char m_id[PEER_ID_LEN];
+
   int PieceDeliver(bt_int_t mlen);
   int ReportComplete(bt_index_t idx, bt_length_t len);
   int RequestCheck();
@@ -164,7 +166,6 @@ class btPeer:public btBasic
   }
 
  public:
-  unsigned char id[PEER_ID_LEN];
   Bitfield bitfield;
   btStream stream;
   RequestQueue request_q;
@@ -232,6 +233,8 @@ class btPeer:public btBasic
 
   int SendHaves();
   int QueueHave(bt_index_t idx);
+
+  const unsigned char *GetPeerID() const { return m_id; }
 
   void Dump() const;
 };
