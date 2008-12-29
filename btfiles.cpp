@@ -1149,7 +1149,7 @@ int btFiles::CreateFiles()
     idxoff = idx * (dt_datalen_t)BTCONTENT.GetPieceLength();
     if( idxoff < pbf->bf_offset ) continue;
     fend = pbf->bf_offset + pbf->bf_size - (pbf->bf_size ? 1 : 0);
-    while( pbf && pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next) ){
+    while( pbf && (pbf->bf_size == 0 || (idxoff > fend && pbf->bf_next)) ){
       pbf = pbf->bf_next;
       if( pbf ) fend = pbf->bf_offset + pbf->bf_size - 1;
     }
