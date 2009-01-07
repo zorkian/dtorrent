@@ -161,10 +161,10 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     peer->SetAddress(addr);
     peer->stream.SetSocket(sk);
     peer->SetStatus( (-2 == r) ? DT_PEER_CONNECTING : DT_PEER_HANDSHAKE );
-    if(*cfg_verbose)
+    if(*cfg_verbose){
       CONSOLE.Debug("Connect%s to %s:%hu (peer %p)", (-2==r) ? "ing" : "ed",
         inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer);
-
+    }
   }else{  // inbound connection
     if( setfd_nonblock(sk) < 0 ) goto err;
 
@@ -1161,8 +1161,17 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
+          int error = 0;
+          socklen_t n = sizeof(error);
+
           FD_CLR(sk, wfdnextp);
-          if( peer->Send_ShakeInfo() < 0 ){
+          if( getsockopt(sk, SOL_SOCKET, SO_ERROR, &error, &n) < 0 )
+            error = errno;
+          if( error ){
+            if(*cfg_verbose) CONSOLE.Debug("close: %s", strerror(error));
+            peer->CloseConnection();
+            FD_CLR(sk, rfdnextp);
+          }else if( peer->Send_ShakeInfo() < 0 ){
             if(*cfg_verbose) CONSOLE.Debug("close: sending handshake");
             peer->CloseConnection();
             FD_CLR(sk, rfdnextp);
