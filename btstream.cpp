@@ -81,6 +81,11 @@ ssize_t btStream::Send_Bitfield(const char *bit_buf, size_t len)
   char msg[BT_LEN_PRE + BT_LEN_MSGID];
   ssize_t r;
 
+  // Handshake is done, calculate length of first message.
+  m_msglen = (in_buffer.Count() >= BT_LEN_PRE) ?
+    get_bt_msglen(in_buffer.BasePointer()) : 0;
+  if( 0==len ) return 0;
+
   put_bt_msglen(msg, BT_LEN_MSGID + len);
   msg[BT_LEN_PRE] = (char)BT_MSG_BITFIELD;
   if( (r = out_buffer.Put(sock, msg, BT_LEN_PRE + BT_LEN_MSGID)) < 0 )

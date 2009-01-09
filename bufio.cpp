@@ -37,14 +37,26 @@ ssize_t BufIo::SetSize(size_t len)
 {
   char *tbuf;
 
-  if( len > BUF_MAX_SIZ ) return -1;  // buffer too long
+  if( len > BUF_MAX_SIZ ){  // buffer too long
+#ifdef EMSGSIZE
+    errno = EMSGSIZE;
+#elif defined(ENOBUFS)
+    errno = ENOBUFS;
+#else
+    errno = ENOMEM;
+#endif
+    return -1;
+  }
 
   if( p > len ) len = p;
   if( len == n ) return 0;
 
   tbuf = new char[len];
 #ifndef WINDOWS
-  if( !tbuf ) return -1;
+  if( !tbuf ){
+    errno = ENOMEM;
+    return -1;
+  }
 #endif
 
   if( p ) memcpy(tbuf, b, p);
@@ -103,15 +115,21 @@ ssize_t BufIo::_RECV(SOCKET sk, char *buf, size_t len)
 
 ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
 {
-  if( !m_valid ) return -1;
+  if( !m_valid ){
+#ifdef ENOBUFS
+    errno = ENOBUFS;
+#else
+    errno = EIO;
+#endif
+    return -1;
+  }
 
   if( _left_buffer_size < len ){  // not enough space in buffer
     if( p && FlushOut(sk) < 0 ) return -1;
     while( _left_buffer_size < len ){  // still not enough space
       if( _realloc_buffer() < 0 ){
-        errno = ENOMEM;
         m_valid = 0;
-        return -3;
+        return -1;
       }
     }
   }
@@ -122,15 +140,21 @@ ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
 
 ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
 {
-  if( !m_valid ) return -1;
+  if( !m_valid ){
+#ifdef ENOBUFS
+    errno = ENOBUFS;
+#else
+    errno = EIO;
+#endif
+    return -1;
+  }
 
   if( _left_buffer_size < len ){
     if( p && FlushOut(sk) < 0 ) return -1;
     while( _left_buffer_size < len ){
       if( _realloc_buffer() < 0 ){
-        errno = ENOMEM;
         m_valid = 0;
-        return -3;
+        return -1;
       }
     }
   }
@@ -160,12 +184,18 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
 {
   ssize_t r;
 
-  if( !m_valid ) return -1;
+  if( !m_valid ){
+#ifdef ENOBUFS
+    errno = ENOBUFS;
+#else
+    errno = EIO;
+#endif
+    return -1;
+  }
 
   if( !_left_buffer_size && _realloc_buffer() < 0 ){
-    errno = ENOMEM;
     m_valid = 0;
-    return (ssize_t)-2;
+    return (ssize_t)-1;
   }
 
   if( 0==limit || limit > _left_buffer_size )
@@ -176,14 +206,20 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
     return -1;
   }else{
     if( r ) p += r;
-    if( m_socket_remote_closed ) return -2;  // connection closed by remote
+    if( m_socket_remote_closed ){  // connection closed by remote
+      errno = 0;
+      return -1;
+    }
   }
   return (ssize_t)p;
 }
 
 ssize_t BufIo::PickUp(size_t len)
 {
-  if( p < len ) return -1;
+  if( p < len ){
+    errno = EINVAL;
+    return -1;
+  }
   p -= len;
   if( p ) memmove(b, b + len, p);
   return 0;

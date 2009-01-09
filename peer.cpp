@@ -1021,7 +1021,7 @@ int btPeer::HandShake()
 
   if( (r = stream.Feed()) < 0 ){
     if(*cfg_verbose) CONSOLE.Debug("%p: %s", this,
-      (r==-2) ? "remote closed" : strerror(errno));
+      errno ? strerror(errno) : "remote closed");
     return -1;
   }
   if( (r = stream.in_buffer.Count()) < 68 ){
@@ -1094,7 +1094,11 @@ int btPeer::HandShake()
     CONSOLE.Debug("Peer %p ID: %s", this, txtid);
   }
 
-  // ignore peer id verify
+  if( stream.in_buffer.PickUp(68) < 0 ){
+    CONSOLE.Debug("%p: buffer error", this);
+    return -1;
+  }
+
   if( !BTCONTENT.pBF->IsEmpty() ){
     char *bf = new char[BTCONTENT.pBF->NBytes()];
 #ifndef WINDOWS
@@ -1103,20 +1107,24 @@ int btPeer::HandShake()
     BTCONTENT.pBF->WriteToBuffer(bf);
     r = stream.Send_Bitfield(bf, BTCONTENT.pBF->NBytes());
     delete []bf;
-  }
-
-  if( r >= 0 ){
-    if( stream.in_buffer.PickUp(68) < 0 ) return -1;
-    m_status = DT_PEER_SUCCESS;
-    m_retried = 0;  // allow reconnect attempt
-    // When seeding, new peer starts at the end of the line.
-    if( BTCONTENT.Seeding() ){
-      // Allow resurrected peer to resume its place in line.
-      if( 0 == m_unchoke_timestamp ) m_unchoke_timestamp = now;
-      m_connect_seed = 1;
+    if( r < 0 ){
+      if(*cfg_verbose) CONSOLE.Debug("%p sending bitfield: %s", this,
+        errno ? strerror(errno) : "remote closed");
+      return -1;
     }
-    if( stream.HaveMessage() ) return RecvModule();
+  }else stream.Send_Bitfield(NULL, 0);  // initialize stream for messages
+
+  m_status = DT_PEER_SUCCESS;
+  m_retried = 0;  // allow reconnect attempt
+  // When seeding, new peer starts at the end of the line.
+  if( BTCONTENT.Seeding() ){
+    // Allow resurrected peer to resume its place in line.
+    if( 0 == m_unchoke_timestamp ) m_unchoke_timestamp = now;
+    m_connect_seed = 1;
   }
+  if( (r = stream.HaveMessage()) > 0 ) return RecvModule();
+  if( r < 0 ) CONSOLE.Debug("%p: invalid message", this);
+
   return (r < 0) ? -1 : 0;
 }
 
@@ -1215,20 +1223,22 @@ int btPeer::RecvModule()
   }
   if( r < 0 ){
     if(*cfg_verbose) CONSOLE.Debug("%p: %s", this,
-      (r==-2) ? "remote closed" : strerror(errno));
+      errno ? strerror(errno) : "remote closed");
     return -1;
   }
 
-  while( (r = stream.HaveMessage()) ){
-    if( r < 0 ) return -1;
+  while( (r = stream.HaveMessage()) > 0 ){
     if( (r = MsgDeliver()) == -2 ){
       if(*cfg_verbose) CONSOLE.Debug("%p seed<->seed detected", this);
       m_want_again = 0;
     }
-    if( r < 0 || stream.PickMessage() < 0 ) return -1;
+    if( r >= 0 && (r = stream.PickMessage()) < 0 )
+      CONSOLE.Debug("%p: buffer error", this);
+    if( r < 0 ) return -1;
   }
+  if( r < 0 ) CONSOLE.Debug("%p: invalid message", this);
 
-  return 0;
+  return (r < 0) ? -1 : 0;
 }
 
 int btPeer::SendModule()
@@ -1242,7 +1252,6 @@ int btPeer::SendModule()
      insure there's data present (here), or there's about to be (below). */
   if( stream.out_buffer.Count() &&
       m_haveq[0] < BTCONTENT.GetNPieces() && SendHaves() < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }
 

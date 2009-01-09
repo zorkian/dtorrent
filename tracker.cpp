@@ -271,7 +271,7 @@ int btTracker::CheckResponse()
     return -1;
   }
 
-  Reset( (-1 == r) ? 15 : 0 );  // can't reset socket before error check
+  Reset( (r < 0 && errno) ? 15 : 0 );  // can't reset socket before error check
 
   hlen = Http_split(m_response_buffer.BasePointer(), q, &pdata, &dlen);
 
