@@ -14,30 +14,33 @@
 
 #include "btrequest.h"
 
-#define _left_buffer_size (n - p)
-
 BufIo::BufIo()
 {
   m_valid = 1;
   m_socket_remote_closed = 0;
-  b = new char[BUF_DEF_SIZ];
-#ifndef WINDOWS
-  if( !b ) throw 9;
-#endif
-  p = 0;
-  n = BUF_DEF_SIZ;
+  if( (m_buf = new char[BUFIO_DEF_SIZ]) )
+    m_size = BUFIO_DEF_SIZ;
+  else m_size = 0;
+  m_len = 0;
+  m_max = BUFIO_DEF_SIZ + 4 * BUFIO_INC_SIZ;  // small default
 }
 
 inline ssize_t BufIo::_realloc_buffer()
 {
-  return SetSize(n + BUF_INC_SIZ);
+  return SetSize(m_size + BUFIO_INC_SIZ);
+}
+
+void BufIo::MaxSize(size_t len)
+{
+  m_max = len;
+  if( m_size > m_max ) SetSize(m_max);
 }
 
 ssize_t BufIo::SetSize(size_t len)
 {
   char *tbuf;
 
-  if( len > BUF_MAX_SIZ ){  // buffer too long
+  if( len > m_max && len > m_size ){  // buffer too long
 #ifdef EMSGSIZE
     errno = EMSGSIZE;
 #elif defined(ENOBUFS)
@@ -48,8 +51,8 @@ ssize_t BufIo::SetSize(size_t len)
     return -1;
   }
 
-  if( p > len ) len = p;
-  if( len == n ) return 0;
+  if( m_len > len ) len = m_len;
+  if( len == m_size ) return 0;
 
   tbuf = new char[len];
 #ifndef WINDOWS
@@ -59,10 +62,10 @@ ssize_t BufIo::SetSize(size_t len)
   }
 #endif
 
-  if( p ) memcpy(tbuf, b, p);
-  delete []b;
-  b = tbuf;
-  n = len;
+  if( m_len ) memcpy(tbuf, m_buf, m_len);
+  delete []m_buf;
+  m_buf = tbuf;
+  m_size = len;
 
   return 0;
 }
@@ -124,17 +127,17 @@ ssize_t BufIo::Put(SOCKET sk, const char *buf, size_t len)
     return -1;
   }
 
-  if( _left_buffer_size < len ){  // not enough space in buffer
-    if( p && FlushOut(sk) < 0 ) return -1;
-    while( _left_buffer_size < len ){  // still not enough space
+  if( LeftSize() < len ){  // not enough space in buffer
+    if( m_len && FlushOut(sk) < 0 ) return -1;
+    while( LeftSize() < len ){  // still not enough space
       if( _realloc_buffer() < 0 ){
         m_valid = 0;
         return -1;
       }
     }
   }
-  memcpy(b + p, buf, len);
-  p += len;
+  memcpy(m_buf + m_len, buf, len);
+  m_len += len;
   return 0;
 }
 
@@ -149,17 +152,17 @@ ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
     return -1;
   }
 
-  if( _left_buffer_size < len ){
-    if( p && FlushOut(sk) < 0 ) return -1;
-    while( _left_buffer_size < len ){
+  if( LeftSize() < len ){
+    if( m_len && FlushOut(sk) < 0 ) return -1;
+    while( LeftSize() < len ){
       if( _realloc_buffer() < 0 ){
         m_valid = 0;
         return -1;
       }
     }
   }
-  memcpy(b + p, buf, len);
-  p += len;
+  memcpy(m_buf + m_len, buf, len);
+  m_len += len;
   return FlushOut(sk);
 }
 
@@ -167,17 +170,17 @@ ssize_t BufIo::PutFlush(SOCKET sk, const char *buf, size_t len)
 ssize_t BufIo::FlushOut(SOCKET sk)
 {
   ssize_t r;
-  if( !p ) return 0;  // no data to send
+  if( !m_len ) return 0;  // no data to send
 
-  r = _SEND(sk, b, p);
+  r = _SEND(sk, m_buf, m_len);
   if( r < 0 ){
     m_valid = 0;
     return r;
   }else if( r > 0 ){
-    p -= r;
-    if( p ) memmove(b, b + r, p);
+    m_len -= r;
+    if( m_len ) memmove(m_buf, m_buf + r, m_len);
   }
-  return (ssize_t)p;
+  return (ssize_t)m_len;
 }
 
 ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
@@ -193,35 +196,35 @@ ssize_t BufIo::FeedIn(SOCKET sk, size_t limit)
     return -1;
   }
 
-  if( !_left_buffer_size && _realloc_buffer() < 0 ){
+  if( !LeftSize() && _realloc_buffer() < 0 ){
     m_valid = 0;
     return (ssize_t)-1;
   }
 
-  if( 0==limit || limit > _left_buffer_size )
-    limit = _left_buffer_size;
-  r = _RECV(sk, b + p, limit);
+  if( 0==limit || limit > LeftSize() )
+    limit = LeftSize();
+  r = _RECV(sk, m_buf + m_len, limit);
   if( r < 0 ){
     m_valid = 0;
     return -1;
   }else{
-    if( r ) p += r;
+    if( r ) m_len += r;
     if( m_socket_remote_closed ){  // connection closed by remote
       errno = 0;
       return -1;
     }
   }
-  return (ssize_t)p;
+  return (ssize_t)m_len;
 }
 
 ssize_t BufIo::PickUp(size_t len)
 {
-  if( p < len ){
+  if( m_len < len ){
     errno = EINVAL;
     return -1;
   }
-  p -= len;
-  if( p ) memmove(b, b + len, p);
+  m_len -= len;
+  if( m_len ) memmove(m_buf, m_buf + len, m_len);
   return 0;
 }
 

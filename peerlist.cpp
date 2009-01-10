@@ -181,7 +181,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   }
 
   if( !BTCONTENT.Seeding() &&
-      peer->stream.in_buffer.SetSize(BUF_DEF_SIZ + *cfg_req_slice_size) < 0 ){
+      peer->stream.in_buffer.SetSize(BUFIO_DEF_SIZ + *cfg_req_slice_size) < 0 ){
     goto err;
   }
 
@@ -1207,7 +1207,7 @@ void PeerList::CloseAllConnectionToSeed()
       if(*cfg_verbose) CONSOLE.Debug("close: seed<->seed");
       p->peer->CloseConnection();
     }
-    else p->peer->stream.in_buffer.SetSize(BUF_DEF_SIZ);
+    else p->peer->stream.in_buffer.SetSize(BUFIO_DEF_SIZ);
   }
 }
 

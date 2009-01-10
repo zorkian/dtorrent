@@ -429,7 +429,7 @@ int btPeer::MsgDeliver()
 
       if( bitfield.IsFull() ){
         if( BTCONTENT.IsFull() ) return -2;
-        else stream.out_buffer.SetSize(BUF_DEF_SIZ);
+        else stream.out_buffer.SetSize(BUFIO_DEF_SIZ);
       }
 
       if( !BTCONTENT.pBF->IsSet(idx) && !BTCONTENT.pBMasterFilter->IsSet(idx) ){
@@ -476,7 +476,7 @@ int btPeer::MsgDeliver()
       }else{
         if( !m_requested ){
           m_requested = 1;
-          if( stream.out_buffer.SetSize(BUF_DEF_SIZ +
+          if( stream.out_buffer.SetSize(BUFIO_DEF_SIZ +
               (len < DEFAULT_SLICE_SIZE) ? DEFAULT_SLICE_SIZE : len) < 0 ){
             return -1;
           }
@@ -507,7 +507,7 @@ int btPeer::MsgDeliver()
         if(*cfg_verbose) CONSOLE.Debug("%p is a seed (bitfield is full)", this);
         if( BTCONTENT.IsFull() ) return -2;
         else{
-          stream.out_buffer.SetSize(BUF_DEF_SIZ);
+          stream.out_buffer.SetSize(BUFIO_DEF_SIZ);
           if( !m_want_again ) m_want_again = 1;
         }
       }else if(*cfg_verbose){
@@ -1217,7 +1217,7 @@ int btPeer::RecvModule()
     }
 //  m_deferred_dl = 0;  // not used
   }else if( !stream.HaveMessage() ){  // could have been called post-handshake
-    r = stream.Feed(BUF_DEF_SIZ, &rate_dl);
+    r = stream.Feed(BUFIO_DEF_SIZ, &rate_dl);
 //  if( r>=0 ) CONSOLE.Debug("%p fed, now has %d bytes (msg=%d)",
 //    this, r, (int)stream.PeekMessage());
   }

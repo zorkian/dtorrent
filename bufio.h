@@ -8,18 +8,16 @@
 #include <Winsock2.h>
 #endif
 
-#include "btconfig.h"
-
-#define BUF_DEF_SIZ 256
-#define BUF_INC_SIZ 256
-#define BUF_MAX_SIZ (MAX_SLICE_SIZE + BUF_DEF_SIZ + BUF_INC_SIZ)
+#define BUFIO_DEF_SIZ 256
+#define BUFIO_INC_SIZ 256
 
 class BufIo
 {
  private:
-  char *b;   // buffer
-  size_t p;  // amount of data in the buffer
-  size_t n;  // buffer size
+  char *m_buf;    // buffer
+  size_t m_len;   // amount of data in the buffer
+  size_t m_size;  // buffer size
+  size_t m_max;   // max buffer size
 
   unsigned char m_valid:1;
   unsigned char m_socket_remote_closed:1;
@@ -31,30 +29,31 @@ class BufIo
 
  public:
   BufIo();
-  ~BufIo(){ if(b){ delete []b; b = (char *)0; } }
+  ~BufIo(){ Close(); }
 
+  void MaxSize(size_t len);
   ssize_t SetSize(size_t len);
 
-  void Reset(){ p = 0; m_socket_remote_closed = 0; m_valid = 1; }
+  void Reset(){ m_len = 0; m_socket_remote_closed = 0; m_valid = 1; }
 
   void Close(){
-    if( b ){ delete []b; b = (char *)0; }
-    p = n = 0;
+    if( m_buf ){ delete []m_buf; m_buf = (char *)0; }
+    m_len = m_size = 0;
   }
 
-  size_t Count() const { return p; }
-  size_t LeftSize() const { return (n - p); }
+  size_t Count() const { return m_len; }
+  size_t LeftSize() const { return (m_size - m_len); }
 
   ssize_t PickUp(size_t len);
 
-  ssize_t FeedIn(SOCKET sk) { return FeedIn(sk, n - p); }
+  ssize_t FeedIn(SOCKET sk) { return FeedIn(sk, m_size - m_len); }
   ssize_t FeedIn(SOCKET sk, size_t limit);
   ssize_t FlushOut(SOCKET sk);
   ssize_t Put(SOCKET sk, const char *buf, size_t len);
   ssize_t PutFlush(SOCKET sk, const char *buf, size_t len);
 
-  const char *BasePointer() const { return b; }
-  const char *CurrentPointer() const { return (b + p); }
+  const char *BasePointer() const { return m_buf; }
+  const char *CurrentPointer() const { return (m_buf + m_len); }
 };
 
 #endif  // BUFIO_H

@@ -1,7 +1,7 @@
 #include "rate.h"  // def.h
 
 #include "btconfig.h"
-#include "bufio.h"     // BUF_DEF_SIZ
+#include "bufio.h"     // BUFIO_DEF_SIZ
 #include "bttime.h"
 #include "console.h"
 #include "util.h"
@@ -192,7 +192,7 @@ void Rate::RateAdd(bt_length_t nbytes, dt_rate_t bwlimit, double timestamp)
     m_last_size = nbytes;
   }
 
-  if( nbytes > BUF_DEF_SIZ ){
+  if( nbytes > BUFIO_DEF_SIZ ){
     m_prev_realtime = m_recent_realtime;
     m_prev_size = m_recent_size;
     m_recent_realtime = timestamp;

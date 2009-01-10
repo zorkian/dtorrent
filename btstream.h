@@ -46,17 +46,16 @@ inline void put_bt_length(char *to, bt_length_t from){
 
 class btStream
 {
-private:
+ private:
   SOCKET sock, sock_was;
   size_t m_oldbytes;
   bt_msglen_t m_msglen;
 
-public:
-  BufIo in_buffer;
-  BufIo out_buffer;
-
-  btStream(){ sock = sock_was = INVALID_SOCKET; m_oldbytes = 0; m_msglen = 0; }
+ public:
+  btStream();
   ~btStream(){ Close(); }
+
+  BufIo in_buffer, out_buffer;
 
   SOCKET GetSocket() const { return (INVALID_SOCKET==sock) ? sock_was : sock; }
   void SetSocket(SOCKET sk){ sock = sk; }

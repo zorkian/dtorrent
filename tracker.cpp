@@ -46,6 +46,10 @@ btTracker::btTracker()
 
   m_report_time = (time_t) 0;
   m_report_dl = m_report_ul = m_totaldl = m_totalul = 0;
+
+  m_request_buffer.MaxSize((strlen(REQ_URL_P1A_FMT) + strlen(REQ_URL_P2_FMT) +
+    MAXHOSTNAMELEN + MAXPATHLEN + 100) * 2);
+  m_response_buffer.MaxSize(256 * 1024);
 }
 
 btTracker::~btTracker()
