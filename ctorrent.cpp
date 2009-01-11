@@ -4,7 +4,6 @@
 #ifdef WINDOWS
 #include <windows.h>
 #else
-#include <unistd.h>
 #include <signal.h>
 #endif
 
@@ -13,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <errno.h>
 
 #include "ctorrent.h"
 #include "btconfig.h"
@@ -31,7 +31,8 @@
 #endif
 
 void usage();
-int param_check(int argc, char **argv);
+int CheckOptions(int argc, const char *const *argv);
+int GetOpts(int argc, const char *const *argv, bool checkonly=false);
 
 
 bt_length_t arg_piece_length = 256 * 1024;
@@ -44,6 +45,7 @@ bool arg_flg_private = false;
 
 // temporary config values
 bool arg_daemon = *cfg_daemon;
+bool arg_config_mode = false;
 
 
 int main(int argc, char **argv)
@@ -52,18 +54,17 @@ int main(int argc, char **argv)
   CONSOLE.Init();
   InitConfig();
 
-  if( argc > 1 ){
-    if( param_check(argc, argv) < 0 ) Exit(EXIT_FAILURE);
+  if( CheckOptions(argc, argv) < 0 ){
+    if( errno )
+      CONSOLE.Warning(1, "Error while parsing options:  %s", strerror(errno));
+    Exit(EXIT_FAILURE);
   }
-
-  if( !arg_metainfo_file || !*arg_metainfo_file ){
-    CONSOLE.Warning(1,
-      "No torrent file specified--entering configuration mode");
-    CONSOLE.Warning(1, "Use -h for help/usage.");
-    g_config_only = true;
-  }
-
   CONFIG.Load(*cfg_config_file);
+  if( GetOpts(argc, argv) < 0 ){
+    if( errno )
+      CONSOLE.Warning(1, "Error while parsing options:  %s", strerror(errno));
+    Exit(EXIT_FAILURE);
+  }
 
   if( g_config_only ){
     char param[MAXPATHLEN] = "";
@@ -77,18 +78,18 @@ int main(int argc, char **argv)
 
   if( arg_flg_make_torrent ){
     if( !arg_announce ){
-      CONSOLE.Warning(1, "Please use -u to specify an announce URL!");
+      CONSOLE.Warning(1, "Please use -u to specify an announce URL.");
       Exit(EXIT_FAILURE);
     }
     if( !arg_save_as ){
-      CONSOLE.Warning(1, "Please use -s to specify a metainfo file name!");
+      CONSOLE.Warning(1, "Please use -s to specify a metainfo file name.");
       Exit(EXIT_FAILURE);
     }
     if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_announce,
                                 arg_piece_length) < 0 ||
         BTCONTENT.CreateMetainfoFile(arg_save_as, arg_comment, arg_flg_private)
           < 0 ){
-      CONSOLE.Warning(1, "create metainfo failed.");
+      CONSOLE.Warning(1, "Failed creating torrent metainfo file.");
       Exit(EXIT_FAILURE);
     }
     CONSOLE.Print("Create metainfo file %s successful.", arg_save_as);
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
 
   if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as, arg_announce)
         < 0 ){
-    CONSOLE.Warning(1, "error, initial meta info failed.");
+    CONSOLE.Warning(1, "Failed during initial torrent setup.");
     Exit(EXIT_FAILURE);
   }
 
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
     }
 
     if( Tracker.Initial() < 0 ){
-      CONSOLE.Warning(1, "error, tracker setup failed.");
+      CONSOLE.Warning(1, "Failed during tracker setup.");
       Exit(EXIT_FAILURE);
     }
 
@@ -126,235 +127,483 @@ int main(int argc, char **argv)
       BTCONTENT.MergeAll();
     }
   }
-  if( !arg_flg_exam_only ) BTCONTENT.SaveBitfield();
-
-  if(*cfg_verbose) CONSOLE.cpu();
+  if( !arg_flg_exam_only ){
+    BTCONTENT.SaveBitfield();
+    if(*cfg_verbose) CONSOLE.cpu();
+  }
   Exit(EXIT_SUCCESS);
 }
 
 
-int param_check(int argc, char **argv)
+int CheckOptions(int argc, const char *const *argv)
 {
-  const char *opts;
-  int c;
-  size_t l;
+  return GetOpts(argc, argv, true);
+}
+
+
+int GetOpts(int argc, const char *const *argv, bool checkonly)
+{
+  const char *options, *multiopts, *nonegopts, *argpos, *optarg, *pos;
+  char opt;
+  int argn, noptions, optn;
+  bool negate, *foundopt;
+  size_t len;
+
+  errno = 0;
+  if( argc < 2 ){
+    arg_config_mode = g_config_only = true;
+    return 0;
+  }
 
   if( 0==strncmp(argv[1], "-t", 2) )
-    opts = "tc:l:ps:u:";
-  else opts = "aA:b:cC:dD:e:E:f:Fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
+    options = "tc:l:ps:u:";
+  else options = "aA:b:cC:dD:e:E:f:Fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
 
-  while( (c=getopt(argc, argv, opts)) != -1 )
-    switch( c ){
-    case 'f':  // configuration file
-      cfg_config_file = optarg;
-      break;
+  // Options which may be given more than once.
+  multiopts = "adu";
+  // Options which cannot be negated.
+  nonegopts = "cfFlsu";
 
-    case 'a':  // change allocation mode
-      cfg_allocate++;
-      break;
+  noptions = strlen(options);
+  if( !(foundopt = new bool[noptions]) ){
+    errno = ENOMEM;
+    return -1;
+  }
+  for( int i = 0; i < noptions; i++ ) foundopt[i] = false;
 
-    case 'b':  // set bitfield file
-      if( *cfg_bitfield_file ) return -1;  // specified twice
-      cfg_bitfield_file = optarg;
-      break;
-
-    case 'i':  // listen on given IP address
-      cfg_listen_addr = optarg;
-      break;
-
-    case 'I':  // set public IP address
-      cfg_public_ip = optarg;
-      break;
-
-    case 'p':  // listen on given port
-      if( arg_flg_make_torrent ) arg_flg_private = true;
-      else cfg_listen_port.Scan(optarg);
-      break;
-
-    case 's':  // save as given file/dir name
-      if( arg_save_as ) return -1;  // specified twice
-      arg_save_as = new char[strlen(optarg) + 1];
-#ifndef WINDOWS
-      if( !arg_save_as ) return -1;
-#endif
-      strcpy(arg_save_as, optarg);
-      break;
-
-    case 'e':  // seed timeout (exit time)
-      cfg_seed_hours = strtoul(optarg, NULL, 10);
-      break;
-
-    case 'E':  // target seed ratio
-      cfg_seed_ratio = atof(optarg);
-      break;
-
-    case 'c':  // check piece hashes only
-      if( arg_flg_make_torrent ){
-        arg_comment = new char[strlen(optarg) + 1];
-        if( !arg_comment ) return -1;
-        strcpy(arg_comment, optarg);
-      }else arg_flg_check_only = true;
-      break;
-
-    case 'C':  // max cache size
-      cfg_cache_size = atoi(optarg);
-      break;
-
-    case 'M':  // max peers
-      if( cfg_max_peers.Valid(atoi(optarg)) )
-        cfg_max_peers = atoi(optarg);
-      else{
-        CONSOLE.Warning(1, "-%c argument must be between %s and %s", c,
-          cfg_max_peers.Smin(), cfg_max_peers.Smax());
+  for( argn = 1; argn < argc && *argv[argn] == '-'; argn++ ){
+    argpos = &argv[argn][1];
+    optarg = (char *)0;
+    while( !optarg && (opt = *argpos++) ){
+      negate = false;
+      if( '-' == opt ){  // negate the option
+        negate = true;
+        opt = *argpos++;
+        if( strchr(nonegopts, opt) ){
+          CONSOLE.Warning(1, "Option -%c cannot be negated.", opt);
+          return -1;
+        }
+      }
+      if( !(pos = strchr(options, opt)) ){  // unknown option
+        CONSOLE.Warning(1, "Use -h for help/usage.");
         return -1;
       }
-      break;
-
-    case 'm':  // min peers
-      if( cfg_min_peers.Valid(atoi(optarg)) )
-        cfg_min_peers = atoi(optarg);
-      else{
-        CONSOLE.Warning(1, "-%c argument must be between %s and %s", c,
-          cfg_min_peers.Smin(), cfg_min_peers.Smax());
+      optn = pos - options;
+      if( foundopt[optn] && !strchr(multiopts, opt) ){
+        CONSOLE.Warning(1, "Usage error:  -%c was specified twice.", opt);
         return -1;
       }
-      break;
 
-    case 'z':  // slice size for requests
-      if( cfg_req_slice_size.Valid(atoi(optarg) * 1024) )
-        cfg_req_slice_size = atoi(optarg) * 1024;
-      else{
-        CONSOLE.Warning(1, "-%c argument must be between %d and %d", c,
-          cfg_req_slice_size.Min() / 1024, cfg_req_slice_size.Max() / 1024);
-        return -1;
-      }
-      break;
+      if( !negate && ':' == *(pos + 1) )
+        optarg = *argpos ? argpos : argv[++argn];
+      else optarg = (char *)0;
 
-    case 'n':  // file download list
-      if( *cfg_file_to_download ) return -1;  // specified twice
-      cfg_file_to_download = optarg;
-      break;
+      switch( opt ){
+        case 'a':  // change allocation mode
+          if( !checkonly ){
+            if( negate ){
+              cfg_allocate.Reset();
+              if( arg_config_mode ) cfg_allocate.Unsave();
+            }else{
+              if( *cfg_allocate == cfg_allocate.Max() )
+                cfg_allocate = cfg_allocate.Min();
+              else cfg_allocate++;
+              if( arg_config_mode ) cfg_allocate.Save();
+            }
+          }
+          break;
 
-    case 'F':  // force bitfield accuracy or seeding, skip initial hash check
-      arg_flg_force_seed_mode = true;
-      break;
+        case 'A':  // HTTP user-agent header string
+          if( !checkonly ){
+            if( negate ){
+              cfg_user_agent.Reset();
+              if( arg_config_mode ) cfg_user_agent.Unsave();
+            }else{
+              cfg_user_agent = optarg;
+              if( arg_config_mode ) cfg_user_agent.Save();
+            }
+          }
+          break;
 
-    case 'D':  // download bandwidth limit
-      cfg_max_bandwidth_down = (dt_rate_t)(strtod(optarg, NULL) * 1024);
-      break;
+        case 'b':  // set bitfield file
+          if( !checkonly ){
+            if( negate ){
+              cfg_bitfield_file.Reset();
+              if( arg_config_mode ) cfg_bitfield_file.Unsave();
+            }else{
+              cfg_bitfield_file = optarg;
+              if( arg_config_mode ) cfg_bitfield_file.Save();
+            }
+          }
+          break;
 
-    case 'U':  // upload bandwidth limit
-      cfg_max_bandwidth_up = (dt_rate_t)(strtod(optarg, NULL) * 1024);
-      break;
+        case 'c':  // check piece hashes only
+          if( arg_flg_make_torrent ){
+            if( !(arg_comment = new char[strlen(optarg) + 1]) ){
+              errno = ENOMEM;
+              return -1;
+            }
+            strcpy(arg_comment, optarg);
+          }else arg_flg_check_only = true;
+          break;
+    
+        case 'C':  // max cache size
+          if( !checkonly ){
+            if( negate ){
+              cfg_cache_size.Reset();
+              if( arg_config_mode ) cfg_cache_size.Unsave();
+            }else{
+              cfg_cache_size = atoi(optarg);
+              if( arg_config_mode ) cfg_cache_size.Save();
+            }
+          }
+          break;
 
-    case 'P':  // peer ID prefix
-      l = strlen(optarg);
-      if( l > cfg_peer_prefix.MaxLen() ){
-        CONSOLE.Warning(1, "-P arg must be %d or less characters",
-          cfg_peer_prefix.MaxLen());
-        return -1;
-      }
-      if( l == 1 && *optarg == '-' ) cfg_peer_prefix = "";
-      else cfg_peer_prefix = optarg;
-      break;
+        case 'd':  // daemon mode (fork to background)
+          if( !checkonly ){
+            if( negate ){
+              arg_daemon = false;
+              cfg_daemon.Reset();
+              cfg_redirect_io.Reset();
+              if( arg_config_mode ){
+                cfg_daemon.Unsave();
+                cfg_redirect_io.Unsave();
+              }
+            }else if( arg_daemon ){
+              cfg_redirect_io = true;
+              if( arg_config_mode ) cfg_redirect_io.Save();
+            }else{
+              arg_daemon = true;
+              if( arg_config_mode ) cfg_daemon.Save();
+            }
+          }
+          break;
 
-    case 'A':  // HTTP user-agent header string
-      cfg_user_agent = optarg;
-      break;
+        case 'D':  // download bandwidth limit
+          if( !checkonly ){
+            if( negate ){
+              cfg_max_bandwidth_down.Reset();
+              if( arg_config_mode ) cfg_max_bandwidth_down.Unsave();
+            }else{
+              cfg_max_bandwidth_down = (dt_rate_t)(strtod(optarg, NULL) * 1024);
+              if( arg_config_mode ) cfg_max_bandwidth_down.Save();
+            }
+          }
+          break;
 
-    case 'T':  // convert foreign filenames to printable text
-      cfg_convert_filenames = true;
-      break;
+        case 'e':  // seed timeout (exit time)
+          if( !checkonly ){
+            if( negate ){
+              cfg_seed_hours.Reset();
+              if( arg_config_mode ) cfg_seed_hours.Unsave();
+            }else{
+              cfg_seed_hours = strtoul(optarg, NULL, 10);
+              if( arg_config_mode ) cfg_seed_hours.Save();
+            }
+          }
+          break;
 
-     // BELOW OPTIONS USED FOR CREATE TORRENT.
-    case 'u':  // tracker announce URL
-      if( arg_announce ) return -1;  // specified twice
-      arg_announce = new char[strlen(optarg) + 1];
-#ifndef WINDOWS
-      if( !arg_announce ) return -1;
-#endif
-      strcpy(arg_announce, optarg);
-      break;
+        case 'E':  // target seed ratio
+          if( !checkonly ){
+            if( negate ){
+              cfg_seed_ratio.Reset();
+              if( arg_config_mode ) cfg_seed_ratio.Unsave();
+            }else{
+              cfg_seed_ratio = atof(optarg);
+              if( arg_config_mode ) cfg_seed_ratio.Save();
+            }
+          }
+          break;
 
-    case 't':  // make torrent
-      arg_flg_make_torrent = true;
-      CONSOLE.NoInput();
-      break;
+        case 'f':  // configuration file
+          cfg_config_file = optarg;
+          break;
 
-    case 'l':  // piece length
-      arg_piece_length = atol(optarg);
-      if( arg_piece_length < 65536 || arg_piece_length > 4096*1024 ){
-        CONSOLE.Warning(1, "-%c argument must be between 65536 and %d",
-          c, 4096*1024);
-        return -1;
-      }
-      break;
-     // ABOVE OPTIONS USED FOR CREATE TORRENT.
+        case 'F':  // force bitfield accuracy or seeding, skip hash check
+          arg_flg_force_seed_mode = true;
+          break;
 
-    case 'x':  // print torrent information only
-      arg_flg_exam_only = true;
-      CONSOLE.NoInput();
-      break;
+        case 'h':  // help
+        case 'H':  // help
+          usage();
+          return -1;
 
-    case 'S':  // CTCS server
-      if( *cfg_ctcs ) return -1;  // specified twice
-      if( !cfg_ctcs.Valid(optarg) ){
-        CONSOLE.Warning(1, "-%c argument must be in the format host:port", c);
-        return -1;
-      }
-      cfg_ctcs = optarg;
-      break;
+        case 'i':  // listen on given IP address
+          if( !checkonly ){
+            if( negate ){
+              cfg_listen_addr.Reset();
+              if( arg_config_mode ) cfg_listen_addr.Unsave();
+            }else{
+              cfg_listen_addr = optarg;
+              if( arg_config_mode ) cfg_listen_addr.Save();
+            }
+          }
+          break;
 
-    case 'X':  // "user exit" on download completion
-      if( *cfg_completion_exit ) return -1;  // specified twice
+        case 'I':  // set public IP address
+          if( !checkonly ){
+            if( negate ){
+              cfg_public_ip.Reset();
+              if( arg_config_mode ) cfg_public_ip.Unsave();
+            }else{
+              cfg_public_ip = optarg;
+              if( arg_config_mode ) cfg_public_ip.Save();
+            }
+          }
+          break;
+
+        case 'l':  // piece length
+          arg_piece_length = atol(optarg);
+          if( arg_piece_length < 65536 || arg_piece_length > 4096*1024 ){
+            CONSOLE.Warning(1,
+              "Option -%c argument must be between 65536 and %d.", opt,
+              4096*1024);
+            return -1;
+          }
+          break;
+
+        case 'm':  // min peers
+          if( !negate && !cfg_min_peers.Valid(atoi(optarg)) ){
+            CONSOLE.Warning(1, "Option -%c argument must be between %s and %s.",
+              opt, cfg_min_peers.Smin(), cfg_min_peers.Smax());
+            return -1;
+          }
+          if( !checkonly ){
+            if( negate ){
+              cfg_min_peers.Reset();
+              if( arg_config_mode ) cfg_min_peers.Unsave();
+            }else{
+              cfg_min_peers = atoi(optarg);
+              if( arg_config_mode ) cfg_min_peers.Save();
+            }
+          }
+          break;
+
+        case 'M':  // max peers
+          if( !negate && !cfg_max_peers.Valid(atoi(optarg)) ){
+            CONSOLE.Warning(1, "Option -%c argument must be between %s and %s.",
+              opt, cfg_max_peers.Smin(), cfg_max_peers.Smax());
+            return -1;
+          }
+          if( !checkonly ){
+            if( negate ){
+              cfg_max_peers.Reset();
+              if( arg_config_mode ) cfg_max_peers.Unsave();
+            }else{
+              cfg_max_peers = atoi(optarg);
+              if( arg_config_mode ) cfg_max_peers.Save();
+            }
+          }
+          break;
+
+        case 'n':  // file download list
+          if( !checkonly ){
+            if( negate ){
+              cfg_file_to_download.Reset();
+              if( arg_config_mode ) cfg_file_to_download.Unsave();
+            }else{
+              cfg_file_to_download = optarg;
+              if( arg_config_mode ) cfg_file_to_download.Save();
+            }
+          }
+          break;
+
+        case 'p':  // listen on given port
+          if( arg_flg_make_torrent ) arg_flg_private = true;
+          else if( !checkonly ){
+            if( negate ){
+              cfg_listen_port.Reset();
+              if( arg_config_mode ) cfg_listen_port.Unsave();
+            }else{
+              cfg_listen_port.Scan(optarg);
+              if( arg_config_mode ) cfg_listen_port.Save();
+            }
+          }
+          break;
+
+        case 'P':  // peer ID prefix
+          if( !negate && (len = strlen(optarg)) > cfg_peer_prefix.MaxLen() ){
+            CONSOLE.Warning(1,
+              "Option -%c argument must be %d or less characters.", opt,
+              cfg_peer_prefix.MaxLen());
+            return -1;
+          }
+          if( !checkonly ){
+            if( negate ){
+              cfg_peer_prefix.Reset();
+              if( arg_config_mode ) cfg_peer_prefix.Unsave();
+            }else{
+              if( len == 1 && *optarg == '-' ) cfg_peer_prefix = "";
+              else cfg_peer_prefix = optarg;
+              if( arg_config_mode ) cfg_peer_prefix.Save();
+            }
+          }
+          break;
+
+        case 's':  // save as given file/dir name
+          if( !*optarg ){
+            errno = EINVAL;
+            return -1;
+          }
+          if( !checkonly ){
+            if( !(arg_save_as = new char[strlen(optarg) + 1]) ){
+              errno = ENOMEM;
+              return -1;
+            }
+            strcpy(arg_save_as, optarg);
+          }
+          break;
+
+        case 'S':  // CTCS server
+          if( !negate && !cfg_ctcs.Valid(optarg) ){
+            CONSOLE.Warning(1,
+              "Option -%c argument must be in the format host:port.", opt);
+            return -1;
+          }
+          if( !checkonly ){
+            if( negate ){
+              cfg_ctcs.Reset();
+              if( arg_config_mode ) cfg_ctcs.Unsave();
+            }else{
+              cfg_ctcs = optarg;
+              if( arg_config_mode ) cfg_ctcs.Save();
+            }
+          }
+          break;
+
+        case 't':  // make torrent
+          arg_flg_make_torrent = true;
+          CONSOLE.NoInput();
+          break;
+
+        case 'T':  // convert foreign filenames to printable text
+          if( !checkonly ){
+            if( negate ){
+              cfg_convert_filenames.Reset();
+              if( arg_config_mode ) cfg_convert_filenames.Unsave();
+            }else{
+              cfg_convert_filenames = true;
+              if( arg_config_mode ) cfg_convert_filenames.Save();
+            }
+          }
+          break;
+
+        case 'u':  // tracker announce URL
+          if( !*optarg ){
+            errno = EINVAL;
+            return -1;
+          }
+          if( !(arg_announce = new char[strlen(optarg) + 1]) ){
+            errno = ENOMEM;
+            return -1;
+          }
+          strcpy(arg_announce, optarg);
+          break;
+
+        case 'U':  // upload bandwidth limit
+          if( !checkonly ){
+            if( negate ){
+              cfg_max_bandwidth_up.Reset();
+              if( arg_config_mode ) cfg_max_bandwidth_up.Unsave();
+            }else{
+              cfg_max_bandwidth_up = (dt_rate_t)(strtod(optarg, NULL) * 1024);
+              if( arg_config_mode ) cfg_max_bandwidth_up.Save();
+            }
+          }
+          break;
+
+        case 'v':  // verbose output
+          if( negate ){
+            cfg_verbose.Reset();
+            if( arg_config_mode ) cfg_verbose.Unsave();
+          }else{
+            cfg_verbose = true;
+            if( arg_config_mode ) cfg_verbose.Save();
+          }
+          break;
+
+        case 'x':  // print torrent information only
+          arg_flg_exam_only = true;
+          CONSOLE.NoInput();
+          break;
+
+        case 'X':  // "user exit" (command) on download completion
+          if( !negate && !*optarg ){
+            errno = EINVAL;
+            return -1;
+          }
 #ifndef HAVE_SYSTEM
-      CONSOLE.Warning(1, "-X is not supported on your system");
-      return -1;
+          CONSOLE.Warning(1, "Option -%c is not supported on your system.",
+            opt);
+          return -1;
 #endif
 #ifndef HAVE_WORKING_FORK
-      CONSOLE.Warning(2,
-        "No working fork function; be sure the -X command is brief!");
+          CONSOLE.Warning(2,
+            "No working fork function found; be sure the -%c command is brief!",
+            opt);
 #endif
-      cfg_completion_exit = optarg;
-      break;
+          if( !checkonly ){
+            if( negate ){
+              cfg_completion_exit.Reset();
+              if( arg_config_mode ) cfg_completion_exit.Unsave();
+            }else{
+              cfg_completion_exit = optarg;
+              if( arg_config_mode ) cfg_completion_exit.Save();
+            }
+          }
+          break;
 
-    case 'v':  // verbose output
-      cfg_verbose = true;
-      break;
+        case 'z':  // slice size for requests
+          if( !negate && !cfg_req_slice_size.Valid(atoi(optarg) * 1024) ){
+            CONSOLE.Warning(1, "Option -%c argument must be between %d and %d.",
+              opt, cfg_req_slice_size.Min() / 1024,
+              cfg_req_slice_size.Max() / 1024);
+            return -1;
+          }
+          if( !checkonly ){
+            if( negate ){
+              cfg_req_slice_size.Reset();
+              if( arg_config_mode ) cfg_req_slice_size.Unsave();
+            }else{
+              cfg_req_slice_size = atoi(optarg) * 1024;
+              if( arg_config_mode ) cfg_req_slice_size.Save();
+            }
+          }
+          break;
 
-    case 'd':  // daemon mode (fork to background)
-      if( arg_daemon ) cfg_redirect_io = true;
-      else arg_daemon = true;
-      break;
-
-    case 'h':
-    case 'H':  // help
-      usage();
-      return -1;
-
-    default:
-      // unknown option.
-      CONSOLE.Warning(1, "Use -h for help/usage.");
-      return -1;
+        default:  // can't happen
+          break;
+      }
+      if( !negate ) foundopt[optn] = true;
     }
+  }
 
-  argc -= optind;
-  argv += optind;
-  if( argc != 1 ){
+  if( argc - argn != 1 || !*argv[argn] ){
     if( arg_flg_make_torrent ){
       CONSOLE.Warning(1,
         "Must specify torrent contents (one file or directory)");
       return -1;
-    }else if( argc > 1 ){
+    }else if( argc - argn > 1 ){
       CONSOLE.Warning(1, "Must specify exactly one torrent file");
       return -1;
-    }else return 0;
+    }else{
+      if( checkonly ) arg_config_mode = true;
+      else{
+        CONSOLE.Warning(1,
+          "No torrent file specified--entering configuration mode");
+        CONSOLE.Warning(1, "Use -h for help/usage.");
+        g_config_only = true;
+      }
+      return 0;
+    }
   }
-  arg_metainfo_file = new char[strlen(*argv) + 1];
-#ifndef WINDOWS
-  if( !arg_metainfo_file ) return -1;
-#endif
-  strcpy(arg_metainfo_file, *argv);
+  if( checkonly ) return 0;
+
+  if( !(arg_metainfo_file = new char[strlen(argv[argn]) + 1]) ){
+    errno = ENOMEM;
+    return -1;
+  }
+  strcpy(arg_metainfo_file, argv[argn]);
 
   char *tmp = new char[strlen(arg_metainfo_file) + 4];
   if( tmp ){
@@ -364,7 +613,6 @@ int param_check(int argc, char **argv)
     delete []tmp;
     if( !*cfg_bitfield_file ) cfg_bitfield_file.Reset();
   }
-
   return 0;
 }
 
