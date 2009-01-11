@@ -54,17 +54,9 @@ int main(int argc, char **argv)
   CONSOLE.Init();
   InitConfig();
 
-  if( CheckOptions(argc, argv) < 0 ){
-    if( errno )
-      CONSOLE.Warning(1, "Error while parsing options:  %s", strerror(errno));
-    Exit(EXIT_FAILURE);
-  }
+  if( CheckOptions(argc, argv) < 0 ) Exit(EXIT_FAILURE);
   CONFIG.Load(*cfg_config_file);
-  if( GetOpts(argc, argv) < 0 ){
-    if( errno )
-      CONSOLE.Warning(1, "Error while parsing options:  %s", strerror(errno));
-    Exit(EXIT_FAILURE);
-  }
+  if( GetOpts(argc, argv) < 0 ) Exit(EXIT_FAILURE);
 
   if( g_config_only ){
     char param[MAXPATHLEN] = "";
@@ -146,8 +138,9 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
   const char *options, *multiopts, *nonegopts, *argpos, *optarg, *pos;
   char opt;
   int argn, noptions, optn;
-  bool negate, *foundopt;
+  bool negate, *foundopt = (bool *)0, error = false;
   size_t len;
+  char *tmp = (char *)0;
 
   errno = 0;
   if( argc < 2 ){
@@ -171,27 +164,27 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
   }
   for( int i = 0; i < noptions; i++ ) foundopt[i] = false;
 
-  for( argn = 1; argn < argc && *argv[argn] == '-'; argn++ ){
+  for( argn = 1; argn < argc && *argv[argn] == '-' && !error; argn++ ){
     argpos = &argv[argn][1];
     optarg = (char *)0;
-    while( !optarg && (opt = *argpos++) ){
+    while( !optarg && (opt = *argpos++) && !error ){
       negate = false;
       if( '-' == opt ){  // negate the option
         negate = true;
         opt = *argpos++;
         if( strchr(nonegopts, opt) ){
           CONSOLE.Warning(1, "Option -%c cannot be negated.", opt);
-          return -1;
+          error = true; break;
         }
       }
       if( !(pos = strchr(options, opt)) ){  // unknown option
         CONSOLE.Warning(1, "Use -h for help/usage.");
-        return -1;
+        error = true; break;
       }
       optn = pos - options;
       if( foundopt[optn] && !strchr(multiopts, opt) ){
         CONSOLE.Warning(1, "Usage error:  -%c was specified twice.", opt);
-        return -1;
+        error = true; break;
       }
 
       if( !negate && ':' == *(pos + 1) )
@@ -241,7 +234,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
           if( arg_flg_make_torrent ){
             if( !(arg_comment = new char[strlen(optarg) + 1]) ){
               errno = ENOMEM;
-              return -1;
+              error = true; break;
             }
             strcpy(arg_comment, optarg);
           }else arg_flg_check_only = true;
@@ -326,7 +319,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
         case 'h':  // help
         case 'H':  // help
           usage();
-          return -1;
+          error = true; break;
 
         case 'i':  // listen on given IP address
           if( !checkonly ){
@@ -358,7 +351,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
             CONSOLE.Warning(1,
               "Option -%c argument must be between 65536 and %d.", opt,
               4096*1024);
-            return -1;
+            error = true; break;
           }
           break;
 
@@ -366,7 +359,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
           if( !negate && !cfg_min_peers.Valid(atoi(optarg)) ){
             CONSOLE.Warning(1, "Option -%c argument must be between %s and %s.",
               opt, cfg_min_peers.Smin(), cfg_min_peers.Smax());
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( negate ){
@@ -383,7 +376,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
           if( !negate && !cfg_max_peers.Valid(atoi(optarg)) ){
             CONSOLE.Warning(1, "Option -%c argument must be between %s and %s.",
               opt, cfg_max_peers.Smin(), cfg_max_peers.Smax());
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( negate ){
@@ -426,7 +419,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
             CONSOLE.Warning(1,
               "Option -%c argument must be %d or less characters.", opt,
               cfg_peer_prefix.MaxLen());
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( negate ){
@@ -443,12 +436,12 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
         case 's':  // save as given file/dir name
           if( !*optarg ){
             errno = EINVAL;
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( !(arg_save_as = new char[strlen(optarg) + 1]) ){
               errno = ENOMEM;
-              return -1;
+              error = true; break;
             }
             strcpy(arg_save_as, optarg);
           }
@@ -458,7 +451,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
           if( !negate && !cfg_ctcs.Valid(optarg) ){
             CONSOLE.Warning(1,
               "Option -%c argument must be in the format host:port.", opt);
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( negate ){
@@ -491,11 +484,11 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
         case 'u':  // tracker announce URL
           if( !*optarg ){
             errno = EINVAL;
-            return -1;
+            error = true; break;
           }
           if( !(arg_announce = new char[strlen(optarg) + 1]) ){
             errno = ENOMEM;
-            return -1;
+            error = true; break;
           }
           strcpy(arg_announce, optarg);
           break;
@@ -530,12 +523,12 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
         case 'X':  // "user exit" (command) on download completion
           if( !negate && !*optarg ){
             errno = EINVAL;
-            return -1;
+            error = true; break;
           }
 #ifndef HAVE_SYSTEM
           CONSOLE.Warning(1, "Option -%c is not supported on your system.",
             opt);
-          return -1;
+          error = true; break;
 #endif
 #ifndef HAVE_WORKING_FORK
           CONSOLE.Warning(2,
@@ -558,7 +551,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
             CONSOLE.Warning(1, "Option -%c argument must be between %d and %d.",
               opt, cfg_req_slice_size.Min() / 1024,
               cfg_req_slice_size.Max() / 1024);
-            return -1;
+            error = true; break;
           }
           if( !checkonly ){
             if( negate ){
@@ -577,15 +570,20 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
       if( !negate ) foundopt[optn] = true;
     }
   }
+  if( foundopt ){
+    delete []foundopt;
+    foundopt = (bool *)0;
+  }
+  if( error ) goto err;
 
   if( argc - argn != 1 || !*argv[argn] ){
     if( arg_flg_make_torrent ){
       CONSOLE.Warning(1,
         "Must specify torrent contents (one file or directory)");
-      return -1;
+      goto err;
     }else if( argc - argn > 1 ){
       CONSOLE.Warning(1, "Must specify exactly one torrent file");
-      return -1;
+      goto err;
     }else{
       if( checkonly ) arg_config_mode = true;
       else{
@@ -601,12 +599,11 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
 
   if( !(arg_metainfo_file = new char[strlen(argv[argn]) + 1]) ){
     errno = ENOMEM;
-    return -1;
+    goto err;
   }
   strcpy(arg_metainfo_file, argv[argn]);
 
-  char *tmp = new char[strlen(arg_metainfo_file) + 4];
-  if( tmp ){
+  if( (tmp = new char[strlen(arg_metainfo_file) + 4]) ){
     strcpy(tmp, arg_metainfo_file);
     strcat(tmp, ".bf");
     cfg_bitfield_file.SetDefault(tmp);
@@ -614,6 +611,12 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
     if( !*cfg_bitfield_file ) cfg_bitfield_file.Reset();
   }
   return 0;
+
+ err:
+  if( foundopt ) delete []foundopt;
+  if( errno )
+    CONSOLE.Warning(1, "Error while parsing options:  %s", strerror(errno));
+  return -1;
 }
 
 
