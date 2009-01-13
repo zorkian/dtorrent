@@ -80,6 +80,7 @@ void btTracker::Reset(time_t new_interval)
 
   if( m_f_stoped ){
     m_status = DT_TRACKER_FINISHED;
+    m_f_started = 0;
     if( m_f_restart ) Restart();
   }
   else m_status = DT_TRACKER_FREE;
@@ -472,12 +473,14 @@ int btTracker::Connect()
 
   if( setfd_nonblock(m_sock) < 0 ){
     CLOSE_SOCKET(m_sock);
+    m_sock = INVALID_SOCKET;
     return -1;
   }
 
   r = connect_nonb(m_sock, (struct sockaddr *)&m_sin);
   if( r == -1 ){
     CLOSE_SOCKET(m_sock);
+    m_sock = INVALID_SOCKET;
     return -1;
   }else if( r == -2 ){
     m_status = DT_TRACKER_CONNECTING;
@@ -486,6 +489,7 @@ int btTracker::Connect()
     if( 0 == SendRequest() ) m_status = DT_TRACKER_READY;
     else{
       CLOSE_SOCKET(m_sock);
+      m_sock = INVALID_SOCKET;
       return -1;
     }
   }

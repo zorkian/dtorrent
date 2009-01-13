@@ -621,12 +621,14 @@ int Ctcs::Connect()
 
   if( setfd_nonblock(m_sock) < 0 ){
     CLOSE_SOCKET(m_sock);
+    m_sock = INVALID_SOCKET;
     return -1;
   }
 
   r = connect_nonb(m_sock, (struct sockaddr *)&m_sin);
   if( r == -1 ){
     CLOSE_SOCKET(m_sock);
+    m_sock = INVALID_SOCKET;
     return -1;
   }else if( r == -2 ){
     m_status = DT_TRACKER_CONNECTING;
