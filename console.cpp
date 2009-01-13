@@ -1738,7 +1738,7 @@ void Console::Debug(const char *message, ...)
   va_list ap;
 
   if( !WaitingInput(&m_channels[DT_CHAN_DEBUG]) ){
-    size_t need = strlen(message)+1 + 10*sizeof(now)/4;
+    size_t need = strlen(message) + 2 + 10*sizeof(now)/4;
     if( need > sizeof(m_debug_buffer) && (format = new char[need]) )
       buflen = need;
     else{
@@ -1777,7 +1777,7 @@ void Console::VDebug_n(const char *message, va_list ap)
     if( m_channels[DT_CHAN_DEBUG].Newline() ){
       char *format = (char *)0;
       size_t buflen;
-      size_t need = strlen(message)+1 + 10*sizeof(now)/4;
+      size_t need = strlen(message) + 2 + 10*sizeof(now)/4;
       if( need > sizeof(m_debug_buffer) && (format = new char[need]) )
         buflen = need;
       else{

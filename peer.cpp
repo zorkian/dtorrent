@@ -1015,7 +1015,7 @@ void btPeer::CloseConnection()
 
 int btPeer::HandShake()
 {
-  char hexbuf[49], txtid[PEER_ID_LEN*2+3];
+  char hexbuf[97], txtid[PEER_ID_LEN*2+3];
   ssize_t r;
   int len;
 
