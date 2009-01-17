@@ -401,9 +401,10 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       if( PEER_IS_FAILED(peer) ){
         FD_CLR(sk, rfdp);
         FD_CLR(sk, wfdp);
+      }else{
+        if( FD_ISSET(sk, rfdp) ) m_nset++;
+        if( FD_ISSET(sk, wfdp) ) m_nset++;
       }
-      if( FD_ISSET(sk, rfdp) ) m_nset++;
-      if( FD_ISSET(sk, wfdp) ) m_nset++;
       pp = p;
       p = p->next;
     }
@@ -1062,7 +1063,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   int pready, pmoved;
   dt_count_t pcount = 0;
 
-  if( FD_ISSET(m_listen_sock, rfdp) ){
+  if( m_listen_sock != INVALID_SOCKET && FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
     m_nset--;
     if( !Self.OntimeDL() && !Self.OntimeUL() ){
