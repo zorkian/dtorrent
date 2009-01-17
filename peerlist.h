@@ -35,9 +35,10 @@ class PeerList
   dt_count_t m_dup_req_pieces;
   dt_rate_t m_prev_limit_up;
   char m_listen[22];
-  dt_count_t m_readycnt;      // cumulative count of ready peers
+  dt_count_t m_readycnt;  // cumulative count of ready peers
   uint16_t m_max_listen_port;
   uint16_t m_min_listen_port;
+  int m_nset;  // number of sockets set up for read/write selection
 
   unsigned char m_ul_limited:1;
   unsigned char m_f_pause:1;

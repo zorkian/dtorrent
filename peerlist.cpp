@@ -58,6 +58,7 @@ PeerList::PeerList()
   m_prev_limit_up = *cfg_max_bandwidth_up;
   m_dup_req_pieces = 0;
   m_readycnt = 0;
+  m_nset = 0;
 }
 
 PeerList::~PeerList()
@@ -317,6 +318,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
   pp = (PEERNODE *)0;
   m_seeds_count = m_conn_count = m_downloads = 0;
   dt_count_t interested_count = 0;
+  m_nset = 0;
   for( p = m_head; p; ){
     peer = p->peer;
     sk = peer->stream.GetSocket();
@@ -381,10 +383,12 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
       if( PEER_IS_FAILED(peer) ) goto skip_continue;  // failsafe
       if( maxfd < sk ) maxfd = sk;
-      if( !FD_ISSET(sk, rfdp) && peer->NeedRead((int)m_f_limitd) )
+      if( !FD_ISSET(sk, rfdp) && peer->NeedRead((int)m_f_limitd) ){
         FD_SET(sk, rfdp);
-      if( !FD_ISSET(sk, wfdp) && peer->NeedWrite((int)m_f_limitu) )
+      }
+      if( !FD_ISSET(sk, wfdp) && peer->NeedWrite((int)m_f_limitu) ){
         FD_SET(sk, wfdp);
+      }
 
       if( *cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
         if( peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval) ){
@@ -398,6 +402,8 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         FD_CLR(sk, rfdp);
         FD_CLR(sk, wfdp);
       }
+      if( FD_ISSET(sk, rfdp) ) m_nset++;
+      if( FD_ISSET(sk, wfdp) ) m_nset++;
       pp = p;
       p = p->next;
     }
@@ -411,6 +417,7 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
 
   if( INVALID_SOCKET != m_listen_sock && m_peers_count < *cfg_max_peers ){
     FD_SET(m_listen_sock, rfdp);
+    m_nset++;
     if( maxfd < m_listen_sock ) maxfd = m_listen_sock;
   }
 
@@ -430,13 +437,16 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       if( UNCHOKER[i]->SetLocal(BT_MSG_UNCHOKE) < 0 ){
         if(*cfg_verbose) CONSOLE.Debug("close: Can't unchoke peer");
         UNCHOKER[i]->CloseConnection();
+        if( FD_ISSET(sk, rfdp) ) m_nset--;
         FD_CLR(sk, rfdp);
+        if( FD_ISSET(sk, wfdp) ) m_nset--;
         FD_CLR(sk, wfdp);
         continue;
       }
 
       if( !FD_ISSET(sk, wfdp) && UNCHOKER[i]->NeedWrite((int)m_f_limitu) ){
         FD_SET(sk, wfdp);
+        m_nset++;
         if( maxfd < sk ) maxfd = sk;
       }
     }  // end for
@@ -1054,6 +1064,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
 
   if( FD_ISSET(m_listen_sock, rfdp) ){
     (*nready)--;
+    m_nset--;
     if( !Self.OntimeDL() && !Self.OntimeUL() ){
       FD_CLR(m_listen_sock, rfdnextp);
       Accepter();
@@ -1068,7 +1079,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
   }
 
   for( p = m_head;
-       p && *nready;
+       p && *nready > 0 && m_nset > 0;
        pp = pmoved ? pp : p, p = pnext ){
     pnext = p->next;
     pmoved = pready = 0;
@@ -1081,6 +1092,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     if( DT_PEER_SUCCESS == peer->GetStatus() ){
       if( FD_ISSET(sk, rfdp) ){
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeUL() ){
           pready = 1;
           m_readycnt++;
@@ -1106,13 +1118,17 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
         peer->CloseConnection();
       }
       if( PEER_IS_FAILED(peer) ){
-        if( FD_ISSET(sk, wfdp) ) (*nready)--;
+        if( FD_ISSET(sk, wfdp) ){
+          (*nready)--;
+          m_nset--;
+        }
         FD_CLR(sk, wfdnextp);
       }
     }
     if( DT_PEER_SUCCESS == peer->GetStatus() ){
       if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeDL() ){
           if( !pready ) m_readycnt++;
           FD_CLR(sk, wfdnextp);
@@ -1136,6 +1152,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     else if( DT_PEER_HANDSHAKE == peer->GetStatus() ){
       if( FD_ISSET(sk, rfdp) ){
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, rfdnextp);
           if( peer->HandShake() < 0 ){
@@ -1147,6 +1164,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
       }
       if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, wfdnextp);
           if( peer->SendModule() < 0 ){
@@ -1160,6 +1178,7 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     else if( DT_PEER_CONNECTING == peer->GetStatus() ){
       if( FD_ISSET(sk, wfdp) ){
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           int error = 0;
           socklen_t n = sizeof(error);
@@ -1177,9 +1196,13 @@ void PeerList::AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
             FD_CLR(sk, rfdnextp);
           }else peer->SetStatus(DT_PEER_HANDSHAKE);
         }
-        if( FD_ISSET(sk, rfdp) ) (*nready)--;
+        if( FD_ISSET(sk, rfdp) ){
+          (*nready)--;
+          m_nset--;
+        }
       }else if( FD_ISSET(sk, rfdp) ){  // connect failed.
         (*nready)--;
+        m_nset--;
         if( !Self.OntimeDL() && !Self.OntimeUL() ){
           FD_CLR(sk, rfdnextp);
           if(*cfg_verbose) CONSOLE.Debug("close: connect failed");

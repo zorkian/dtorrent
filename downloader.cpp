@@ -28,7 +28,8 @@ time_t now = time((time_t *)0);
 
 void Downloader()
 {
-  int nfds = 0, maxfd, r;
+  int nfds = 0, maxfd;
+  int maxfd_tracker, maxfd_ctcs, maxfd_console, maxfd_peer;
   struct timeval timeout;
   fd_set rfd, rfdnext;
   fd_set wfd, wfdnext;
@@ -57,6 +58,7 @@ void Downloader()
     maxsleep = -1;
     rfd = rfdnext;
     wfd = wfdnext;
+    maxfd_tracker = maxfd_ctcs = maxfd_console = -1;
 
     if( f_poll ){
       FD_ZERO(&rfd);
@@ -64,14 +66,14 @@ void Downloader()
       maxsleep = 0;  // waited for bandwidth--poll now
     }else{
       WORLD.DontWaitBW();
-      r = Tracker.IntervalCheck(&rfd, &wfd);
-      if( r > maxfd ) maxfd = r;
+      maxfd_tracker = Tracker.IntervalCheck(&rfd, &wfd);
+      if( maxfd_tracker > maxfd ) maxfd = maxfd_tracker;
       if( *cfg_ctcs ){
-        r = CTCS.IntervalCheck(&rfd, &wfd);
-        if( r > maxfd ) maxfd = r;
+        maxfd_ctcs = CTCS.IntervalCheck(&rfd, &wfd);
+        if( maxfd_ctcs > maxfd ) maxfd = maxfd_ctcs;
       }
-      r = CONSOLE.IntervalCheck(&rfd, &wfd);
-      if( r > maxfd ) maxfd = r;
+      maxfd_console = CONSOLE.IntervalCheck(&rfd, &wfd);
+      if( maxfd_console > maxfd ) maxfd = maxfd_console;
       if( WORLD.IsIdle() ){
         if( BTCONTENT.CheckedPieces() < BTCONTENT.GetNPieces() &&
             !BTCONTENT.NeedFlush() ){
@@ -85,8 +87,8 @@ void Downloader()
         }
       }
     }
-    r = WORLD.IntervalCheck(&rfd, &wfd);
-    if( r > maxfd ) maxfd = r;
+    maxfd_peer = WORLD.IntervalCheck(&rfd, &wfd);
+    if( maxfd_peer > maxfd ) maxfd = maxfd_peer;
 
     if( !f_poll ){
       time(&now);
@@ -131,14 +133,14 @@ void Downloader()
     if( now == then-1 ) now = then;
 
     if( !f_poll && nfds > 0 ){
-      if( DT_TRACKER_FREE != Tracker.GetStatus() )
+      if( maxfd_tracker >= 0 )
         Tracker.SocketReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
-      if( nfds > 0 && DT_TRACKER_FREE != CTCS.GetStatus() )
+      if( nfds > 0 && maxfd_ctcs >= 0 )
         CTCS.SocketReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
-      if( nfds > 0 )
+      if( nfds > 0 && maxfd_console >= 0 )
         CONSOLE.User(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
     }
-    if( nfds > 0 )
+    if( nfds > 0 && maxfd_peer >= 0 )
       WORLD.AnyPeerReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
   }while( Tracker.GetStatus() != DT_TRACKER_FINISHED ||
           Tracker.IsRestarting() );
