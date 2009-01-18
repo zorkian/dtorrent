@@ -775,10 +775,8 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
             cfg_completion_exit = param;
             break;
           case 'Q':  // quit
-            if( 'y'==*param || 'Y'==*param ){
-              Tracker.ClearRestart();
-              Tracker.SetStoped();
-            }
+            if( 'y'==*param || 'Y'==*param )
+              TRACKER.Stop();
             break;
           default:
             Interact("Input mode error");
@@ -870,7 +868,7 @@ void Console::User(fd_set *rfdp, fd_set *wfdp, int *nready,
           else m_active = (time_t)0;
           break;
         case 'Q':  // quit
-          if( !Tracker.IsQuitting() ){
+          if( !TRACKER.IsQuitting() ){
             LineMode();
             Interact_n();
             Interact_n("Quit:  Are you sure? ");
@@ -1067,7 +1065,7 @@ int Console::OperatorMenu(const char *param)
       Interact("  Upload rate: %dB/s   Limit: %dB/s   Total: %llu",
         (int)Self.RateUL(), (int)*cfg_max_bandwidth_up,
         (unsigned long long)Self.TotalUL());
-      time_t t = Tracker.GetReportTime();
+      time_t t = TRACKER.GetReportTime();
       if( t ){
         char s[42];
 #ifdef HAVE_CTIME_R_3
@@ -1077,9 +1075,9 @@ int Console::OperatorMenu(const char *param)
 #endif
         if( s[strlen(s)-1] == '\n' ) s[strlen(s)-1] = '\0';
         Interact("Reported to tracker: %llu up",
-          (unsigned long long)Tracker.GetReportUL());
+          (unsigned long long)TRACKER.GetReportUL());
         Interact("                     %llu down at %s",
-          (unsigned long long)Tracker.GetReportDL(), s);
+          (unsigned long long)TRACKER.GetReportDL(), s);
       }
       Interact("Failed hashes: %d    Dup blocks: %d    Unwanted blocks: %d",
         (int)BTCONTENT.GetHashFailures(), (int)BTCONTENT.GetDupBlocks(),
@@ -1088,7 +1086,15 @@ int Console::OperatorMenu(const char *param)
       Interact("Peers: %d   Min: %d   Max: %d",
         (int)WORLD.GetPeersCount(), (int)*cfg_min_peers, (int)*cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
-      Interact("Announce URL: %s", BTCONTENT.GetAnnounce());
+      Interact("Announce URL: %s", TRACKER.GetURL());
+      dt_trackerstatus_t status = TRACKER.GetStatus();
+      Interact("Tracker status: %s%s%s",
+        DT_SUCCESS == TRACKER.GetResult() ? "OK" :
+          (DT_FAILURE == TRACKER.GetResult() ? "Failed" : "Unknown"),
+        DT_TRACKER_FREE == status ? "" : ", ",
+        DT_TRACKER_CONNECTING == status ? "connecting" :
+          (DT_TRACKER_READY == status ? "connected" :
+            (DT_TRACKER_FINISHED == status ? "finished" : "")));
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
         (double)Self.TotalUL() / ( Self.TotalDL() ? Self.TotalDL() :
@@ -1110,12 +1116,11 @@ int Console::OperatorMenu(const char *param)
       opermenu.mode = 0;
       return 1;
     }else if( sel == 4 + DT_NCHANNELS + STATUSLINES ){  // update tracker
-      if( Tracker.GetStatus() == DT_TRACKER_FREE ) Tracker.Reset(15);
-      else Interact("Already connecting, please be patient...");
+      TRACKER.Update();
       opermenu.mode = 0;
       return 1;
-    }else if( sel == 5 + DT_NCHANNELS + STATUSLINES ){  // update tracker
-      Tracker.RestartTracker();
+    }else if( sel == 5 + DT_NCHANNELS + STATUSLINES ){  // restart tracker
+      TRACKER.RestartTracker();
       opermenu.mode = 0;
       return 1;
     }else if( sel == 6 + DT_NCHANNELS + STATUSLINES ){  // configuration
@@ -1398,7 +1403,7 @@ void Console::Status(int immediate)
              (*cfg_verbose && !m_channels[DT_CHAN_DEBUG].IsSuspended() &&
               !WaitingInput(&m_channels[DT_CHAN_DEBUG])) ){
       // optimized to generate the status line only if it will be output
-      if( !*cfg_verbose && !Tracker.IsQuitting() &&
+      if( !*cfg_verbose && !TRACKER.IsQuitting() &&
           (0==m_active ||
            (*cfg_status_snooze > 0 && now - m_active > *cfg_status_snooze)) ){
         m_active = (time_t)0;
@@ -1468,7 +1473,7 @@ void Console::StatusLine0(char buffer[], size_t length)
 
     (int)WORLD.GetSeedsCount(),
     (int)(WORLD.GetPeersCount() - WORLD.GetSeedsCount()),
-    (int)Tracker.GetPeersCount(),
+    (int)TRACKER.GetPeersCount(),
 
     (int)BTCONTENT.pBF->Count(),
     (int)BTCONTENT.GetNPieces(),
@@ -1482,15 +1487,15 @@ void Console::StatusLine0(char buffer[], size_t length)
     (int)(m_pre_dlrate.RateMeasure(Self.GetDLRate()) >> 10),
     (int)(m_pre_ulrate.RateMeasure(Self.GetULRate()) >> 10),
 
-    (int)Tracker.GetRefuseClick(),
-    (int)Tracker.GetOkClick(),
+    (int)TRACKER.GetRefuseClick(),
+    (int)TRACKER.GetOkClick(),
 
     partial,
 
-    (Tracker.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
-      ( (Tracker.GetStatus()==DT_TRACKER_READY) ? "Connected" :
-          (Tracker.IsRestarting() ? "Restarting" :
-            (Tracker.IsQuitting() ? "Quitting" :
+    (TRACKER.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
+      ( (TRACKER.GetStatus()==DT_TRACKER_READY) ? "Connected" :
+          (TRACKER.IsRestarting() ? "Restarting" :
+            (TRACKER.IsQuitting() ? "Quitting" :
               (WORLD.IsPaused() ? "Paused" : checked))) )
   );
 }
@@ -1594,10 +1599,10 @@ void Console::StatusLine1(char buffer[], size_t length)
     LIVE_CHAR[m_live_idx++],
 
     (int)WORLD.GetSeedsCount(),
-    (int)(Tracker.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
+    (int)(TRACKER.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
 
     (int)(WORLD.GetPeersCount() - WORLD.GetSeedsCount() - WORLD.GetConnCount()),
-    (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
+    (int)(TRACKER.GetPeersCount() - TRACKER.GetSeedsCount() -
           (!BTCONTENT.IsFull() ? 1 : 0)),
 
     (int)WORLD.GetConnCount(),
@@ -1612,10 +1617,10 @@ void Console::StatusLine1(char buffer[], size_t length)
 
     partial,
 
-    (Tracker.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
-      ( (Tracker.GetStatus()==DT_TRACKER_READY) ? "Connected" :
-          (Tracker.IsRestarting() ? "Restarting" :
-            (Tracker.IsQuitting() ? "Quitting" :
+    (TRACKER.GetStatus()==DT_TRACKER_CONNECTING) ? "Connecting" :
+      ( (TRACKER.GetStatus()==DT_TRACKER_READY) ? "Connected" :
+          (TRACKER.IsRestarting() ? "Restarting" :
+            (TRACKER.IsQuitting() ? "Quitting" :
               (WORLD.IsPaused() ? "Paused" : checked))) )
   );
 }

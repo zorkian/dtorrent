@@ -15,8 +15,7 @@ extern "C" {
 RETSIGTYPE sig_catch(int sig_no)
 {
   if( SIGINT == sig_no || SIGTERM == sig_no ){
-    Tracker.ClearRestart();
-    Tracker.SetStoped();
+    TRACKER.Stop();
     signal(sig_no, sig_catch2);
   }
 }

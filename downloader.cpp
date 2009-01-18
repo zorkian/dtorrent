@@ -45,9 +45,9 @@ void Downloader()
     time(&now);
 
     if( !stopped ){
-      if( !Tracker.IsQuitting() && BTCONTENT.SeedTimeout() )
-        Tracker.SetStoped();
-      if( Tracker.IsQuitting() && !Tracker.IsRestarting() ){
+      if( !TRACKER.IsQuitting() && BTCONTENT.SeedTimeout() )
+        TRACKER.Stop();
+      if( TRACKER.IsQuitting() ){
         stopped = 1;
         WORLD.Pause();
         if( *cfg_ctcs ) CTCS.Send_Status();
@@ -66,7 +66,7 @@ void Downloader()
       maxsleep = 0;  // waited for bandwidth--poll now
     }else{
       WORLD.DontWaitBW();
-      maxfd_tracker = Tracker.IntervalCheck(&rfd, &wfd);
+      maxfd_tracker = TRACKER.IntervalCheck(&rfd, &wfd);
       if( maxfd_tracker > maxfd ) maxfd = maxfd_tracker;
       if( *cfg_ctcs ){
         maxfd_ctcs = CTCS.IntervalCheck(&rfd, &wfd);
@@ -80,7 +80,7 @@ void Downloader()
           if( BTCONTENT.CheckNextPiece() < 0 ){
             CONSOLE.Warning(1, "Error while checking piece %d of %d",
               (int)BTCONTENT.CheckedPieces(), (int)BTCONTENT.GetNPieces());
-            Tracker.SetStoped();
+            TRACKER.Stop();
             maxsleep = 2;
           }
           WORLD.SetIdled();
@@ -134,7 +134,7 @@ void Downloader()
 
     if( !f_poll && nfds > 0 ){
       if( maxfd_tracker >= 0 )
-        Tracker.SocketReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
+        TRACKER.SocketReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
       if( nfds > 0 && maxfd_ctcs >= 0 )
         CTCS.SocketReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
       if( nfds > 0 && maxfd_console >= 0 )
@@ -142,6 +142,6 @@ void Downloader()
     }
     if( nfds > 0 && maxfd_peer >= 0 )
       WORLD.AnyPeerReady(&rfd, &wfd, &nfds, &rfdnext, &wfdnext);
-  }while( Tracker.GetStatus() != DT_TRACKER_FINISHED ||
-          Tracker.IsRestarting() );
+  }while( TRACKER.GetStatus() != DT_TRACKER_FINISHED ||
+          TRACKER.IsRestarting() );
 }

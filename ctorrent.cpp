@@ -39,7 +39,6 @@ bt_length_t arg_piece_length = 256 * 1024;
 char *arg_save_as = (char *)0;
 bool arg_flg_make_torrent = false;
 char *arg_metainfo_file = (char *)0;  // will be owned by BTCONTENT
-char *arg_announce = (char *)0;
 char *arg_comment = (char *)0;
 bool arg_flg_private = false;
 
@@ -66,10 +65,8 @@ int main(int argc, char **argv)
     Exit(EXIT_SUCCESS);
   }
 
-  if( *cfg_verbose ) CONFIG.Dump();
-
   if( arg_flg_make_torrent ){
-    if( !arg_announce ){
+    if( 0==TRACKER.GetNTiers() ){
       CONSOLE.Warning(1, "Please use -u to specify an announce URL.");
       Exit(EXIT_FAILURE);
     }
@@ -77,8 +74,7 @@ int main(int argc, char **argv)
       CONSOLE.Warning(1, "Please use -s to specify a metainfo file name.");
       Exit(EXIT_FAILURE);
     }
-    if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_announce,
-                                arg_piece_length) < 0 ||
+    if( BTCONTENT.InitialFromFS(arg_metainfo_file, arg_piece_length) < 0 ||
         BTCONTENT.CreateMetainfoFile(arg_save_as, arg_comment, arg_flg_private)
           < 0 ){
       CONSOLE.Warning(1, "Failed creating torrent metainfo file.");
@@ -88,10 +84,10 @@ int main(int argc, char **argv)
     Exit(EXIT_SUCCESS);
   }
 
+  if( *cfg_verbose ) CONFIG.Dump();
   cfg_daemon = arg_daemon;  // triggers action
 
-  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as, arg_announce)
-        < 0 ){
+  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as) < 0 ){
     CONSOLE.Warning(1, "Failed during initial torrent setup.");
     Exit(EXIT_FAILURE);
   }
@@ -101,7 +97,7 @@ int main(int argc, char **argv)
       CONSOLE.Warning(2, "warn, you can't accept connections.");
     }
 
-    if( Tracker.Initial() < 0 ){
+    if( TRACKER.Initial() < 0 ){
       CONSOLE.Warning(1, "Failed during tracker setup.");
       Exit(EXIT_FAILURE);
     }
@@ -149,7 +145,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
   }
 
   if( 0==strncmp(argv[1], "-t", 2) )
-    options = "tc:l:ps:u:";
+    options = "tc:l:ps:u:v";
   else options = "aA:b:cC:dD:e:E:f:Fi:I:M:m:n:P:p:s:S:Tu:U:vxX:z:hH";
 
   // Options which may be given more than once.
@@ -486,11 +482,9 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
             errno = EINVAL;
             error = true; break;
           }
-          if( !(arg_announce = new char[strlen(optarg) + 1]) ){
-            errno = ENOMEM;
+          if( !checkonly && !arg_flg_exam_only &&
+              TRACKER.AddTracker(optarg, true) < 0 )
             error = true; break;
-          }
-          strcpy(arg_announce, optarg);
           break;
 
         case 'U':  // upload bandwidth limit
@@ -647,8 +641,8 @@ void usage()
     "Listen port (default", (int)*cfg_default_port);
   fprintf(stderr, "%-15s %s\n", "-I ip",
     "Specify public/external IP address for peer connections");
-  fprintf(stderr, "%-15s %s\n", "-u num or URL",
-    "Use an alternate announce (tracker) URL");
+  fprintf(stderr, "%-15s %s\n", "-u URL",
+    "Specify additional announce (tracker) URLs");
   fprintf(stderr, "%-15s %s\n", "-s filename",
     "Download (\"save as\") to a different file or directory");
   fprintf(stderr, "%-15s %s %sMB)\n", "-C cache_size",
@@ -686,7 +680,7 @@ void usage()
 
   fprintf(stderr, "\nMake metainfo (torrent) file options:\n");
   fprintf(stderr, "%-15s %s\n", "-t", "Create a new torrent file");
-  fprintf(stderr, "%-15s %s\n", "-u URL", "Tracker's URL");
+  fprintf(stderr, "%-15s %s\n", "-u URL", "Tracker's announce URL(s)");
   fprintf(stderr, "%-15s %s %d)\n", "-l piece_len",
     "Piece length (default", (int)arg_piece_length);
   fprintf(stderr, "%-15s %s\n", "-s filename", "Specify metainfo file name");

@@ -22,7 +22,6 @@
 #include "bencode.h"
 #include "peer.h"
 #include "httpencode.h"
-#include "tracker.h"
 #include "peerlist.h"
 #include "ctcs.h"
 #include "console.h"
@@ -55,7 +54,6 @@ btContent::btContent()
 {
   m_announce = global_piece_buffer = (char *)0;
   global_buffer_size = 0;
-  memset(m_announcelist, 0, 9*sizeof(char *));
   m_hash_table = (unsigned char *)0;
   m_create_date = m_seed_timestamp = (time_t)0;
   m_private = 0;
@@ -104,6 +102,22 @@ int btContent::CreateMetainfoFile(const char *mifn, const char *comment,
   // announce
   if( bencode_str("announce", fp) != 1 ) goto err;
   if( bencode_str(m_announce, fp) != 1 ) goto err;
+
+  // announce-list
+  if( TRACKER.GetNTiers() > 1 || TRACKER.GetNext(TRACKER.GetTier(0)) ){
+    if( bencode_str("announce-list", fp) != 1 ) goto err;
+    if( bencode_begin_list(fp) != 1 ) goto err;
+    for( int tier = 0; tier < TRACKER.GetNTiers(); tier++ ){
+      if( bencode_begin_list(fp) != 1 ) goto err;
+      for( const btTracker *tracker = TRACKER.GetTier(tier);
+           tracker;
+           tracker = TRACKER.GetNext(tracker) ){
+        if( bencode_str(tracker->GetURL(), fp) != 1 ) goto err;
+      }
+      if( bencode_end_dict_list(fp) != 1 ) goto err;
+    }
+    if( bencode_end_dict_list(fp) != 1 ) goto err;
+  }
 
   // comment
   if( comment ){
@@ -154,8 +168,7 @@ int btContent::CreateMetainfoFile(const char *mifn, const char *comment,
   return -1;
 }
 
-int btContent::InitialFromFS(const char *pathname, char *ann_url,
-  bt_length_t piece_length)
+int btContent::InitialFromFS(const char *pathname, bt_length_t piece_length)
 {
   bt_index_t n, percent;
 
@@ -171,7 +184,7 @@ int btContent::InitialFromFS(const char *pathname, char *ann_url,
     m_piece_length = 262144;
 
   m_metainfo_file = pathname;
-  m_announce = ann_url;
+  if( !(m_announce = TRACKER.GetPrimaryURL()) ) return -1;
   m_create_date = time((time_t *)0);
 
   if( m_btfiles.BuildFromFS(pathname) < 0 ) return -1;
@@ -210,11 +223,7 @@ int btContent::PrintOut() const
 {
   CONSOLE.Print("META INFO");
   CONSOLE.Print("Announce: %s", m_announce);
-  if( m_announcelist[0] ){
-    CONSOLE.Print("Alternates:");
-    for( int n=0; n < 9 && m_announcelist[n]; n++ )
-      CONSOLE.Print(" %d. %s", n+1, m_announcelist[n]);
-  }
+  TRACKER.PrintTiers();
   if( m_create_date ){
     char s[42];
 #ifdef HAVE_CTIME_R_3
@@ -242,8 +251,7 @@ int btContent::PrintOut() const
   return 0;
 }
 
-int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
-  const char *announce)
+int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 {
   unsigned char *ptr = m_shake_buffer;
   char *b, *tmpstr;
@@ -263,34 +271,59 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
   // announce
   if( !meta_str("announce", &s, &bsiz) ) goto err;
   if( bsiz > MAXPATHLEN ) goto err;
-  tmpstr = new char [bsiz + 1];
-  memcpy(tmpstr, s, bsiz);
-  tmpstr[bsiz] = '\0';
-  m_announce = tmpstr;
+  if( (tmpstr = new char[bsiz + 1]) ){
+    memcpy(tmpstr, s, bsiz);
+    tmpstr[bsiz] = '\0';
+    m_announce = tmpstr;
+    TRACKER.AddOneTracker(m_announce, true);
+  }
 
   // announce-list
   if( (bsiz = meta_pos("announce-list")) ){
     const char *sptr;
     size_t slen;
-    int n = 0;
+    char *url;
+
     if( (q = decode_list(b+bsiz, flen-bsiz, (char *)0)) ){
       size_t alend = bsiz + q;
+      bool found = false, new_tier;
+
+      // see if primary is included in first list
       bsiz++;  // 'l'
-      while( bsiz < alend && *(b+bsiz) != 'e' && n < 9 ){  // each list
-        if( !(q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ) break;
+      if( (q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ){
         bsiz++;  // 'l'
-        while( bsiz < alend && n < 9 ){  // each value
+        while( bsiz < alend ){  // each value
           if( !(q = buf_str(b+bsiz, alend-bsiz, &sptr, &slen)) )
             break;  // next list
           bsiz += q;
-          if( strncasecmp(m_announce, sptr, slen) ){
-            m_announcelist[n] = new char[slen+1];
-            memcpy(m_announcelist[n], sptr, slen);
-            (m_announcelist[n])[slen] = '\0';
-            n++;
+          if( m_announce && 0==strncasecmp(m_announce, sptr, slen) ){
+            found = true;
+            break;
+          }
+        }
+      }
+      new_tier = !found;
+
+      bsiz = meta_pos("announce-list");
+      bsiz++;  // 'l'
+      while( bsiz < alend && *(b+bsiz) != 'e' ){ // each list
+        if( !(q = decode_list(b+bsiz, alend-bsiz, (char *)0)) ) break;
+        bsiz++;  // 'l'
+        while( bsiz < alend ){  // each value
+          if( !(q = buf_str(b+bsiz, alend-bsiz, &sptr, &slen)) )
+            break;  // next list
+          bsiz += q;
+          if( strncasecmp(m_announce, sptr, slen) &&
+              (url = new char[slen+1]) ){
+            memcpy(url, sptr, slen);
+            url[slen] = '\0';
+            TRACKER.AddOneTracker(url, new_tier);
+            new_tier = false;
+            delete []url;
           }
         }
         bsiz++;  // 'e'
+        new_tier = true;
       }
     }
   }
@@ -484,17 +517,6 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
     cfg_peer_prefix.Lock();
   }
 
-  if( announce ){
-    int n;
-    delete []m_announce;
-    if( (n = atoi(announce)) && n <= 9 && m_announcelist[n-1] ){
-      m_announce = m_announcelist[n-1];
-      delete []announce;
-    }
-    else m_announce = announce;
-    CONSOLE.Print("Using announce URL:  %s", m_announce);
-  }
-
   return 0;
 
  err:
@@ -504,8 +526,8 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
 
 btContent::~btContent()
 {
+  // m_announce does not point to locally-allocated memory!
   if( m_hash_table ) delete []m_hash_table;
-  if( m_announce ) delete []m_announce;
   if( global_piece_buffer ) delete []global_piece_buffer;
   if( pBF ) delete pBF;
   if( m_metainfo_file ) delete []m_metainfo_file;
@@ -1228,7 +1250,7 @@ int btContent::APieceComplete(bt_index_t idx)
 
   pBF->Set(idx);
   m_left_bytes -= GetPieceLength(idx);
-  Tracker.CountDL(GetPieceLength(idx));
+  TRACKER.CountDL(GetPieceLength(idx));
 
   // Add the completed piece to the flush queue.
   if( *cfg_cache_size ){
@@ -1270,7 +1292,6 @@ int btContent::SeedTimeout()
       (!*cfg_completion_exit || (!m_flushq && !NeedMerge())) ){
     if( !m_seed_timestamp ){
       if( IsFull() ){
-        Tracker.Reset(15);
         ReleaseHashTable();
         cfg_file_to_download.Hide();
       }
@@ -1665,7 +1686,7 @@ void btContent::SaveBitfield()
 void btContent::CountDupBlock(bt_length_t len)
 {
   m_dup_blocks++;
-  Tracker.CountDL(len);
+  TRACKER.CountDL(len);
 }
 
 

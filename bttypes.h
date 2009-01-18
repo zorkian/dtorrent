@@ -29,6 +29,11 @@ typedef uint64_t dt_datalen_t;  // data amount (file length, UL/DL total, etc.)
 typedef uint32_t dt_rate_t;     // transfer rate
 typedef uint32_t dt_count_t;    // count of things
 typedef uint32_t dt_mem_t;      // quantity of memory
+enum dt_result_t {
+  DT_NORMAL,
+  DT_SUCCESS,
+  DT_FAILURE
+};
 
 // Protocol message component sizes, in bytes
 #define BT_LEN_INT      4             // integer

@@ -1,6 +1,8 @@
 #include "config.h"
 #include <stdlib.h>
 #include <sys/types.h>
+#include <netinet/in.h>  // htonl()
+#include <arpa/inet.h>   // htonl()
 #include <unistd.h>
 #include <string.h>
 
@@ -13,7 +15,7 @@
 
 #include "util.h"
 
-#ifndef HAVE_RANDOM
+#if !defined(HAVE_RANDOM) || !defined(HAVE_HTONL)
 #include "compat.h"
 #endif
 
@@ -73,6 +75,15 @@ double PreciseTime()
 #error No suitable precision timing functions appear to be available!
 #error Please report this problem and identify your system platform.
 #endif
+}
+
+
+int IsPrivateAddress(uint32_t addr)
+{
+  return (addr & htonl(0xff000000)) == htonl(0x0a000000) ||  // 10.x.x.x/8
+         (addr & htonl(0xfff00000)) == htonl(0xac100000) ||  // 172.16.x.x/12
+         (addr & htonl(0xffff0000)) == htonl(0xc0a80000) ||  // 192.168.x.x/16
+         (addr & htonl(0xff000000)) == htonl(0x7f000000);    // 127.x.x.x/8
 }
 
 

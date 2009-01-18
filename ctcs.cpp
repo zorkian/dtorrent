@@ -153,12 +153,11 @@ int Ctcs::CheckMessage()
       Send_Detail();
     }else if( !strncmp("CTQUIT", msgbuf, 6) ){
       CONSOLE.Print("CTCS sent Quit command");
-      Tracker.ClearRestart();
-      Tracker.SetStoped();
+      TRACKER.Stop();
     }else if( !strncmp("CTRESTART", msgbuf, 9) ){
-      Tracker.RestartTracker();
+      TRACKER.RestartTracker();
     }else if( !strncmp("CTUPDATE", msgbuf, 8) ){
-      Tracker.Reset(15);
+      TRACKER.Update();
     }else if( !strncmp("PROTOCOL", msgbuf, 8) ){
       int proto = atoi(msgbuf+9);
       if( proto <= CTCS_PROTOCOL ) m_protocol = proto;
@@ -250,7 +249,7 @@ int Ctcs::Report_Status()
   m_statustime = now;
 
   if( !m_sent_ctstatus ||
-      (Tracker.GetStatus() && now > m_sent_ctstatus_time+30) ){
+      (TRACKER.GetStatus() && now > m_sent_ctstatus_time+30) ){
     return Send_Status();
   }else return ( changebw || !m_sent_ctbw ) ? Send_bw() : 0;
 }
@@ -291,9 +290,9 @@ int Ctcs::Send_Status()
     snprintf( message, CTCS_BUFSIZE,
       "CTSTATUS %d:%d/%d:%d/%d %d/%d/%d %d,%d %llu,%llu %d,%d %d",
       (int)seeders,
-        (int)(Tracker.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
+        (int)(TRACKER.GetSeedsCount() - (BTCONTENT.IsFull() ? 1 : 0)),
       (int)leechers,
-        (int)(Tracker.GetPeersCount() - Tracker.GetSeedsCount() -
+        (int)(TRACKER.GetPeersCount() - TRACKER.GetSeedsCount() -
               (!BTCONTENT.IsFull() ? 1 : 0)),
       (int)WORLD.GetConnCount(),
       (int)nhave, (int)ntotal, (int)WORLD.Pieces_I_Can_Get(),

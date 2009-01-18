@@ -9,6 +9,7 @@
 #include "bttypes.h"
 #include "bitfield.h"
 #include "btfiles.h"
+#include "tracker.h"
 
 typedef struct _btcache{
   dt_datalen_t bc_off;
@@ -52,7 +53,6 @@ class btContent
   const char *m_announce;
   unsigned char *m_hash_table;
   unsigned char m_shake_buffer[68];
-  char *m_announcelist[9];
   char *m_comment, *m_created_by;
   time_t m_create_date;
   int m_private;
@@ -135,16 +135,13 @@ class btContent
     bt_index_t preference) const;
 
   int CreateMetainfoFile(const char *mifn, const char *comment, bool isprivate);
-  int InitialFromFS(const char *pathname, char *ann_url,
-    bt_length_t piece_length);
-  int InitialFromMI(const char *metainfo_fname, const char *saveas,
-    const char *announce);
+  int InitialFromFS(const char *pathname, bt_length_t piece_length);
+  int InitialFromMI(const char *metainfo_fname, const char *saveas);
 
   int CheckNextPiece();
   bt_index_t CheckedPieces() const { return m_check_piece; }
 
   const char *GetMetainfoFile() const { return m_metainfo_file; }
-  const char *GetAnnounce() const { return m_announce; }
 
   const unsigned char *GetShakeBuffer() const { return m_shake_buffer; }
   const unsigned char *GetInfoHash() const { return (m_shake_buffer + 28); }

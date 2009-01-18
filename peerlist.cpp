@@ -111,7 +111,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
   if( INVALID_SOCKET != sk && Self.IpEquiv(addr) ){
     if(*cfg_verbose)
       CONSOLE.Debug("Connection from myself %s", inet_ntoa(addr.sin_addr));
-    Tracker.AdjustPeersCount();
+    TRACKER.AdjustPeersCount();
     if( INVALID_SOCKET != sk ) CLOSE_SOCKET(sk);
     return -3;
   }
@@ -133,7 +133,7 @@ int PeerList::NewPeer(struct sockaddr_in addr, SOCKET sk)
     if( p->peer->IpEquiv(addr) ) break;
     else{
       pnext = p->next;
-      if( p->peer->GetLastTimestamp() + 2 * Tracker.GetInterval() < now ){
+      if( p->peer->GetLastTimestamp() + 2 * TRACKER.GetInterval() < now ){
         delete p->peer;
         if( pp ) pp->next = p->next;
         else m_dead = p->next;
@@ -220,7 +220,7 @@ int PeerList::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
   btPeer **UNCHOKER = (btPeer **)0;
 
   // No pause check here--stay ready by continuing to acquire peers.
-  if( !Tracker.IsQuitting() ){
+  if( !TRACKER.IsQuitting() ){
     struct sockaddr_in addr;
     while( NEED_MORE_PEERS() && !IPQUEUE.IsEmpty() ){
       if( IPQUEUE.Pop(&addr) < 0 ) break;
@@ -905,7 +905,7 @@ int PeerList::Accepter()
     return -1;
   }
 
-  if( Tracker.IsQuitting() ){
+  if( TRACKER.IsQuitting() ){
     CLOSE_SOCKET(newsk);
     return -1;
   }
@@ -1668,7 +1668,7 @@ void PeerList::UnchokeIfFree(btPeer *peer)
 
 void PeerList::AdjustPeersCount()
 {
-  Tracker.AdjustPeersCount();
+  TRACKER.AdjustPeersCount();
 }
 
 void PeerList::WaitBWQueue(PEERNODE **queue, btPeer *peer)
