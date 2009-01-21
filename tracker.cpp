@@ -17,19 +17,21 @@
 #include "console.h"
 #include "bttime.h"
 #include "util.h"
+#include "httpencode.h"
 
 #if !defined(HAVE_SNPRINTF) || !defined(HAVE_HTONL) || !defined(HAVE_HTONS)
 #include "compat.h"
 #endif
+
 
 MultiTracker TRACKER;
 
 btTracker::btTracker(const char *url)
 {
   if( (m_spec = new tracker_spec) ){
-    strcpy(m_spec->url, url);
-    memset(m_spec->host, 0, MAXHOSTNAMELEN);
-    memset(m_spec->path, 0, MAXPATHLEN);
+    if( (m_spec->url = new char[strlen(url) + 1]) )
+      strcpy(m_spec->url, url);
+    else fprintf(stderr, "%s\n", strerror(errno = ENOMEM));
     m_spec->port = 80;
   }else fprintf(stderr, "%s\n", strerror(errno = ENOMEM));
 
@@ -53,8 +55,7 @@ btTracker::btTracker(const char *url)
   m_report_time = (time_t)0;
   m_report_dl = m_report_ul = 0;
 
-  m_request_buffer.MaxSize((strlen(REQ_URL_P1A_FMT) + strlen(REQ_URL_P2_FMT) +
-    MAXHOSTNAMELEN + MAXPATHLEN + 100) * 2);
+  m_request_buffer.MaxSize(2048);
   m_response_buffer.MaxSize(256 * 1024);
 }
 
@@ -306,7 +307,7 @@ dt_result_t btTracker::CheckResponse()
     return DT_FAILURE;
   }
 
-  hlen = Http_split(m_response_buffer.BasePointer(), q, &pdata, &dlen);
+  hlen = HttpSplit(m_response_buffer.BasePointer(), q, &pdata, &dlen);
 
   if( !hlen ){
     CONSOLE.Warning(2, "warn, no HTTP header in response from tracker at %s",
@@ -314,16 +315,23 @@ dt_result_t btTracker::CheckResponse()
     return DT_FAILURE;
   }
 
-  r = Http_response_code(m_response_buffer.BasePointer(), hlen);
+  r = HttpGetStatusCode(m_response_buffer.BasePointer(), hlen);
   if( r != 200 ){
     if( r == 301 || r == 302 || r == 303 || r == 307 ){
-      char tmpurl[MAXPATHLEN];
+      char *tmpurl = (char *)0;
       tracker_spec *tmpspec;
 
-      if( Http_get_header(m_response_buffer.BasePointer(), hlen, "Location",
-                          tmpurl) < 0 ){
-        CONSOLE.Warning(2, "warn, redirect with no location from tracker at %s",
-          m_spec->url);
+      if( HttpGetHeader(m_response_buffer.BasePointer(), hlen, "Location",
+                        &tmpurl) < 0 ){
+        if( errno ){
+          CONSOLE.Warning(2,
+            "Error parsing redirect response from tracker at %s:  %s",
+            m_spec->url, strerror(errno));
+        }else{
+          CONSOLE.Warning(2,
+            "warn, redirect with no location from tracker at %s", m_spec->url);
+        }
+        if( tmpurl ) delete []tmpurl;
         return DT_FAILURE;
       }
 
@@ -332,22 +340,27 @@ dt_result_t btTracker::CheckResponse()
           "warn, could not allocate memory for tracker redirect from %s",
           m_spec->url);
         errno = ENOMEM;
+        delete []tmpurl;
         return DT_FAILURE;
       }
 
-      if( Http_url_analyse(tmpurl, tmpspec->host, &tmpspec->port,
-                           tmpspec->path) < 0 ){
+      if( UrlSplit(tmpurl, &tmpspec->host, &tmpspec->port,
+                   &tmpspec->request) < 0 ){
         CONSOLE.Warning(1,
-          "warn, tracker at %s redirected to an invalid url %s",
-          m_spec->url, tmpurl);
+          "warn, error parsing redirected tracker URL from %s (%s):  %s",
+          m_spec->url, tmpurl, errno ? strerror(errno) : "invalid format");
         delete tmpspec;
+        delete []tmpurl;
         return DT_FAILURE;
       }else{
-        char *c = strstr(tmpspec->path, "?info_hash=");
-        if( !c ) c = strstr(tmpspec->path, "&info_hash=");
-        if( c ) *c = '\0';
+        char *c;
         CONSOLE.Debug("tracker at %s redirected%s to %s",
           m_spec->url, (r == 301) ? " permanently" : "", tmpurl);
+        delete []tmpurl;
+        if( (c = strstr(tmpspec->request, "?info_hash=")) ||
+            (c = strstr(tmpspec->request, "&info_hash=")) ){
+          *c = '\0';
+        }
         m_redirect = m_spec;
         m_spec = tmpspec;
         if( BuildBaseRequest() < 0 ){
@@ -402,9 +415,10 @@ dt_result_t btTracker::CheckResponse()
 
 int btTracker::Initial()
 {
-  if( Http_url_analyse(m_spec->url, m_spec->host, &m_spec->port,
-                       m_spec->path) < 0 ){
-    CONSOLE.Warning(1, "error, invalid tracker url format:  %s", m_spec->url);
+  if( UrlSplit(m_spec->url, &m_spec->host, &m_spec->port,
+               &m_spec->request) < 0 ){
+    CONSOLE.Warning(1, "Error parsing tracker URL (%s):  %s", m_spec->url,
+      errno ? strerror(errno) : "invalid format");
     return -1;
   }
 
@@ -420,39 +434,51 @@ int btTracker::Initial()
 
 int btTracker::BuildBaseRequest()
 {
-  char ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1], tmppath[MAXPATHLEN];
-  const char *format;
+  char ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1], *tmppath, *tmpreq;
 
-  strcpy(tmppath, m_spec->path);
-  if( strchr(m_spec->path, '?') ) format = REQ_URL_P1A_FMT;
-  else format = REQ_URL_P1_FMT;
+  if( !(tmppath = new char[strlen(m_spec->request) + 1]) ||
+      !(tmpreq = new char[strlen(m_spec->request) + 256]) ){
+    errno = ENOMEM;
+    CONSOLE.Warning(1, "Error building tracker request:  %s", strerror(errno));
+    if( tmppath ) delete []tmppath;
+    return -1;
+  }
+  strcpy(tmppath, m_spec->request);
+  delete []m_spec->request;
+  sprintf(tmpreq,
+          "GET %s%cinfo_hash=%s&peer_id=%s&key=%s",
+          tmppath,
+          strchr(tmppath, '?') ? '&' : '?',
+          urlencode(ih_buf, BTCONTENT.GetInfoHash(), 20),
+          urlencode(pi_buf, BTCONTENT.GetPeerId(), PEER_ID_LEN),
+          m_key);
 
-  char *opt = (char *)0;
+  if( *cfg_listen_port > 0 ){
+    strcat(tmpreq, "&port=");
+    sprintf(tmpreq + strlen(tmpreq), "%d", (int)*cfg_listen_port);
+  }
+
   cfg_public_ip.Lock();
   if( *cfg_public_ip ){
-    opt = new char[5+strlen(*cfg_public_ip)];
-    strcpy(opt, "&ip=");
-    strcat(opt, *cfg_public_ip);
+    strcat(tmpreq, "&ip=");
+    strcat(tmpreq, *cfg_public_ip);
   }else{
     struct sockaddr_in addr;
     Self.GetAddress(&addr);
     if( !IsPrivateAddress(addr.sin_addr.s_addr) ){
-      opt = new char[20];
-      strcpy(opt, "&ip=");
-      strcat(opt, inet_ntoa(addr.sin_addr));
+      strcat(tmpreq, "&ip=");
+      strcat(tmpreq, inet_ntoa(addr.sin_addr));
     }
   }
 
-  if( MAXPATHLEN < snprintf((char *)m_spec->path, MAXPATHLEN, format,
-                  tmppath,
-                  Http_url_encode(ih_buf, BTCONTENT.GetInfoHash(), 20),
-                  Http_url_encode(pi_buf, BTCONTENT.GetPeerId(), PEER_ID_LEN),
-                  opt ? opt : "",
-                  (int)*cfg_listen_port,
-                  m_key) ){
+  if( !(m_spec->request = new char[strlen(tmpreq) + 1]) ){
+    errno = ENOMEM;
+    CONSOLE.Warning(1, "Error building tracker request:  %s", strerror(errno));
+    delete []tmpreq;
     return -1;
   }
-
+  strcpy(m_spec->request, tmpreq);
+  delete []tmpreq;
   return 0;
 }
 
@@ -529,63 +555,77 @@ int btTracker::Connect()
 
 int btTracker::SendRequest()
 {
-  char *event, *str_event[] = { "started", "stopped", "completed" };
-  char REQ_BUFFER[2*MAXPATHLEN];
+  enum{
+    DT_NONE,
+    DT_STARTED,
+    DT_STOPPED,
+    DT_COMPLETED
+  } event = DT_NONE;
+  const char *event_str = (char *)0;
+  char *req_buffer;
   struct sockaddr_in addr;
   dt_datalen_t totaldl, totalul;
+  int r;
 
-  if( m_f_stop )
-    event = str_event[1];  // stopped
-  else if( !m_f_started ){
-    if( BTCONTENT.IsFull() ) m_f_completed = 1;
-    event = str_event[0];  // started
-  }else if( BTCONTENT.IsFull() && !m_f_completed ){
-    if( Self.TotalDL() > 0 ) event = str_event[2];  // download complete
-    else event = (char *)0;  // interval
-    m_f_completed = 1;  // only send download complete once
-  }else
-    event = (char *)0;  // interval
-
-  char opt1[20] = "&event=";
-  char opt2[12+PEER_ID_LEN] = "&trackerid=";
-
-  totaldl = TRACKER.GetTotalDL();
-  totalul = TRACKER.GetTotalUL();
-  if( MAXPATHLEN < snprintf(REQ_BUFFER, MAXPATHLEN, REQ_URL_P2_FMT,
-                   m_spec->path,
-                   event ? strncat(opt1, event, 12) : "",
-                   *m_trackerid ? strncat(opt2, m_trackerid, PEER_ID_LEN) : "",
-                   (unsigned long long)totalul,
-                   (unsigned long long)totaldl,
-                   (unsigned long long)BTCONTENT.GetLeftBytes(),
-                   (int)*cfg_max_peers) ){
-    CONSOLE.Warning(1,
-      "warn, failed creating tracker request:  buffer too small");
+  if( !(req_buffer = new char[strlen(m_spec->request) + strlen(m_spec->host) +
+                              strlen(*cfg_user_agent) + 256]) ){
+    errno = ENOMEM;
+    CONSOLE.Warning(1, "Error constructing tracker request:  %s",
+      strerror(errno));
     return -1;
   }
 
-  // If we have a tracker hostname (not just an IP), send a Host: header
-  if( _IPsin(m_spec->host, m_spec->port, &addr) < 0 ){
-    char REQ_HOST[MAXHOSTNAMELEN];
-    if( MAXHOSTNAMELEN <
-          snprintf(REQ_HOST, MAXHOSTNAMELEN, "\r\nHost: %s", m_spec->host) ){
-      CONSOLE.Warning(1,
-        "warn, failed creating tracker Host header:  buffer too small");
-      return -1;
-    }
-    strcat(REQ_BUFFER, REQ_HOST);
+  if( m_f_stop ) event = DT_STOPPED;
+  else if( !m_f_started ){
+    if( BTCONTENT.IsFull() ) m_f_completed = 1;
+    event = DT_STARTED;
+  }else if( BTCONTENT.IsFull() && !m_f_completed ){
+    if( Self.TotalDL() > 0 ) event = DT_COMPLETED;
+    m_f_completed = 1;  // only send download complete once
   }
 
-  strcat(REQ_BUFFER, "\r\nUser-Agent: ");
-  strcat(REQ_BUFFER, *cfg_user_agent);
+  totaldl = TRACKER.GetTotalDL();
+  totalul = TRACKER.GetTotalUL();
+  sprintf(req_buffer,
+          "%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d",
+          m_spec->request,
+          (unsigned long long)totalul,
+          (unsigned long long)totaldl,
+          (unsigned long long)BTCONTENT.GetLeftBytes(),
+          (int)*cfg_max_peers);
+  if( DT_NONE != event ){
+    strcat(req_buffer, "&event=");
+    event_str = (DT_STARTED == event ? "started" :
+                 (DT_STOPPED == event ? "stopped" :
+                 (DT_COMPLETED == event ? "completed" : "update")));
+    strcat(req_buffer, event_str);
+  }
+  if( *m_trackerid ){
+    strcat(req_buffer, "&trackerid=");
+    strcat(req_buffer, m_trackerid);
+  }
+  strcat(req_buffer, " HTTP/1.0" CRLF);
 
-  strcat(REQ_BUFFER, "\r\n\r\n");
-//CONSOLE.Warning(0, "SendRequest: %s", REQ_BUFFER);
+  // If we have a tracker hostname (not just an IP), send a Host: header
+  if( _IPsin(m_spec->host, m_spec->port, &addr) < 0 ){
+    strcat(req_buffer, "Host: ");
+    strcat(req_buffer, m_spec->host);
+    strcat(req_buffer, CRLF);
+  }
 
-  if( m_request_buffer.PutFlush(m_sock, REQ_BUFFER, strlen(REQ_BUFFER)) < 0 ){
+  strcat(req_buffer, "User-Agent: ");
+  strcat(req_buffer, *cfg_user_agent);
+  strcat(req_buffer, CRLF);
+
+  strcat(req_buffer, CRLF);
+//CONSOLE.Warning(0, "SendRequest: %s", req_buffer);
+
+  r = m_request_buffer.PutFlush(m_sock, req_buffer, strlen(req_buffer));
+  delete []req_buffer;
+  if( r < 0 ){
     CONSOLE.Warning(2, "warn, send request to tracker at %s failed:  %s",
       m_spec->url, strerror(errno));
-    if( event == str_event[2] )
+    if( event == DT_COMPLETED )
       m_f_completed = 0;  // failed sending completion event
     return -1;
   }else{
@@ -597,7 +637,7 @@ int btTracker::SendRequest()
     if(*cfg_verbose){
       CONSOLE.Debug("Reported to tracker:  %llu uploaded, %llu downloaded (%s)",
         (unsigned long long)m_report_ul, (unsigned long long)m_report_dl,
-        event ? event : "routine");
+        event_str ? event_str : "update");
     }
   }
   return 0;

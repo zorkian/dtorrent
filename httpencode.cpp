@@ -1,49 +1,49 @@
 #include "def.h"
 #include <sys/types.h>
-
-#include "httpencode.h"
-
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <errno.h>
 
-#include "config.h"
+#include "httpencode.h"
 
 #if !defined(HAVE_STRNSTR) || !defined(HAVE_STRNCASECMP)
 #include "compat.h"
 #endif
 
-static void url_encode_char(char *b, unsigned char c)
+static void url_encode_char(char *dst, unsigned char src)
 {
   char HEX_TABLE[] = "0123456789ABCDEF";
-  b[0] = '%';
-  b[1] = HEX_TABLE[(c >> 4) & 0x0F];
-  b[2] = HEX_TABLE[c & 0x0F];
+  dst[0] = '%';
+  dst[1] = HEX_TABLE[(src >> 4) & 0x0f];
+  dst[2] = HEX_TABLE[src & 0x0f];
 }
 
-char *Http_url_encode(char *s, const unsigned char *b, size_t n)
+char *urlencode(char *dst, const unsigned char *src, size_t len)
 {
   size_t r, i;
-  for( r = 0, i = 0; i < n; i++ ){
-    if( !(b[i] & ~0x7f) &&                   // quick ASCII test
-        ((b[i] >= 0x41 && b[i] <= 0x5a) ||   // A-Z [ASCII]
-         (b[i] >= 0x61 && b[i] <= 0x7a) ||   // a-z
-         (b[i] >= 0x30 && b[i] <= 0x39)) ){  // 0-9
-      s[r] = (char)b[i];
+
+  for( r = 0, i = 0; i < len; i++ ){
+    if( !(src[i] & ~0x7f) &&                     // quick ASCII test
+        ((src[i] >= 0x41 && src[i] <= 0x5a) ||   // A-Z [ASCII]
+         (src[i] >= 0x61 && src[i] <= 0x7a) ||   // a-z
+         (src[i] >= 0x30 && src[i] <= 0x39)) ){  // 0-9
+      dst[r] = (char)src[i];
       r++;
     }else{
-      url_encode_char(s + r, b[i]);
+      url_encode_char(dst + r, src[i]);
       r += 3;
     }
   }
-  s[r] = '\0';
-  return s;
+  dst[r] = '\0';
+  return dst;
 }
 
-int Http_url_analyse(const char *url, char *host, int *port, char *path)
+int UrlSplit(const char *url, char **host, int *port, char **path)
 {
   const char *p;
   int r;
+
   *port = 80;  // default port 80
   p = strstr(url, "://");
   if( !p )
@@ -52,102 +52,128 @@ int Http_url_analyse(const char *url, char *host, int *port, char *path)
     p += 3;
 
   /* host */
-  for( ; *p && (isalnum(*p) || *p == '.' || *p == '-'); p++, host++ )
-    *host = *p;
-  *host = '\0';
+  for( r = 0;
+       p[r] && ((p[r] >= 'a' && p[r] <= 'z') || (p[r] >= 'A' && p[r] <= 'Z') ||
+                (p[r] >= '0' && p[r] <= '9') || p[r] == '.' || p[r] == '-');
+       r++ );
+  if( !(*host = new char[r + 1]) ){
+    errno = ENOMEM;
+    return -1;
+  }
+  strncpy(*host, p, r);
+  (*host)[r] = '\0';
+  p += r;
 
   if( *p == ':' ){
     /* port */
     p++;
     for( r = 0; p[r] >= '0' && p[r] <= '9' && r < 6; r++ );
-
-    if( !r ) return -1;
+    if( 0==r ){
+      errno = EINVAL;
+      return -1;
+    }
     *port = atoi(p);
     if( *port > 65536 ) return -1;
     p += r;
   }
 
   /* path */
-  if( *p != '/' ) return -1;
-  for( ; *p; p++, path++) *path = *p;
-  *path = '\0';
+  if( *p != '/' ){
+    errno = 0;
+    return -1;
+  }
+  if( !(*path = new char[strlen(p) + 1]) ){
+    errno = ENOMEM;
+    return -1;
+  }
+  strcpy(*path, p);
+
   return 0;
 }
 
-size_t Http_split(const char *b, size_t n, const char **pd, size_t *dlen)
+size_t HttpSplit(const char *buf, size_t blen, const char **data, size_t *dlen)
 {
   char *p;
   size_t addition = 0, hlen;
 
   hlen = 0;
 
-  if( n < 16 ) return 0;  // too small to contain an HTTP header
+  if( blen < 16 ) return 0;  // too small to contain an HTTP header
 
-  if( strncasecmp(b, "HTTP/", 5) != 0 ){
+  if( strncasecmp(buf, "HTTP/", 5) )
     return 0;  // no HTTP header
-  }else{
-    if( (p = strnstr(b, "\r\n\r\n", n)) ) addition = 4;
-    else if( (p = strnstr(b, "\n\n", n)) ) addition = 2;
+  else{
+    if( (p = strnstr(buf, CRLF CRLF, blen)) ) addition = 4;
+    else if( (p = strnstr(buf, LFLF, blen)) ) addition = 2;
+    else if( (p = strnstr(buf, LFCR LFCR, blen)) ) addition = 4;
+    else return 0;
 
     if( p ){
-      hlen = p - b;
-      *pd = ( p + addition );
-      *dlen = n - hlen - addition;
+      hlen = p - buf;
+      *data = ( p + addition );
+      *dlen = blen - hlen - addition;
     }else{
-      hlen = n;
-      *pd = (char *)0;
+      hlen = blen;
+      *data = (char *)0;
       *dlen = 0;
     }
   }
   return hlen;
 }
 
-int Http_response_code(const char *b, size_t n)
+int HttpGetStatusCode(const char *buf, size_t blen)
 {
   int r = -1;
 
-  for( ; n && *b != ' ' && *b !='\r' && *b != '\n'; b++, n-- );
-  if( !n || *b != ' ' ) r = -1;
+  for( ; blen && *buf != ' ' && *buf != CR && *buf != LF; buf++, blen-- );
+  if( !blen || *buf != ' ' ) r = -1;
   else{
-    r = atoi(b);
+    r = atoi(buf);
     if( r < 100 || r > 600 ) r = -1;
   }
   return r;
 }
 
-int Http_get_header(const char *b, int n, const char *header, char *v)
+int HttpGetHeader(const char *buf, size_t remain, const char *header,
+  char **value)
 {
-  const char *e;
+  const char *begin = buf, *end;
   char h[64];
-  int r, header_len;
+  size_t line_len, header_len;
 
   strcpy(h, header);
   strcat(h, ": ");
   header_len = strlen(h);
 
   /* remove status line. */
-  e = strchr(b, '\n');
-  if( !e ) return -1;
-  e++;
-  n -= (e - b);
-  b = e;
+  end = strchr(begin, LF);
+  if( !end ) return -1;
+  end++;
+  remain -= (end - begin);
+  begin = end;
 
-  while( n >= 0 ){
-    e = strchr(b, '\n');
-    if( !e ) r = n;  // last line
-    else r = e - b + 1;
+  while( remain > header_len ){
+    end = strchr(begin, LF);
+    if( !end ) line_len = remain;  // last line
+    else line_len = end - begin + 1;
 
-    if( r > header_len ){
-      if( strncasecmp(b, h, header_len) == 0 ){
-        /* header found */
-        b += header_len;
-        for( ; *b != '\r' && *b != '\n'; v++, b++ ) *v = *b;
-        *v = '\0';
-        return 0;
+    if( line_len > header_len && 0==strncasecmp(begin, h, header_len) ){
+      size_t i = 0;
+      begin += header_len;
+      for( ; begin[i] != CR && begin[i] != LF && i < line_len - header_len;
+           i++ );
+      if( !(*value = new char[i + 1]) ){
+        errno = ENOMEM;
+        return -1;
       }
+      memcpy(*value, begin, i);
+      (*value)[i] = '\0';
+      return 0;
     }
-    b += r;
-    n -= r;
+    begin += line_len;
+    remain -= line_len;
   }
+  errno = 0;
   return -1;
 }
+

@@ -21,7 +21,6 @@
 #include "btconfig.h"
 #include "bencode.h"
 #include "peer.h"
-#include "httpencode.h"
 #include "peerlist.h"
 #include "ctcs.h"
 #include "console.h"

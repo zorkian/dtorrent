@@ -30,8 +30,14 @@ enum dt_trackerstatus_t{
 class btTracker
 {
   struct tracker_spec{
-    char url[MAXPATHLEN], host[MAXHOSTNAMELEN], path[MAXPATHLEN];
+    char *url, *host, *request;
     int port;
+    tracker_spec(){ url = host = request = (char *)0; }
+    ~tracker_spec(){
+      if( url ) delete []url;
+      if( host ) delete []host;
+      if( request ) delete []request;
+    }
   };
  private:
   tracker_spec *m_spec;

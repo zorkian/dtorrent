@@ -1,17 +1,18 @@
 #ifndef HTTPENCODE_H
 #define HTTPENCODE_H
 
-#define REQ_URL_P1_FMT "GET %s?info_hash=%s&peer_id=%s%s&port=%d&key=%s"
-#define REQ_URL_P1A_FMT "GET %s&info_hash=%s&peer_id=%s%s&port=%d&key=%s"
-#define REQ_URL_P2_FMT \
-  "%s%s%s&uploaded=%llu&downloaded=%llu&left=%llu&compact=1&numwant=%d HTTP/1.0"
+#define CR '\x0d'
+#define LF '\x0a'
+#define CRLF "\x0d\x0a"
+#define LFLF "\x0a\x0a"
+#define LFCR "\x0a\x0d"
 
-
-char *Http_url_encode(char *s, const unsigned char *b, size_t n);
-int Http_url_analyse(const char *url, char *host, int *port, char *path);
-size_t Http_split(const char *b, size_t n, const char **pd, size_t *dlen);
-int Http_response_code(const char *b, size_t n);
-int Http_get_header(const char *b, int n, const char *header, char *v);
+char *urlencode(char *dst, const unsigned char *src, size_t len);
+int UrlSplit(const char *url, char **host, int *port, char **path);
+size_t HttpSplit(const char *buf, size_t blen, const char **data, size_t *dlen);
+int HttpGetStatusCode(const char *buf, size_t blen);
+int HttpGetHeader(const char *buf, size_t remain, const char *header,
+  char **value);
 
 #endif  // HTTPENCODE_H
 
