@@ -62,6 +62,7 @@ class btStream
 
   void Close();
 
+  bt_msglen_t GetMsglen() const { return m_msglen; }
   ssize_t PickMessage();
   ssize_t Feed() { return in_buffer.FeedIn(sock); }
   ssize_t Feed(Rate *rate) { return Feed(0, rate); }

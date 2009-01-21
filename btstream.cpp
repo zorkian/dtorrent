@@ -47,7 +47,8 @@ void put_bt_int(char *to, bt_int_t from)
 btStream::btStream()
 {
   sock = sock_was = INVALID_SOCKET;
-  m_oldbytes = 0; m_msglen = 0;
+  m_oldbytes = 0;
+  m_msglen = 0;
   in_buffer.MaxSize(MAX_SLICE_SIZE + BUFIO_DEF_SIZ + BUFIO_INC_SIZ);
   out_buffer.MaxSize(MAX_SLICE_SIZE + BUFIO_DEF_SIZ + BUFIO_INC_SIZ);
 }

@@ -351,7 +351,7 @@ int btPeer::MsgDeliver()
 
   const char *msgbuf = stream.in_buffer.BasePointer();
 
-  msglen = get_bt_msglen(msgbuf);
+  msglen = stream.GetMsglen();
 
   // Don't require keepalives if we're receiving other messages.
   m_last_timestamp = now;
