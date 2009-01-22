@@ -2,6 +2,7 @@
 #include "sigint.h"  // def.h
 
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <signal.h>
 
 #include "btcontent.h"
@@ -31,6 +32,15 @@ RETSIGTYPE sig_catch2(int sig_no)
   }
 }
 
+RETSIGTYPE reaper(int sig_no)
+{
+  int status;
+#ifdef HAVE_WAITPID
+  while( waitpid(-1, &status, WNOHANG) > 0 );
+#else
+  wait(&status);
+#endif
+}
 
 // Handler for other signals
 RETSIGTYPE signals(int sig_no)
@@ -62,6 +72,7 @@ void sig_setup()
 
   signal(SIGCONT, signals);
   signal(SIGTSTP, signals);
+  signal(SIGCHLD, reaper);
 #endif
 }
 

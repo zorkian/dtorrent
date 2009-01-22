@@ -196,6 +196,9 @@
 /* Define to 1 if you have the `vsnprintf' function. */
 #undef HAVE_VSNPRINTF
 
+/* Define to 1 if you have the `waitpid' function. */
+#undef HAVE_WAITPID
+
 /* Define to 1 if `fork' works. */
 #undef HAVE_WORKING_FORK
 
