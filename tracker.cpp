@@ -1174,7 +1174,7 @@ int MultiTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
       for( p = tier; p; p = p->next ){
         p->tracker->ClearResult();
       }
-      if( tier->tracker == m_tracker ){
+      if( !m_tracker || tier->tracker == m_tracker ){
         m_tracker = (btTracker *)0;  // search all tiers
         m_result = DT_FAILURE;
       }
