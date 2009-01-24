@@ -6,13 +6,6 @@
 #include <unistd.h>
 #include <string.h>
 
-#if !defined(HAVE_SYS_TIME_H) || defined(TIME_WITH_SYS_TIME)
-#include <time.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif
-
 #include "util.h"
 
 #if !defined(HAVE_RANDOM) || !defined(HAVE_HTONL)
@@ -138,5 +131,20 @@ unsigned char *hexdecode(const char *data, size_t length, unsigned char *dstbuf)
     *dst = '\0';
   }
   return dstbuf;
+}
+
+
+const char *PrettyTime(time_t timestamp)
+{
+  static char result[32];
+
+#ifdef HAVE_CTIME_R_3
+  ctime_r(&timestamp, result, sizeof(result));
+#else
+  ctime_r(&timestamp, result);
+#endif
+  if( result[strlen(result)-1] == '\n' )
+    result[strlen(result)-1] = '\0';
+  return result;
 }
 

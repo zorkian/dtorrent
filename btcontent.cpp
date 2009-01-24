@@ -223,16 +223,8 @@ int btContent::PrintOut() const
   CONSOLE.Print("META INFO");
   CONSOLE.Print("Announce: %s", m_announce);
   TRACKER.PrintTiers();
-  if( m_create_date ){
-    char s[42];
-#ifdef HAVE_CTIME_R_3
-    ctime_r(&m_create_date, s, sizeof(s));
-#else
-    ctime_r(&m_create_date, s);
-#endif
-    if( s[strlen(s)-1] == '\n' ) s[strlen(s)-1] = '\0';
-    CONSOLE.Print("Created On: %s", s);
-  }
+  if( m_create_date )
+    CONSOLE.Print("Created On: %s", PrettyTime(m_create_date));
   CONSOLE.Print("Piece length: %lu", (unsigned long)m_piece_length);
   if( m_private ) CONSOLE.Print("Private: %s", m_private ? "Yes" : "No");
   if( m_comment ){

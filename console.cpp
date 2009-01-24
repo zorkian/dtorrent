@@ -23,6 +23,7 @@
 #include "peer.h"
 #include "peerlist.h"
 #include "bitfield.h"
+#include "util.h"
 #include "bttime.h"
 #include "sigint.h"
 
@@ -1067,17 +1068,10 @@ int Console::OperatorMenu(const char *param)
         (unsigned long long)Self.TotalUL());
       time_t t = TRACKER.GetReportTime();
       if( t ){
-        char s[42];
-#ifdef HAVE_CTIME_R_3
-        ctime_r(&t, s, sizeof(s));
-#else
-        ctime_r(&t, s);
-#endif
-        if( s[strlen(s)-1] == '\n' ) s[strlen(s)-1] = '\0';
         Interact("Reported to tracker: %llu up",
           (unsigned long long)TRACKER.GetReportUL());
         Interact("                     %llu down at %s",
-          (unsigned long long)TRACKER.GetReportDL(), s);
+          (unsigned long long)TRACKER.GetReportDL(), PrettyTime(t));
       }
       Interact("Failed hashes: %d    Dup blocks: %d    Unwanted blocks: %d",
         (int)BTCONTENT.GetHashFailures(), (int)BTCONTENT.GetDupBlocks(),
