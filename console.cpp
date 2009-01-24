@@ -1087,14 +1087,7 @@ int Console::OperatorMenu(const char *param)
         (int)WORLD.GetPeersCount(), (int)*cfg_min_peers, (int)*cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
       Interact("Announce URL: %s", TRACKER.GetURL());
-      dt_trackerstatus_t status = TRACKER.GetStatus();
-      Interact("Tracker status: %s%s%s",
-        DT_SUCCESS == TRACKER.GetResult() ? "OK" :
-          (DT_FAILURE == TRACKER.GetResult() ? "Failed" : "Unknown"),
-        DT_TRACKER_FREE == status ? "" : ", ",
-        DT_TRACKER_CONNECTING == status ? "connecting" :
-          (DT_TRACKER_READY == status ? "connected" :
-            (DT_TRACKER_FINISHED == status ? "finished" : "")));
+      Interact("Tracker status: %s", TRACKER.StatusInfo());
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
         (double)Self.TotalUL() / ( Self.TotalDL() ? Self.TotalDL() :

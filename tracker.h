@@ -136,6 +136,7 @@ class MultiTracker
   char *m_primary_url;
   dt_datalen_t m_totaldl;
   int m_nset;
+  char m_status_info[20];
 
   dt_result_t m_result;
   time_t m_report_time;       // stats last sent to tracker
@@ -157,6 +158,7 @@ class MultiTracker
   const char *GetURL() const {
     return m_tracker ? m_tracker->GetURL() : m_primary_url;
   }
+  const char *StatusInfo();
 
   int GetNTiers() const { return m_ntiers; }
   const char *GetPrimaryURL() const { return m_primary_url; }

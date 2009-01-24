@@ -17,7 +17,6 @@
 #include "console.h"
 #include "bttime.h"
 #include "util.h"
-#include "httpencode.h"
 
 #if !defined(HAVE_SNPRINTF) || !defined(HAVE_HTONL) || !defined(HAVE_HTONS)
 #include "compat.h"
@@ -1249,6 +1248,25 @@ dt_datalen_t MultiTracker::GetTotalDL()
 dt_datalen_t MultiTracker::GetTotalUL() const
 {
   return Self.TotalUL();
+}
+
+
+const char *MultiTracker::StatusInfo()
+{
+  dt_trackerstatus_t status;
+
+  status = GetStatus();
+  snprintf(m_status_info, sizeof(m_status_info), "%s%s%s",
+    DT_SUCCESS == m_result ? "OK" :
+      (DT_FAILURE == m_result ? "Failed" : "Unknown"),
+    DT_TRACKER_FREE == status ? "" : ", ",
+    DT_TRACKER_CONNECTING == status ? "connecting" :
+      (DT_TRACKER_READY == status ? "connected" :
+        (DT_TRACKER_FINISHED == status ? "finished" :
+          (m_stop ? "quitting" :
+            (IsRestarting() ? "restarting" : "")))));
+  m_status_info[sizeof(m_status_info) - 1] = '\0';
+  return m_status_info;
 }
 
 
