@@ -1020,6 +1020,10 @@ Config<time_t> cfg_status_snooze = 600;
 
 //---------------------------------------------------------------------------
 
+Config<int> cfg_msg_expiration = 24;
+
+//---------------------------------------------------------------------------
+
 Config<const char *> cfg_config_file;
 
 
@@ -1196,6 +1200,9 @@ void InitConfig()
 
   cfg_status_snooze.Init("Status snooze time", "seconds (0 to disable)");
   CONFIG.Add("status.snooze", cfg_status_snooze);
+
+  cfg_msg_expiration.Init("Message expiration time", "hours (0 to disable)");
+  CONFIG.Add("console.msgexpire", cfg_msg_expiration);
 
   cfg_config_file.Init("Configuration file");
   strcpy(tmp, ".");

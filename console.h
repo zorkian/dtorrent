@@ -6,6 +6,7 @@
 #include <sys/stat.h>   // fstat()
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>       // time_t, clock()
 
 #if defined(USE_TERMIOS)
 #include <termios.h>
@@ -18,6 +19,7 @@
 #include "bttypes.h"
 #include "rate.h"
 #include "registry.h"
+#include "msglist.h"
 
 class ConfigGen;
 
@@ -156,9 +158,9 @@ class ConStream
   int Rows() const { return GetSize(true); }
   int Cols() const { return GetSize(false); }
 
-  void Output(dt_conchan_t channel, const char *message, va_list ap);
-  void Output_n(dt_conchan_t channel, const char *message, va_list ap);
-  void Update(dt_conchan_t channel, const char *message, va_list ap);
+  int Output(dt_conchan_t channel, const char *message, va_list ap);
+  int Output_n(dt_conchan_t channel, const char *message, va_list ap);
+  int Update(dt_conchan_t channel, const char *message, va_list ap);
   char *Input(char *field, size_t length);
   bool Newline() const { return m_device ? m_device->Newline() : true; }
   int Lines() const { return m_device ? m_device->Lines() : 0; }
@@ -232,16 +234,16 @@ class ConChannel
   int Rows() const { return m_stream ? m_stream->Rows() : 0; }
   int Cols() const { return m_stream ? m_stream->Cols() : 0; }
 
-  void Print(const char *message, ...);
-  void Print_n(const char *message="", ...);
-  void Output(const char *message, va_list ap){
-    if( m_stream ) m_stream->Output(m_id, message, ap);
+  int Print(const char *message, ...);
+  int Print_n(const char *message="", ...);
+  int Output(const char *message, va_list ap){
+    return m_stream ? m_stream->Output(m_id, message, ap) : 0;
   }
-  void Output_n(const char *message, va_list ap){
-    if( m_stream ) m_stream->Output_n(m_id, message, ap);
+  int Output_n(const char *message, va_list ap){
+    return m_stream ? m_stream->Output_n(m_id, message, ap) : 0;
   }
-  void Update(const char *message, va_list ap){
-    if( m_stream ) m_stream->Update(m_id, message, ap);
+  int Update(const char *message, va_list ap){
+    return m_stream ? m_stream->Update(m_id, message, ap) : 0;
   }
   char *Input(char *field, size_t length){
     return m_stream ? m_stream->Input(field, length) : (char *)0;
@@ -271,6 +273,7 @@ class Console
   int m_status_len;
   char m_buffer[80], m_debug_buffer[80];
   time_t m_active;
+  MessageList m_warnings;
 
   struct{
     int mode, n_opt;
@@ -334,6 +337,13 @@ class Console
   void NoInput(){ m_channels[DT_CHAN_INPUT].Associate(&m_off, false); }
   int ChangeChannel(dt_conchan_t channel, const char *name, bool notify=true);
   const char *StatusLine(int format=-1);
+
+  bool HasMessage() const { return m_warnings.GetMessages() ? true : false; }
+  const dt_message *GetMessages() const { return m_warnings.GetMessages(); }
+  const dt_message *GetBriefMsgs() const { return m_warnings.GetBrief(); }
+  void ClearMessages(dt_message *last=(dt_message *)0){
+    m_warnings.Clear(last);
+  }
 
   void cpu();
 

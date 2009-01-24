@@ -7,7 +7,6 @@
 #include <ctype.h>      // isdigit()
 #include <signal.h>
 #include <fcntl.h>      // open()
-#include <time.h>       // clock()
 
 #if defined(HAVE_IOCTL_H)
 #include <ioctl.h>      // ioctl()
@@ -379,42 +378,51 @@ inline bool ConStream::SameStream(const char *streamname) const {
 }
 
 
-void ConStream::Output(dt_conchan_t channel, const char *message, va_list ap)
+int ConStream::Output(dt_conchan_t channel, const char *message, va_list ap)
 {
+  int result = 0;
+
   if( !IsSuspended() ){
     _newline();
-    _convprintf(message, ap);
+    result = _convprintf(message, ap);
     _newline();
     fflush(m_file);
     m_device->SetUser(channel);
   }
+  return result;
 }
 
 
-void ConStream::Output_n(dt_conchan_t channel, const char *message, va_list ap)
+int ConStream::Output_n(dt_conchan_t channel, const char *message, va_list ap)
 {
+  int result = 0;
+
   if( !IsSuspended() ){
     if( !message || !*message ) _newline();
     else{
       if( m_device->LastUser() != channel ) _newline();
-      _convprintf(message, ap);
+      result = _convprintf(message, ap);
     }
     fflush(m_file);
     m_device->SetUser(channel);
   }
+  return result;
 }
 
 
-void ConStream::Update(dt_conchan_t channel, const char *message, va_list ap)
+int ConStream::Update(dt_conchan_t channel, const char *message, va_list ap)
 {
+  int result = 0;
+
   if( !IsSuspended() ){
     if( m_device->LastUser() != channel ) _newline();
     else if( !m_device->Newline() )
       fwrite(IsTTY() ? "\r" : "\n", 1, 1, m_file);
-    _convprintf(message, ap);
+    result = _convprintf(message, ap);
     fflush(m_file);
     m_device->SetUser(channel);
   }
+  return result;
 }
 
 
@@ -565,23 +573,27 @@ inline const char *ConChannel::GetName() const
 }
 
 
-void ConChannel::Print(const char *message, ...)
+int ConChannel::Print(const char *message, ...)
 {
   va_list ap;
+  int result = 0;
 
   va_start(ap, message);
-  Output(message, ap);
+  result = Output(message, ap);
   va_end(ap);
+  return result;
 }
 
 
-void ConChannel::Print_n(const char *message, ...)
+int ConChannel::Print_n(const char *message, ...)
 {
   va_list ap;
+  int result = 0;
 
   va_start(ap, message);
-  Output_n(message, ap);
+  result = Output_n(message, ap);
   va_end(ap);
+  return result;
 }
 
 
@@ -731,6 +743,8 @@ int Console::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
   int oldfd;
 
   Status(0);
+
+  m_warnings.Expire();
 
   if( (oldfd = m_channels[DT_CHAN_INPUT].Oldfd()) >= 0 )
     FD_CLR(oldfd, rfdp);
@@ -1066,22 +1080,23 @@ int Console::OperatorMenu(const char *param)
       Interact("  Upload rate: %dB/s   Limit: %dB/s   Total: %llu",
         (int)Self.RateUL(), (int)*cfg_max_bandwidth_up,
         (unsigned long long)Self.TotalUL());
-      time_t t = TRACKER.GetReportTime();
-      if( t ){
-        Interact("Reported to tracker: %llu up",
-          (unsigned long long)TRACKER.GetReportUL());
-        Interact("                     %llu down at %s",
-          (unsigned long long)TRACKER.GetReportDL(), PrettyTime(t));
-      }
       Interact("Failed hashes: %d    Dup blocks: %d    Unwanted blocks: %d",
         (int)BTCONTENT.GetHashFailures(), (int)BTCONTENT.GetDupBlocks(),
         (int)BTCONTENT.GetUnwantedBlocks());
       Interact("");
+      Interact("Announce URL: %s", TRACKER.GetURL());
+      Interact("Tracker status: %s", TRACKER.StatusInfo());
+      time_t t = TRACKER.GetReportTime();
+      if( t ){
+        Interact("Reported at %s", PrettyTime(t));
+        Interact("%llu downloaded, %llu uploaded",
+          (unsigned long long)TRACKER.GetReportDL(),
+          (unsigned long long)TRACKER.GetReportUL());
+      }
+      Interact("");
       Interact("Peers: %d   Min: %d   Max: %d",
         (int)WORLD.GetPeersCount(), (int)*cfg_min_peers, (int)*cfg_max_peers);
       Interact("Listening on: %s", WORLD.GetListen());
-      Interact("Announce URL: %s", TRACKER.GetURL());
-      Interact("Tracker status: %s", TRACKER.StatusInfo());
       Interact("");
       Interact("Ratio: %.2f   Seed time: %luh   Seed ratio: %.2f",
         (double)Self.TotalUL() / ( Self.TotalDL() ? Self.TotalDL() :
@@ -1092,6 +1107,15 @@ int Console::OperatorMenu(const char *param)
         (int)*cfg_cache_size);
       if(*cfg_ctcs) Interact("CTCS Server: %s", *cfg_ctcs);
       if(*cfg_verbose) cpu();
+      if( HasMessage() ){
+        const dt_message *msg = GetMessages();
+        Interact("");
+        Interact("Recent messages:");
+        while( msg ){
+          Interact("%s %s", PrettyTime(msg->timestamp), msg->text);
+          msg = msg->next;
+        }
+      }
       opermenu.mode = 0;
       return 1;
     }else if( sel == 2 + DT_NCHANNELS + STATUSLINES ){  // pause/resume
@@ -1688,24 +1712,26 @@ void Console::Update(const char *message, ...)
 void Console::Warning(int sev, const char *message, ...)
 {
   va_list ap;
+  const char *msg;
+  size_t msglen;
 
   va_start(ap, message);
-  m_channels[DT_CHAN_WARNING].Output(message, ap);
+  msglen = m_channels[DT_CHAN_WARNING].Output(message, ap);
   va_end(ap);
   if( *cfg_verbose &&
       !m_channels[DT_CHAN_DEBUG].SameDev(&m_channels[DT_CHAN_WARNING]) ){
+    int tmplen;
     va_start(ap, message);
-    m_channels[DT_CHAN_DEBUG].Output(message, ap);
+    tmplen = m_channels[DT_CHAN_DEBUG].Output(message, ap);
     va_end(ap);
+    if( 0==msglen ) msglen = tmplen;
   }
 
-  if( sev && *cfg_ctcs ){
-    char cmsg[CTCS_BUFSIZE];
-    va_start(ap, message);
-    vsnprintf(cmsg, CTCS_BUFSIZE, message, ap);
-    CTCS.Send_Info(sev, cmsg);
-    va_end(ap);
+  va_start(ap, message);
+  if( (msg = m_warnings.AddMessage(msglen, sev, message, ap)) ){
+    if( sev && *cfg_ctcs ) CTCS.Send_Info(sev, msg);
   }
+  va_end(ap);
 }
 
 
@@ -1717,6 +1743,7 @@ void Console::Error(int sev, const char *message, va_list ap)
       !m_channels[DT_CHAN_DEBUG].SameDev(&m_channels[DT_CHAN_WARNING]) ){
     m_channels[DT_CHAN_DEBUG].Output("%s", m_buffer);
   }
+  m_warnings.AddMessage(sev, m_buffer);
   if( sev && *cfg_ctcs ) CTCS.Send_Info(sev, m_buffer);
 }
 

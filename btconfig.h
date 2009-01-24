@@ -487,6 +487,8 @@ extern Config<bool> cfg_convert_filenames;
 extern Config<int> cfg_status_format;
 extern Config<time_t> cfg_status_snooze;
 
+extern Config<int> cfg_msg_expiration;
+
 extern Config<const char *> cfg_config_file;
 
 
