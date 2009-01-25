@@ -23,6 +23,7 @@ unsigned char *hexdecode(const char *data, size_t length=0,
   unsigned char *dstbuf=(unsigned char *)0);
 
 const char *PrettyTime(time_t timestamp);
+const char *RecentTime(time_t timestamp, bool nbsp=false);
 
 #endif  // UTIL_H
 

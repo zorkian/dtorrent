@@ -1088,7 +1088,7 @@ int Console::OperatorMenu(const char *param)
       Interact("Tracker status: %s", TRACKER.StatusInfo());
       time_t t = TRACKER.GetReportTime();
       if( t ){
-        Interact("Reported at %s", PrettyTime(t));
+        Interact("Reported at %s", RecentTime(t));
         Interact("%llu downloaded, %llu uploaded",
           (unsigned long long)TRACKER.GetReportDL(),
           (unsigned long long)TRACKER.GetReportUL());
@@ -1112,7 +1112,7 @@ int Console::OperatorMenu(const char *param)
         Interact("");
         Interact("Recent messages:");
         while( msg ){
-          Interact("%s %s", PrettyTime(msg->timestamp), msg->text);
+          Interact("%s  %s", RecentTime(msg->timestamp), msg->text);
           msg = msg->next;
         }
       }

@@ -148,3 +148,14 @@ const char *PrettyTime(time_t timestamp)
   return result;
 }
 
+
+const char *RecentTime(time_t timestamp, bool nbsp)
+{
+  static char result[48];
+
+  strftime(result, sizeof(result),
+    nbsp ? "%a&nbsp;%d&nbsp;%b&nbsp;%X&nbsp;%Z" : "%a %d %b %X %Z",
+    localtime(&timestamp));
+  return result;
+}
+
