@@ -136,7 +136,8 @@ class btContent
 
   int CreateMetainfoFile(const char *mifn, const char *comment, bool isprivate);
   int InitialFromFS(const char *pathname, bt_length_t piece_length);
-  int InitialFromMI(const char *metainfo_fname, const char *saveas);
+  int InitialFromMI(const char *metainfo_fname, const char *saveas,
+    bool force_seed, bool check_only, bool exam_only);
 
   int CheckNextPiece();
   bt_index_t CheckedPieces() const { return m_check_piece; }

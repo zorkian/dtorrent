@@ -31,10 +31,6 @@
 extern bool g_secondary_process;
 extern bool g_config_only;
 
-extern bool arg_flg_force_seed_mode;
-extern bool arg_flg_check_only;
-extern bool arg_flg_exam_only;
-
 
 /****************************************************************************
   Configuration schema

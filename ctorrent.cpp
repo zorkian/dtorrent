@@ -41,6 +41,9 @@ bool arg_flg_make_torrent = false;
 char *arg_metainfo_file = (char *)0;  // will be owned by BTCONTENT
 char *arg_comment = (char *)0;
 bool arg_flg_private = false;
+bool arg_flg_force_seed_mode = false;
+bool arg_flg_check_only = false;
+bool arg_flg_exam_only = false;  
 
 // temporary config values
 bool arg_daemon = *cfg_daemon;
@@ -87,7 +90,8 @@ int main(int argc, char **argv)
   if( *cfg_verbose ) CONFIG.Dump();
   cfg_daemon = arg_daemon;  // triggers action
 
-  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as) < 0 ){
+  if( BTCONTENT.InitialFromMI(arg_metainfo_file, arg_save_as,
+        arg_flg_force_seed_mode, arg_flg_check_only, arg_flg_exam_only) < 0 ){
     CONSOLE.Warning(1, "Failed during initial torrent setup.");
     Exit(EXIT_FAILURE);
   }

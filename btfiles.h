@@ -93,7 +93,7 @@ class btFiles
  public:
   Bitfield *pBFPieces;
 
-  int SetupFiles(const char *torrentid);
+  int SetupFiles(const char *torrentid, bool check_only);
   int CreateFiles();
   void CloseFile(dt_count_t nfile);
 
@@ -122,7 +122,7 @@ class btFiles
   bt_index_t ChoosePiece(const Bitfield &choices, const Bitfield &available,
     bt_index_t preference) const;
 
-  void PrintOut() const;
+  void PrintOut(bool show_completion) const;
 };
 
 #endif  // BTFILES_H

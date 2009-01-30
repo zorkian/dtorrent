@@ -238,11 +238,12 @@ int btContent::PrintOut() const
     }
   }
   if( m_created_by ) CONSOLE.Print("Created with: %s", m_created_by);
-  m_btfiles.PrintOut();
+  m_btfiles.PrintOut(false);
   return 0;
 }
 
-int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
+int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas,
+  bool force_seed, bool check_only, bool exam_only)
 {
   unsigned char *ptr = m_shake_buffer;
   char *b, *tmpstr;
@@ -346,7 +347,7 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
     goto err;
   m_hashtable_length = bsiz;
 
-  if( !arg_flg_exam_only ){
+  if( !exam_only ){
     m_hash_table = new unsigned char[m_hashtable_length];
 #ifndef WINDOWS
     if( !m_hash_table ) goto err;
@@ -366,19 +367,14 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   delete []b;
   b = (char *)0;
 
-  if( arg_flg_exam_only ){
-    PrintOut();
-    return 0;
-  }else{
-    arg_flg_exam_only = true;
-    PrintOut();
-    arg_flg_exam_only = false;
-  }
+  PrintOut();
+  if( exam_only ) return 0;
 
   for( int i=0; i < 20; i++ ){
     sprintf(torrentid + i*2, "%.2x", (int)m_shake_buffer[28+i]);
   }
-  if( (check_pieces = m_btfiles.SetupFiles(torrentid)) < 0 ) goto err;
+  if( (check_pieces = m_btfiles.SetupFiles(torrentid, check_only)) < 0 )
+    goto err;
 
   global_piece_buffer = new char[DEFAULT_SLICE_SIZE];
 #ifndef WINDOWS
@@ -421,7 +417,7 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
 
   m_left_bytes = m_btfiles.GetTotalLength();
 
-  if( arg_flg_check_only ){
+  if( check_only ){
     struct stat sb;
     if( *cfg_bitfield_file && stat(*cfg_bitfield_file, &sb) == 0 ){
       if( remove(*cfg_bitfield_file) < 0 ){
@@ -432,17 +428,17 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
     if( check_pieces ){
       if( CheckExist() < 0 ) goto err;
       if( !pBF->IsEmpty() )
-        m_btfiles.PrintOut(); // show file completion
+        m_btfiles.PrintOut(!exam_only);  // show file completion
     }
     CONSOLE.Print("Already/Total: %d/%d (%d%%)", (int)pBF->Count(),
       (int)m_npieces, (int)(100 * pBF->Count() / m_npieces));
-    if( !arg_flg_force_seed_mode ){
+    if( !force_seed ){
       if( *cfg_completion_exit ) CompletionCommand();
       return 0;
     }
   }else if( check_pieces ){  // files exist already
     if( *cfg_bitfield_file && pBRefer->SetReferFile(*cfg_bitfield_file) < 0 ){
-      if( !arg_flg_force_seed_mode ){
+      if( !force_seed ){
         CONSOLE.Warning(2,
           "warn, couldn't set bit field refer file \"%s\":  %s",
           *cfg_bitfield_file, strerror(errno));
@@ -451,7 +447,7 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
       pBRefer->SetAll();  // need to check all pieces
     }else{
       CONSOLE.Interact("Found bit field file; %s previous state.",
-        arg_flg_force_seed_mode ? "resuming download from" : "verifying");
+        force_seed ? "resuming download from" : "verifying");
       if( *cfg_bitfield_file && remove(*cfg_bitfield_file) < 0 ){
         CONSOLE.Warning(2, "warn, couldn't delete bit field file \"%s\":  %s",
           *cfg_bitfield_file, strerror(errno));
@@ -465,10 +461,10 @@ int btContent::InitialFromMI(const char *metainfo_fname, const char *saveas)
   if( !check_pieces ){  // don't hash-check if the files were just created
     m_check_piece = m_npieces;
     pBChecked->SetAll();
-    if( arg_flg_force_seed_mode ){
+    if( force_seed ){
       CONSOLE.Warning(2, "Files were not present; overriding force mode!");
     }
-  }else if( arg_flg_force_seed_mode && !arg_flg_check_only ){
+  }else if( force_seed && !check_only ){
     bt_index_t idx = 0;
     *pBF = *pBRefer;
     if( pBF->IsFull() ){
@@ -1174,7 +1170,7 @@ int btContent::CheckNextPiece()
   if( m_check_piece >= m_npieces ){
     CONSOLE.Print("Checking completed.");
     if( !pBF->IsEmpty() )
-      m_btfiles.PrintOut();  // show file completion
+      m_btfiles.PrintOut(true);  // show file completion
     if( pBF->IsFull() ){
       WORLD.CloseAllConnectionToSeed();
     }

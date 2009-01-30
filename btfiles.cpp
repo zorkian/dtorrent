@@ -989,7 +989,7 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
   return 0;
 }
 
-int btFiles::SetupFiles(const char *torrentid)
+int btFiles::SetupFiles(const char *torrentid, bool check_only)
 {
   DIR *dp, *subdp;
   struct dirent *dirp;
@@ -1012,7 +1012,7 @@ int btFiles::SetupFiles(const char *torrentid)
   cfg_staging_dir.Lock();
 
   // Identify existing staging files.
-  if( !(dp = opendir(m_staging_path)) && !arg_flg_check_only ){
+  if( !(dp = opendir(m_staging_path)) && !check_only ){
     int err = errno;
     if( stat(m_staging_path, &sb) == 0 ){
       CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
@@ -1193,7 +1193,7 @@ int btFiles::ExtendAll()
   return 0;
 }
 
-void btFiles::PrintOut() const
+void btFiles::PrintOut(bool show_completion) const
 {
   BTFILE *p = m_btfhead;
   dt_count_t id = 0;
@@ -1206,7 +1206,7 @@ void btFiles::PrintOut() const
     CONSOLE.Print_n();
     CONSOLE.Print_n("<%d> %s%s [%llu]", (int)id, m_directory ? " " : "",
       p->bf_filename, (unsigned long long)p->bf_length);
-    if( !arg_flg_exam_only ){
+    if( show_completion ){
       BTCONTENT.SetTmpFilter(id, &tmpFilter);
       tmpBitfield = *BTCONTENT.pBF;
       tmpBitfield.Except(tmpFilter);

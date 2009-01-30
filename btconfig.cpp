@@ -601,10 +601,6 @@ void Configuration::Dump() const
 bool g_secondary_process = false;
 bool g_config_only = false;
 
-bool arg_flg_force_seed_mode = false;
-bool arg_flg_check_only = false;
-bool arg_flg_exam_only = false;
-
 
 //===========================================================================
 // Global Configs
