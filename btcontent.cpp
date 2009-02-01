@@ -750,6 +750,7 @@ void btContent::CacheEval()
 
 void btContent::CacheConfigure()
 {
+  if( 0==GetTotalFilesLength() ) return;  // not started yet
   if( *cfg_cache_size ){
     if( *cfg_cache_size > GetTotalFilesLength()/1024/1024 )
       cfg_cache_size = (GetTotalFilesLength()+1024*1024-1)/1024/1024;
@@ -787,12 +788,8 @@ int btContent::FlushPiece(bt_index_t idx)
 {
   BTCACHE *p;
   int retval = 0;
+  bool logged = false;
 
-  if(*cfg_verbose){
-    if( pBF->IsSet(idx) )
-      CONSOLE.Debug("Writing piece #%d to disk", (int)idx);
-    else CONSOLE.Debug("Flushing piece #%d", (int)idx);
-  }
   p = m_cache[idx];
 
   for( ; p; p = p->bc_next ){
@@ -808,7 +805,15 @@ int btContent::FlushPiece(bt_index_t idx)
       m_cache_newest = p;
       retval = 1;
     }
-    if( p->bc_f_flush ) FlushEntry(p);
+    if( p->bc_f_flush ){
+      if( *cfg_verbose && !logged ){
+        if( pBF->IsSet(idx) )
+          CONSOLE.Debug("Writing piece #%d to disk", (int)idx);
+        else CONSOLE.Debug("Flushing piece #%d", (int)idx);
+        logged = true;
+      }
+      FlushEntry(p);
+    }
   }
 
   return retval;
@@ -893,9 +898,13 @@ void btContent::FlushQueue()
     }
   }else FlushPiece(m_cache_oldest->bc_off / m_piece_length);
 
-  if( !NeedMerge() && !m_flushq && Seeding() ){
+  if( !m_flushq && Seeding() ){
+    if( !NeedMerge() ){
       CloseAllFiles();
       CONSOLE.Print("Finished flushing data.");
+    }else CONSOLE.Print("Finished flushing data (continuing to merge).");
+    CacheEval();
+    if( m_cache_size < m_cache_used ) CacheClean(0);
   }
 }
 
