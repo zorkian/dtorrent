@@ -1544,21 +1544,22 @@ dt_idle_t PeerList::IdleState() const
   double dnext, unext, rightnow;
   int dlimnow, dlimthen, ulimnow, ulimthen;
 
-  if( *cfg_max_bandwidth_down == 0 && *cfg_max_bandwidth_up == 0 )  // no limits
-    return DT_IDLE_POLLING;
-
   rightnow = PreciseTime();
 
-  if( *cfg_max_bandwidth_down > 0 ){
+  if( *cfg_max_bandwidth_down > 0 || Self.NominalDL() > 0 ){
     dnext = Self.LastRecvTime() +
-            (double)Self.LastSizeRecv() / *cfg_max_bandwidth_down;
+            (double)Self.LastSizeRecv() /
+              (*cfg_max_bandwidth_down ? *cfg_max_bandwidth_down :
+                                         Self.NominalDL());
     dlimnow = (dnext > rightnow);
     dlimthen = (dnext > rightnow + Self.LateDL());
   }else dlimnow = dlimthen = 0;
 
-  if( *cfg_max_bandwidth_up > 0 ){
+  if( *cfg_max_bandwidth_up > 0 || Self.NominalUL() > 0 ){
     unext = Self.LastSendTime() +
-            (double)Self.LastSizeSent() / *cfg_max_bandwidth_up;
+            (double)Self.LastSizeSent() /
+              (*cfg_max_bandwidth_up ? *cfg_max_bandwidth_up :
+                                       Self.NominalUL());
     ulimnow = (unext > rightnow);
     ulimthen = (unext > rightnow + Self.LateUL());
   }else ulimnow = ulimthen = 0;
