@@ -184,10 +184,12 @@ int btFiles::_btf_open(BTFILE *pbf, const int iotype)
 
 int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
 {
+  int result = -1;
   const int iotype = wbuf ? 1 : 0;
   off_t pos;
   size_t nio;
   BTFILE *pbf = m_btfhead, *pbfref = (BTFILE *)0, *pbfnext = (BTFILE *)0;
+  bool diskaccess = false;
 
   if( off + (dt_datalen_t)len > m_total_files_length ){
     CONSOLE.Warning(1, "error, data offset %llu length %lu out of range",
@@ -198,18 +200,19 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
   // Break up the I/O if necessary due to system limitation.
   if( len > (size_t)len ){
     bt_length_t iosize;
-    int r, retval = 0;
+    int r;
 
+    result = 0;
     for( iosize = len; iosize > (size_t)iosize; iosize /= 2 );
     while( len ){
       if( len < iosize ) iosize = len;
       r = IO(rbuf, wbuf, off, iosize);
-      if( r != 0 ) retval = r;
+      if( r != 0 ) result = r;
       if( iotype ) wbuf += iosize;
       else rbuf += iosize;
       len -= iosize;
     }
-    return retval;
+    return result;
   }
 
   // Find the first file to read/write
@@ -253,6 +256,7 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
             strcpy(m_stagedir, tmpdir);
             m_stagecount = 0;
           }
+          diskaccess = true;
         }
         if( !(pbf = new BTFILE) ||
             !(pbf->bf_filename = new char[strlen(m_stagedir) +
@@ -260,7 +264,7 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
           CONSOLE.Warning(1,
             "error, failed to allocate memory for staging file");
           if( pbf ) delete pbf;
-          return -1;
+          goto done;
         }
         sprintf(pbf->bf_filename, "%s%c%s-%.*llu", m_stagedir, PATH_SP,
           m_torrent_id, (int)m_fsizelen, (unsigned long long)off);
@@ -273,7 +277,7 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
       }else{  // read
         CONSOLE.Warning(1, "error, failed to find file for offset %llu",
           (unsigned long long)off);
-        return -1;
+        goto done;
       }
     }
 
@@ -283,15 +287,17 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
         _btf_open(pbf, iotype) < 0 ){
       CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
         pbf->bf_filename, strerror(errno));
-      return -1;
+      diskaccess = true;
+      goto done;
     }
 
     pbf->bf_last_timestamp = now;
 
+    diskaccess = true;
     if( fseeko(pbf->bf_fp, pos, SEEK_SET) < 0 ){
       CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
         (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-      return -1;
+      goto done;
     }
 
     // Read or write current file
@@ -301,7 +307,7 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
       if( nio && 1 != fread(rbuf, nio, 1, pbf->bf_fp) && ferror(pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-        return -1;
+        goto done;
       }
     }else{
       if( pbf->bf_flag_staging ){
@@ -316,12 +322,12 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
       if( nio && 1 != fwrite(wbuf, nio, 1, pbf->bf_fp) ){
         CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-        return -1;
+        goto done;
       }
       if( nio && fflush(pbf->bf_fp) == EOF ){
         CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
           (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-        return -1;
+        goto done;
       }
       if( (dt_datalen_t)pos + nio > pbf->bf_size )
         pbf->bf_size = pos + nio;
@@ -347,17 +353,22 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
       }
     }
   }
-  return 0;
+  result = 0;
+ done:
+  if( diskaccess ) DiskAccess();
+  return result;
 }
 
 int btFiles::MergeStaging(BTFILE *dst)
 {
+  int result = -1;
   BTFILE *src = dst->bf_next;
   char buf[OPT_IO_SIZE];
   size_t nio = OPT_IO_SIZE;
   off_t pos;
   dt_datalen_t remain;
   int f_remove = 0;
+  bool diskaccess = false;
 
   if( src->bf_offset + src->bf_size <= dst->bf_offset + dst->bf_size ){
     if(*cfg_verbose)
@@ -371,27 +382,29 @@ int btFiles::MergeStaging(BTFILE *dst)
   if( !src->bf_flag_opened && _btf_open(src, 0) < 0 ){
     CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
       src->bf_filename, strerror(errno));
-    return -1;
+    diskaccess = true;
+    goto done;
   }
   pos = dst->bf_offset + dst->bf_size - src->bf_offset;
   remain = src->bf_size - pos;
+  diskaccess = true;
   if( fseeko(src->bf_fp, pos, SEEK_SET) < 0 ){
     CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
       (unsigned long long)pos, src->bf_filename, strerror(errno));
-    return -1;
+    goto done;
   }
 
   if( (!dst->bf_flag_opened || dst->bf_flag_readonly) &&
       _btf_open(dst, 1) < 0 ){
     CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
       dst->bf_filename, strerror(errno));
-    return -1;
+    goto done;
   }
   pos = dst->bf_size;
   if( fseeko(dst->bf_fp, pos, SEEK_SET) < 0 ){
     CONSOLE.Warning(1, "error, failed to seek to %llu on file \"%s\":  %s",
       (unsigned long long)pos, dst->bf_filename, strerror(errno));
-    return -1;
+    goto done;
   }
 
   while( remain && dst->bf_size < dst->bf_length ){
@@ -401,17 +414,17 @@ int btFiles::MergeStaging(BTFILE *dst)
       CONSOLE.Warning(1, "error, read failed at %llu on file \"%s\":  %s",
         (unsigned long long)(src->bf_size - remain), src->bf_filename,
         strerror(errno));
-      return -1;
+      goto done;
     }
     if( 1 != fwrite(buf, nio, 1, dst->bf_fp) ){
       CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
         (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
-      return -1;
+      goto done;
     }
     if( fflush(dst->bf_fp) == EOF ){
       CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
         (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
-      return -1;
+      goto done;
     }
     remain -= nio;
     pos += nio;
@@ -424,6 +437,7 @@ int btFiles::MergeStaging(BTFILE *dst)
   _btf_close(src);
   sprintf(buf, "%s%c%s", m_staging_path, PATH_SP, src->bf_filename);
   if(*cfg_verbose) CONSOLE.Debug("Delete file \"%s\"", buf);
+  diskaccess = true;
   if( remove(buf) < 0 ){
     CONSOLE.Warning(2, "error deleting file \"%s\":  %s", buf, strerror(errno));
   }
@@ -461,7 +475,10 @@ int btFiles::MergeStaging(BTFILE *dst)
   }
 
   delete src;
-  return 0;
+  result = 0;
+ done:
+  if( diskaccess ) DiskAccess();
+  return result;
 }
 
 // Identify a file that can be merged, and do it
@@ -762,6 +779,7 @@ int btFiles::MkPath(const char *pathname)
 
 int btFiles::BuildFromFS(const char *pathname)
 {
+  int result = -1;
   struct stat sb;
   BTFILE *pbf = (BTFILE *)0;
   BTFILE *lastnode = (BTFILE *)0;
@@ -769,45 +787,48 @@ int btFiles::BuildFromFS(const char *pathname)
   if( stat(pathname, &sb) < 0 ){
     CONSOLE.Warning(1, "error, stat file \"%s\" failed:  %s",
       pathname, strerror(errno));
-    return -1;
+    goto done;
   }
 
   if( S_IFREG & sb.st_mode ){
     pbf = new BTFILE;
 #ifndef WINDOWS
-    if( !pbf ) return -1;
+    if( !pbf ) goto done;
 #endif
     pbf->bf_offset = 0;
     pbf->bf_length = pbf->bf_size = m_total_files_length = sb.st_size;
     pbf->bf_filename = new char[strlen(pathname) + 1];
 #ifndef WINDOWS
-    if( !pbf->bf_filename ) return -1;
+    if( !pbf->bf_filename ) goto done;
 #endif
     strcpy(pbf->bf_filename, pathname);
     m_btfhead = pbf;
   }else if( S_IFDIR & sb.st_mode ){
     char wd[MAXPATHLEN];
-    if( !getcwd(wd, MAXPATHLEN) ) return -1;
+    if( !getcwd(wd, MAXPATHLEN) ) goto done;
     m_directory = new char[strlen(pathname) + 1];
 #ifndef WINDOWS
-    if( !m_directory ) return -1;
+    if( !m_directory ) goto done;
 #endif
     strcpy(m_directory, pathname);
 
     if( chdir(m_directory) < 0 ){
       CONSOLE.Warning(1, "error, change work directory to \"%s\" failed:  %s",
         m_directory, strerror(errno));
-      return -1;
+      goto done;
     }
 
-    if( _btf_recurses_directory((const char *)0, &lastnode) < 0 ) return -1;
-    if( chdir(wd) < 0) return -1;
+    if( _btf_recurses_directory((const char *)0, &lastnode) < 0 ) goto done;
+    if( chdir(wd) < 0 ) goto done;
   }else{
     CONSOLE.Warning(1, "error, \"%s\" is not a directory or regular file.",
       pathname);
-    return -1;
+    goto done;
   }
-  return 0;
+  result = 0;
+ done:
+  DiskAccess();
+  return result;
 }
 
 int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
@@ -991,13 +1012,14 @@ int btFiles::BuildFromMI(const char *metabuf, const size_t metabuf_len,
 
 int btFiles::SetupFiles(const char *torrentid, bool check_only)
 {
+  int result = -1;
   DIR *dp, *subdp;
   struct dirent *dirp;
   struct stat sb;
   BTFILE *pbf, *pbt;
   dt_datalen_t offset;
   char fn[MAXPATHLEN], *tmp;
-  int files_exist = 0;
+  bool files_exist = false;
 
   m_fsizelen = sprintf(fn, "%llu", (unsigned long long)m_total_files_length);
   if( !(m_torrent_id = new char[strlen(torrentid) + 1]) ||
@@ -1017,7 +1039,7 @@ int btFiles::SetupFiles(const char *torrentid, bool check_only)
     if( stat(m_staging_path, &sb) == 0 ){
       CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
         m_staging_path, strerror(err));
-      return -1;
+      goto done;
     }
   }else while( dp && (dirp = readdir(dp)) ){
     if( strlen(dirp->d_name) == m_fsizelen ){
@@ -1045,7 +1067,7 @@ int btFiles::SetupFiles(const char *torrentid, bool check_only)
             CONSOLE.Warning(1,
               "error, failed to allocate memory for staging file");
             if( pbf ) delete pbf;
-            return -1;
+            goto done;
           }
           sprintf(pbf->bf_filename, "%s%c%s", m_stagedir, PATH_SP,
             dirp->d_name);
@@ -1061,7 +1083,7 @@ int btFiles::SetupFiles(const char *torrentid, bool check_only)
           if(*cfg_verbose) CONSOLE.Debug("Found staging file %s size %llu",
             pbf->bf_filename, (unsigned long long)pbf->bf_size);
           m_stagecount++;
-          if( pbf->bf_size > 0 ) files_exist = 1;
+          if( pbf->bf_size > 0 ) files_exist = true;
 
           for( pbt = m_btfhead; pbt->bf_next; pbt = pbt->bf_next ){
             if( pbf->bf_offset < pbt->bf_next->bf_offset ) break;
@@ -1082,7 +1104,7 @@ int btFiles::SetupFiles(const char *torrentid, bool check_only)
       if( MAXPATHLEN <= snprintf(fn, MAXPATHLEN, "%s%c%s",
           m_directory, PATH_SP, pbt->bf_filename) ){
         errno = ENAMETOOLONG;
-        return -1;
+        goto done;
       }
     }else strcpy(fn, pbt->bf_filename);
 
@@ -1090,28 +1112,33 @@ int btFiles::SetupFiles(const char *torrentid, bool check_only)
       if( ENOENT != errno ){
         CONSOLE.Warning(1, "error, stat file \"%s\" failed:  %s", fn,
           strerror(errno));
-        return -1;
+        goto done;
       }
     }else{
       if( !(S_IFREG & sb.st_mode) ){
         CONSOLE.Warning(1, "error, file \"%s\" is not a regular file.", fn);
-        return -1;
+        goto done;
       }
       if( (dt_datalen_t)sb.st_size > pbt->bf_length ){
         CONSOLE.Warning(1, "error, file \"%s\" size is too big; should be %llu",
           fn, (unsigned long long)pbt->bf_length);
-        return -1;
+        goto done;
       }
       pbt->bf_size = sb.st_size;
-      if( pbt->bf_size > 0 ) files_exist = 1;
+      if( pbt->bf_size > 0 ) files_exist = true;
     }
   }
 
-  return files_exist ? 1 : 0;
+  result = files_exist ? 1 : 0;
+
+ done:
+  DiskAccess();
+  return result;
 }
 
 int btFiles::CreateFiles()
 {
+  int result = -1;
   struct stat sb;
   BTFILE *pbf;
   dt_datalen_t idxoff, fend, idxend;
@@ -1126,12 +1153,12 @@ int btFiles::CreateFiles()
       if( MkPath(m_staging_path) < 0 || mkdir(m_staging_path, 0755) < 0 ){
         CONSOLE.Warning(1, "error, create staging directory \"%s\" failed:  %s",
           m_staging_path, strerror(errno));
-        return -1;
+        goto done;
       }
     }else{
       CONSOLE.Warning(1, "error, cannot access staging directory \"%s\":  %s",
         m_staging_path, strerror(errno));
-      return -1;
+      goto done;
     }
   }
 
@@ -1169,7 +1196,11 @@ int btFiles::CreateFiles()
   if(*cfg_verbose)
     CONSOLE.Debug("Files contain %d pieces", (int)pBFPieces->Count());
 
-  return pBFPieces->IsEmpty() ? 0 : 1;
+  result = pBFPieces->IsEmpty() ? 0 : 1;
+
+ done:
+  DiskAccess();
+  return result;
 }
 
 int btFiles::ExtendAll()

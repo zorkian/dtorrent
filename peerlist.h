@@ -45,8 +45,7 @@ class PeerList
   unsigned char m_f_limitd:1;
   unsigned char m_f_limitu:1;
   unsigned char m_endgame:1;
-  unsigned char m_f_idled:1;     // idle action taken this cycle
-  unsigned char m_reserved:2;
+  unsigned char m_reserved:3;
 
   int InitialListenPort();
   int Accepter();
@@ -150,10 +149,7 @@ class PeerList
   void Upload(){ m_upload_count++; }
 
   dt_idle_t IdleState() const;
-  int IsIdle() const;
-  void SetIdled();
-  void ClearIdled(){ m_f_idled = 0; }
-  int Idled() const { return m_f_idled ? 1 : 0; }
+  bool IsIdle() const;
   void Pause();
   void Resume();
   int IsPaused() const { return m_f_pause ? 1 : 0; }

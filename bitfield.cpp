@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "bttime.h"
+
 #ifndef HAVE_RANDOM
 #include "compat.h"
 #endif
@@ -313,58 +315,55 @@ void Bitfield::WriteToBuffer(char *buf)
 
 int Bitfield::SetReferFile(const char *fname)
 {
-  FILE *fp;
+  int result = -1;
+  FILE *fp = (FILE *)0;
   struct stat sb;
   char *bitbuf = (char *)0;
 
-  if( stat(fname, &sb) < 0 ) return -1;
-  if( sb.st_size != nbytes ) return -1;
+  if( stat(fname, &sb) < 0 ) goto done;
+  if( sb.st_size != nbytes ) goto done;
 
   fp = fopen(fname, "r");
-  if( !fp ) return -1;
+  if( !fp ) goto done;
 
   bitbuf = new char[nbytes];
 #ifndef WINDOWS
-  if( !bitbuf ) goto fclose_err;
+  if( !bitbuf ) goto done;
 #endif
 
-  if( fread(bitbuf, nbytes, 1, fp) != 1 ) goto fclose_err;
-
-  fclose(fp);
-
+  if( fread(bitbuf, nbytes, 1, fp) != 1 ) goto done;
   SetReferBuffer(bitbuf);
+  result = 0;
 
-  delete []bitbuf;
-  return 0;
- fclose_err:
+ done:
   if( bitbuf ) delete []bitbuf;
-  fclose(fp);
-  return -1;
+  if( fp ) fclose(fp);
+  DiskAccess();
+  return result;
 }
 
 int Bitfield::WriteToFile(const char *fname)
 {
-  FILE *fp;
+  int result = -1;
+  FILE *fp = (FILE *)0;
   char *bitbuf = (char *)0;
 
   fp = fopen(fname, "w");
-  if( !fp ) return -1;
+  if( !fp ) goto done;
 
   bitbuf = new char[nbytes];
 #ifndef WINDOWS
-  if( !bitbuf ) goto fclose_err;
+  if( !bitbuf ) goto done;
 #endif
 
   WriteToBuffer(bitbuf);
+  if( fwrite(bitbuf, nbytes, 1, fp) != 1 ) goto done;
+  result = 0;
 
-  if( fwrite(bitbuf, nbytes, 1, fp) != 1 ) goto fclose_err;
-
-  delete []bitbuf;
-  fclose(fp);
-  return 0;
- fclose_err:
+ done:
   if( bitbuf ) delete []bitbuf;
-  fclose(fp);
-  return -1;
+  if( fp ) fclose(fp);
+  DiskAccess();
+  return result;
 }
 

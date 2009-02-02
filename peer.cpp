@@ -562,10 +562,11 @@ int btPeer::RespondSlice()
     BTCONTENT.global_piece_buffer = new char[len];
     BTCONTENT.global_buffer_size = BTCONTENT.global_piece_buffer ? len : 0;
   }
+  g_disk_access = false;
   r = BTCONTENT.ReadSlice(BTCONTENT.global_piece_buffer, idx, off, len);
+  CheckTime();
+  if( g_disk_access ) Self.OntimeUL(0);  // disk read delay
   if( r < 0 ) return -1;
-  else if( r && *cfg_cache_size ) Self.OntimeUL(0);  // disk read delay
-  // If not using cache, need to always allow time for a disk read.
 
   dt_rate_t currentrate = CurrentUL();
   if(*cfg_verbose)
@@ -844,6 +845,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
 
   Self.StartDLTimer();
 
+  g_disk_access = false;
   if( f_requested || f_accept ){
     if(*cfg_verbose) CONSOLE.Debug("Receiving piece %d/%d/%d from %p",
       (int)idx, (int)off, (int)len, this);
@@ -861,6 +863,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
         if( RequestSlice(idx, off, len) < 0 ){
           // At least it's still queued & will go to Pending at peer close.
           if( f_count ) DataRecd(len);
+          CheckTime();
           return -1;
         }
       }
@@ -874,6 +877,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
       if( WORLD.GetDupReqs() || BTCONTENT.FlushFailed() )
         dup += PENDINGQUEUE.DeleteSlice(idx, off, len);
     }
+    CheckTime();
   }else{  // not requested--not saved
     if( m_last_timestamp - m_cancel_time > (m_latency ? (m_latency*2) : 60) ){
       char msg[40];
@@ -943,6 +947,7 @@ int btPeer::PieceDeliver(bt_msglen_t mlen)
     if( f_requested ) m_standby = 0;
   }
 
+  CheckTime();  // handles the ReportComplete as well
   return ( DT_PEER_FAILED == m_status ) ? -1 :
                                           ( m_standby || !f_requested ) ? 0 :
                                           RequestCheck();
@@ -1400,8 +1405,7 @@ int btPeer::NeedPrefetch() const
   }else return 0;
 }
 
-/* Call NeedPrefetch() first, which checks additional conditions!
-   Returns 1 if triggered disk activity, 0 otherwise */
+// Call NeedPrefetch() first, which checks additional conditions!
 int btPeer::Prefetch(time_t deadline)
 {
   int retval = 0;
@@ -1410,6 +1414,7 @@ int btPeer::Prefetch(time_t deadline)
   bt_length_t len;
   time_t predict, next_chance;
 
+  g_disk_access = false;
   if( !BTCONTENT.IsFull() && Is_Remote_Unchoked() &&
       m_prefetch_completion < 2 && request_q.LastSlice() && RateDL() > 0 &&
       request_q.Peek(&idx, &off, &len)==0 &&
@@ -1419,11 +1424,9 @@ int btPeer::Prefetch(time_t deadline)
       m_last_timestamp + len / RateDL() <
         now + ((*cfg_cache_size)*1024U*1024U - BTCONTENT.GetPieceLength(idx)) /
               Self.RateDL() ){
-    switch( BTCONTENT.CachePrep(idx) ){
-    case -1:  // don't prefetch
+    if( !BTCONTENT.CachePrep(idx) )  // don't prefetch
       m_prefetch_completion = 2;
-      break;
-    case 0:  // ready, no data flushed
+    else if( !g_disk_access ){       // prefetch now
       if( m_prefetch_completion || off==0 ){
         if( off+len < BTCONTENT.GetPieceLength(idx) )
           BTCONTENT.ReadSlice(NULL, idx, off+len,
@@ -1435,10 +1438,6 @@ int btPeer::Prefetch(time_t deadline)
           m_prefetch_completion = 1;
         else m_prefetch_completion = 2;
       }
-      break;
-    case 1:  // data was flushed (time used)
-      retval = 1;
-      break;
     }
   }
   else if( Is_Local_Unchoked() && respond_q.Peek(&idx, &off, &len) == 0 ){
@@ -1471,6 +1470,7 @@ int btPeer::Prefetch(time_t deadline)
       }
     }
   }
+  CheckTime();
   return retval;
 }
 

@@ -230,6 +230,7 @@ FILE *ConStream::Open(const char *name, int mode)
     SetMode(0==mode, 1==mode);
     m_file = fopen(name, fmode);
   }
+  UpdateTime();
   
   if( m_file ){
     if( Associate(m_file, name, CanRead(), CanWrite()) < 0 ){
@@ -388,6 +389,7 @@ int ConStream::Output(dt_conchan_t channel, const char *message, va_list ap)
     _newline();
     fflush(m_file);
     m_device->SetUser(channel);
+    if( !IsTTY() ) UpdateTime();
   }
   return result;
 }
@@ -405,6 +407,7 @@ int ConStream::Output_n(dt_conchan_t channel, const char *message, va_list ap)
     }
     fflush(m_file);
     m_device->SetUser(channel);
+    if( !IsTTY() && (!message || !*message) ) UpdateTime();
   }
   return result;
 }
@@ -421,6 +424,7 @@ int ConStream::Update(dt_conchan_t channel, const char *message, va_list ap)
     result = _convprintf(message, ap);
     fflush(m_file);
     m_device->SetUser(channel);
+    if( !IsTTY() ) UpdateTime();
   }
   return result;
 }
@@ -447,6 +451,7 @@ char *ConStream::Input(char *field, size_t length)
       }
     }
     if( !result && feof(m_file) ) Suspend();
+    if( !IsTTY() ) UpdateTime();
   }
   return result;
 }

@@ -29,7 +29,7 @@
 /* Is this a secondary process which should not disturb the terminal, existing
    connections, etc? */
 extern bool g_secondary_process;
-extern bool g_config_only;
+extern bool g_config_only;  // running in configuration-only mode
 
 
 /****************************************************************************

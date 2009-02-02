@@ -391,10 +391,8 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
       }
 
       if( *cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
-        if( peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval) ){
-            SetIdled();
-            f_idle = IsIdle();
-        }
+        peer->Prefetch(m_unchoke_check_timestamp + m_unchoke_interval);
+        if( g_disk_access ) f_idle = IsIdle();
       }
 
     skip_continue:
@@ -1573,22 +1571,16 @@ dt_idle_t PeerList::IdleState() const
   return idle;
 }
 
-int PeerList::IsIdle() const
+bool PeerList::IsIdle() const
 {
   switch( IdleState() ){
   case DT_IDLE_NOTIDLE:
-    return 0;
+    return false;
   case DT_IDLE_IDLE:
-    return 1;
+    return true;
   default:
-    return m_f_idled ? 0 : 1;
+    return !g_disk_access;
   }
-}
-
-void PeerList::SetIdled()
-{
-  m_f_idled = 1;
-  time(&now);
 }
 
 // How long must we wait for bandwidth to become available in either direction?

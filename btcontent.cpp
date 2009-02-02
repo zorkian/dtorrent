@@ -520,11 +520,9 @@ btContent::~btContent()
   if( m_metainfo_file ) delete []m_metainfo_file;
 }
 
-// returns <0 if error; if using cache: 1 if read from disk, 0 otherwise
 int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
   bt_length_t len)
 {
-  int retval = 0;
   dt_datalen_t offset = (dt_datalen_t)idx * (dt_datalen_t)m_piece_length + off;
 
   if( !m_cache_size ) return buf ? FileIO(buf, NULL, offset, len) : 0;
@@ -541,7 +539,6 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
       if( offset < p->bc_off ){
         len2 = p->bc_off - offset;
         if( CacheIO(buf, NULL, offset, len2, 0) < 0 ) return -1;
-        retval = 1;
         if( buf ) m_cache_miss += len2 / DEFAULT_SLICE_SIZE +
                                   ((len2 % DEFAULT_SLICE_SIZE) ? 1 : 0);
         else m_cache_pre += len2 / DEFAULT_SLICE_SIZE +
@@ -585,11 +582,10 @@ int btContent::ReadSlice(char *buf, bt_index_t idx, bt_offset_t off,
                                 ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
       else m_cache_pre += len / DEFAULT_SLICE_SIZE +
                           ((len % DEFAULT_SLICE_SIZE) ? 1 : 0);
-      retval = CacheIO(buf, NULL, offset, len, 0);
-      return (retval < 0) ? retval : 1;
+      return CacheIO(buf, NULL, offset, len, 0);
     }
   }
-  return retval;
+  return 0;
 }
 
 
@@ -909,28 +905,24 @@ void btContent::FlushQueue()
 }
 
 /* Prepare for prefetching a whole piece.
-   return -1:  do not prefetch (problem or not needed)
-   return  0:  already ready (no time used)
-   return  1:  data was flushed (time used)
+   return false:  do not prefetch (problem or not needed)
+   return true:   otherwise (cache is ready)
 */
-int btContent::CachePrep(bt_index_t idx)
+bool btContent::CachePrep(bt_index_t idx)
 {
-  int retval = 0;
   BTCACHE *p, *pnext;
   bt_length_t need = GetPieceLength(idx);
 
   if( m_cache_size < m_cache_used + need ){
     for( p=m_cache[idx]; p; p=p->bc_next ) need -= p->bc_len;
-    if( 0==need ) retval = -1;  // don't need to prefetch
+    if( 0==need ) return false;  // don't need to prefetch
     for( p=m_cache_oldest; p && m_cache_size < m_cache_used + need; p=pnext ){
       pnext = p->age_next;
       if( p->bc_off / m_piece_length == idx ) continue;
-      if( p->bc_f_flush && !m_flush_failed ){
-        retval = 1;
-        if( FlushPiece(p->bc_off / m_piece_length) ){
-          pnext = m_cache_oldest;
-          continue;
-        }
+      if( p->bc_f_flush && !m_flush_failed &&
+          FlushPiece(p->bc_off / m_piece_length) ){
+        pnext = m_cache_oldest;
+        continue;
       }
       if(*cfg_verbose)
         CONSOLE.Debug("Expiring %d/%d/%d", (int)(p->bc_off / m_piece_length),
@@ -949,7 +941,7 @@ int btContent::CachePrep(bt_index_t idx)
       delete p;
     }
   }
-  return retval;
+  return true;
 }
 
 int btContent::WriteSlice(const char *buf, bt_index_t idx, bt_offset_t off,
@@ -1192,38 +1184,45 @@ char *btContent::_file2mem(const char *fname, size_t *psiz)
   char *b = (char *)0;
   struct stat sb;
   FILE *fp;
+
   fp = fopen(fname, "r");
   if( !fp ){
     CONSOLE.Warning(1, "error, open \"%s\" failed:  %s", fname,
       strerror(errno));
-    return (char *)0;
+    goto done;
   }
 
   if( stat(fname, &sb) < 0 ){
     CONSOLE.Warning(1, "error, stat \"%s\" failed:  %s", fname,
       strerror(errno));
-    return (char *)0;
+    goto done;
   }
 
   if( sb.st_size > MAX_METAINFO_FILESIZ ){
     CONSOLE.Warning(1, "error, \"%s\" is really a metainfo file?", fname);
-    return (char *)0;
+    goto done;
   }
 
   b = new char[sb.st_size];
 #ifndef WINDOWS
-  if( !b ) return (char *)0;
+  if( !b ){
+    errno = ENOMEM;
+    goto done;
+  }
 #endif
 
   if( fread(b, sb.st_size, 1, fp) != 1 ){
     if( ferror(fp) ){
       delete []b;
-      return (char *)0;
+      b = (char *)0;
+      goto done;
     }
   }
   fclose(fp);
 
   if( psiz ) *psiz = sb.st_size;
+ done:
+  DiskAccess();
   return b;
 }
 

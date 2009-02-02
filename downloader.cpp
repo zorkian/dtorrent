@@ -21,10 +21,12 @@
 #include "ctcs.h"
 #include "btconfig.h"
 #include "console.h"
+#include "bttime.h"
 
 #define MAX_SLEEP 1
 
 time_t now = time((time_t *)0);
+bool g_disk_access = false;
 
 void Downloader()
 {
@@ -35,14 +37,13 @@ void Downloader()
   fd_set wfd, wfdnext;
   int stopped = 0, f_poll = 0;
   double maxsleep;
-  time_t then;
 
   FD_ZERO(&rfdnext);
   FD_ZERO(&wfdnext);
 
   do{
-    WORLD.ClearIdled();
-    time(&now);
+    g_disk_access = 0;
+    UpdateTime();
 
     if( !stopped ){
       if( !TRACKER.IsQuitting() && BTCONTENT.SeedTimeout() )
@@ -83,7 +84,7 @@ void Downloader()
             TRACKER.Stop();
             maxsleep = 2;
           }
-          WORLD.SetIdled();
+          CheckTime();
         }
       }
     }
@@ -91,21 +92,21 @@ void Downloader()
     if( maxfd_peer > maxfd ) maxfd = maxfd_peer;
 
     if( !f_poll ){
-      time(&now);
+      UpdateTime();
       while( BTCONTENT.NeedFlush() && WORLD.IsIdle() ){
         BTCONTENT.FlushQueue();
-        WORLD.SetIdled();
+        CheckTime();
       }
       while( BTCONTENT.NeedMerge() && WORLD.IsIdle() ){
         BTCONTENT.MergeNext();
-        WORLD.SetIdled();
+        CheckTime();
       }
     }
 
     rfdnext = rfd;
     wfdnext = wfd;
 
-    if( WORLD.Idled() && WORLD.IdleState() == DT_IDLE_POLLING ){
+    if( g_disk_access && WORLD.IdleState() == DT_IDLE_POLLING ){
       maxsleep = 0;
     }else if( maxsleep < 0 ){  // not yet set
       maxsleep = WORLD.WaitBW();  // must do after intervalchecks!
@@ -128,9 +129,7 @@ void Downloader()
     else if( nfds > 0 ) WORLD.DontWaitBW();
     else if( maxsleep > 0 && maxsleep < MAX_SLEEP ) f_poll = 1;
 
-    then = now;
-    time(&now);
-    if( now == then-1 ) now = then;
+    UpdateTime();
 
     if( !f_poll && nfds > 0 ){
       if( maxfd_tracker >= 0 )

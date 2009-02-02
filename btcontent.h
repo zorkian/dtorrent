@@ -160,7 +160,7 @@ class btContent
   int APieceComplete(bt_index_t idx);
   int GetHashValue(bt_index_t idx, unsigned char *md);
 
-  int CachePrep(bt_index_t idx);
+  bool CachePrep(bt_index_t idx);
   int ReadSlice(char *buf, bt_index_t idx, bt_offset_t off, bt_length_t len);
   int WriteSlice(const char *buf, bt_index_t idx, bt_offset_t off,
     bt_length_t len);

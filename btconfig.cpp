@@ -471,6 +471,7 @@ ConfigGen *Configuration::Next(const ConfigGen *current) const
 
 bool Configuration::Save(const char *filename) const
 {
+  bool result = true;
   FILE *fp;
   struct stat sb;
   bool exists = false;
@@ -485,7 +486,8 @@ bool Configuration::Save(const char *filename) const
   if( !fp ){
     CONSOLE.Warning(2, "error opening configuration save file \"%s\":  %s",
       filename, strerror(errno));
-    return false;
+    result = false;
+    goto done;
   }
   if( !exists ) chmod(filename, S_IRUSR | S_IWUSR | S_IXOTH);
 
@@ -519,14 +521,17 @@ bool Configuration::Save(const char *filename) const
   if( fclose(fp) != 0 ){
     CONSOLE.Warning(2, "error saving configuration to file \"%s\":  %s",
       filename, strerror(errno));
-    return false;
+    result = false;
   }
-  return true;
+ done:
+  DiskAccess();
+  return result;
 }
 
 
 bool Configuration::Load(const char *filename)
 {
+  bool result = true;
   FILE *fp;
   ConfigGen *config;
   char buffer[MAXPATHLEN] = "";
@@ -539,7 +544,8 @@ bool Configuration::Load(const char *filename)
       CONSOLE.Warning(2, "error opening configuration file \"%s\":  %s",
         filename, strerror(errno));
     }
-    return false;
+    result = false;
+    goto done;
   }
   CONSOLE.Debug("Reading configuration from %s", filename);
 
@@ -578,9 +584,11 @@ bool Configuration::Load(const char *filename)
   if( fclose(fp) != 0 ){
     CONSOLE.Warning(2, "error closing configuration file \"%s\":  %s",
       filename, strerror(errno));
-    return false;
+    result = false;
   }
-  return true;
+ done:
+  DiskAccess();
+  return result;
 }
 
 
