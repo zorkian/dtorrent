@@ -381,13 +381,16 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         }
       }
 
-      if( PEER_IS_FAILED(peer) ) goto skip_continue;  // failsafe
       if( maxfd < sk ) maxfd = sk;
-      if( !FD_ISSET(sk, rfdp) && peer->NeedRead((int)m_f_limitd) ){
+      if( FD_ISSET(sk, rfdp) ) m_nset++;
+      else if( peer->NeedRead((int)m_f_limitd) ){
         FD_SET(sk, rfdp);
+        m_nset++;
       }
-      if( !FD_ISSET(sk, wfdp) && peer->NeedWrite((int)m_f_limitu) ){
+      if( FD_ISSET(sk, wfdp) ) m_nset++;
+      else if( peer->NeedWrite((int)m_f_limitu) ){
         FD_SET(sk, wfdp);
+        m_nset++;
       }
 
       if( *cfg_cache_size && !m_f_pause && f_idle && peer->NeedPrefetch() ){
@@ -395,16 +398,13 @@ int PeerList::FillFDSet(fd_set *rfdp, fd_set *wfdp, int f_keepalive_check,
         if( g_disk_access ) f_idle = IsIdle();
       }
 
-    skip_continue:
-      if( PEER_IS_FAILED(peer) ){
-        FD_CLR(sk, rfdp);
-        FD_CLR(sk, wfdp);
-      }else{
-        if( FD_ISSET(sk, rfdp) ) m_nset++;
-        if( FD_ISSET(sk, wfdp) ) m_nset++;
-      }
       pp = p;
       p = p->next;
+      continue;
+
+    skip_continue:  // peer is failed, process it again to clean up
+      FD_CLR(sk, rfdp);
+      FD_CLR(sk, wfdp);
     }
   }  // end for
   if( (m_f_limitu && !(m_f_limitu = BandwidthLimitUp(Self.LateUL()))) ||
@@ -1368,11 +1368,12 @@ int PeerList::UnchokeCheck(btPeer *peer, btPeer *peer_array[])
    interest with each peer appropriately. */
 void PeerList::CheckInterest()
 {
-  PEERNODE *p = m_head;
-  for( ; p; p = p->next ){
-    /* Don't shortcut by checking Is_Local_Interested(), as we need to let
-       SetLocal() reset the m_standby flag. */
-    if( p->peer->Need_Remote_Data() ){
+  PEERNODE *p;
+
+  for( p = m_head; p; p = p->next ){
+    if( p->peer->Is_Local_Interested() ){
+      p->peer->UnStandby();
+    }else if( p->peer->Need_Remote_Data() ){
       if( p->peer->SetLocal(BT_MSG_INTERESTED) < 0 )
         p->peer->CloseConnection();
     }else{

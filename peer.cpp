@@ -58,7 +58,7 @@ int btBasic::IpEquiv(struct sockaddr_in addr)
 
 int btPeer::Need_Local_Data() const
 {
-  if( m_state.remote_interested && !bitfield.IsFull() ){
+  if( !bitfield.IsFull() ){
     if( BTCONTENT.IsFull() ) return 1;
 
     Bitfield tmpBitfield = *BTCONTENT.pBF;
@@ -71,8 +71,11 @@ int btPeer::Need_Local_Data() const
 int btPeer::Need_Remote_Data() const
 {
   if( BTCONTENT.Seeding() || bitfield.IsEmpty() ) return 0;
-  else if( bitfield.IsFull() &&
-           BTCONTENT.CheckedPieces() >= BTCONTENT.GetNPieces() ){
+  if( !request_q.IsEmpty() &&                              // efficiency
+      !BTCONTENT.pBF->IsSet(request_q.GetRequestIdx()) ){  // failsafe
+    return 1;
+  }else if( bitfield.IsFull() &&
+            BTCONTENT.CheckedPieces() >= BTCONTENT.GetNPieces() ){
      return 1;
   }else{
     Bitfield tmpBitfield = bitfield;                // what peer has
@@ -179,7 +182,7 @@ int btPeer::SetLocal(bt_msg_t s)
   }
 
   if( stream.Send_State(s) < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }else return 0;
 }
@@ -357,7 +360,7 @@ int btPeer::MsgDeliver()
   m_last_timestamp = now;
   if( 0 == msglen ){
     if( !m_f_keepalive && stream.Send_Keepalive() < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
     m_f_keepalive = 0;
@@ -466,7 +469,7 @@ int btPeer::MsgDeliver()
               (m_latency ? (m_latency*2) : 60) ){
           if( PeerError(1, "choked request") < 0 ) return -1;
           if( stream.Send_State(BT_MSG_CHOKE) < 0 ){
-            if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+            CONSOLE.Debug("%p: %s", this, strerror(errno));
             return -1;
           }
           /* This will mess with the unchoke rotation (to this peer's
@@ -594,7 +597,7 @@ int btPeer::RespondSlice()
 
   rightnow = PreciseTime();
   if( stream.Send_Piece(idx, off, BTCONTENT.global_piece_buffer, len) < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }else{
     WORLD.Upload();
@@ -611,8 +614,7 @@ int btPeer::SendRequest()
   PSLICE ps = request_q.NextSend();
 
   if( m_req_out > MaxReqQueueLength() ){
-    if(*cfg_verbose)
-      CONSOLE.Debug("ERROR@5: %p m_req_out underflow, resetting", this);
+    CONSOLE.Debug("ERROR@5: %p m_req_out underflow, resetting", this);
     m_req_out = 0;
   }
   if( ps && m_req_out < m_req_send ){
@@ -629,7 +631,7 @@ int btPeer::SendRequest()
       }else request_q.SetReqTime(ps, (time_t)0);
       if(*cfg_verbose) CONSOLE.Debug_n(".");
       if( stream.Send_Request(ps->index, ps->offset, ps->length) < 0 ){
-        if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+        CONSOLE.Debug("%p: %s", this, strerror(errno));
         return -1;
       }
       m_last_req_piece = ps->index;
@@ -660,13 +662,12 @@ int btPeer::CancelPiece(bt_index_t idx)
       if(*cfg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
         (int)ps->index, (int)ps->offset, (int)ps->length, this);
       if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
-        if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+        CONSOLE.Debug("%p: %s", this, strerror(errno));
         return -1;
       }
       m_req_out--;
       if( m_req_out > MaxReqQueueLength() ){
-        if(*cfg_verbose)
-          CONSOLE.Debug("ERROR@1: %p m_req_out underflow, resetting", this);
+        CONSOLE.Debug("ERROR@1: %p m_req_out underflow, resetting", this);
         m_req_out = 0;
       }
       m_cancel_time = now;
@@ -693,13 +694,12 @@ int btPeer::CancelRequest()
     if(*cfg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
       (int)ps->index, (int)ps->offset, (int)ps->length, this);
     if( stream.Send_Cancel(ps->index, ps->offset, ps->length) < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
     m_req_out--;
     if( m_req_out > MaxReqQueueLength() ){
-      if(*cfg_verbose)
-        CONSOLE.Debug("ERROR@2: %p m_req_out underflow, resetting", this);
+      CONSOLE.Debug("ERROR@2: %p m_req_out underflow, resetting", this);
       m_req_out = 0;
     }
     m_cancel_time = now;
@@ -728,13 +728,12 @@ int btPeer::CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len)
           if(*cfg_verbose) CONSOLE.Debug("Cancelling %d/%d/%d to %p",
             (int)idx, (int)off, (int)len, this);
           if( stream.Send_Cancel(idx, off, len) < 0 ){
-            if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+            CONSOLE.Debug("%p: %s", this, strerror(errno));
             return -1;
           }
           m_req_out--;
           if( m_req_out > MaxReqQueueLength() ){
-            if(*cfg_verbose)
-              CONSOLE.Debug("ERROR@3: %p m_req_out underflow, resetting", this);
+            CONSOLE.Debug("ERROR@3: %p m_req_out underflow, resetting", this);
             m_req_out = 0;
           }
           if( !m_req_out ) WORLD.DontWaitDL(this);
@@ -962,7 +961,7 @@ int btPeer::RequestSlice(bt_index_t idx, bt_offset_t off, bt_length_t len)
   if( r < 0 ) return -1;
   else if( r ){
     if( stream.Send_Request(idx, off, len) < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
     m_req_out++;
@@ -981,23 +980,21 @@ int btPeer::RequestCheck()
       return -1;
     if( !m_state.remote_choked ){
       if( m_req_out > MaxReqQueueLength() ){
-        if(*cfg_verbose)
-          CONSOLE.Debug("ERROR@4: %p m_req_out underflow, resetting", this);
+        CONSOLE.Debug("ERROR@4: %p m_req_out underflow, resetting", this);
         m_req_out = 0;
       }
-      if( request_q.IsEmpty() && RequestPiece() < 0 ) return -1;
-      else if( m_req_out < m_req_send &&
-               (m_req_out < 2 || !RateDL() ||
-                1 >= (m_req_out+1) * request_q.GetRequestLen() /
-                     (double)RateDL() - m_latency) &&
-               SendRequest() < 0 ){
+      if( request_q.IsEmpty() ){
+        if( RequestPiece() < 0 ) return -1;
+      }else if( m_req_out < m_req_send &&
+                (m_req_out < 2 || !RateDL() ||
+                 (m_req_out+1) * request_q.GetRequestLen() / (double)RateDL() -
+                   m_latency <= 1) ){
         // try to allow delay between sending batches of reqs
-        return -1;
+        if( SendRequest() < 0 ) return -1;
       }
     }
-  }else
-    if( m_state.local_interested && SetLocal(BT_MSG_NOT_INTERESTED) < 0 )
-      return -1;
+  }else if( m_state.local_interested && SetLocal(BT_MSG_NOT_INTERESTED) < 0 )
+    return -1;
 
   if( !request_q.IsEmpty() ) StartDLTimer();
   else StopDLTimer();
@@ -1025,8 +1022,7 @@ int btPeer::HandShake()
   int len;
 
   if( (r = stream.Feed()) < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this,
-      errno ? strerror(errno) : "remote closed");
+    CONSOLE.Debug("%p: %s", this, errno ? strerror(errno) : "remote closed");
     return -1;
   }
   if( (r = stream.in_buffer.Count()) < 68 ){
@@ -1113,7 +1109,7 @@ int btPeer::HandShake()
     r = stream.Send_Bitfield(bf, BTCONTENT.pBF->NBytes());
     delete []bf;
     if( r < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p sending bitfield: %s", this,
+      CONSOLE.Debug("%p sending bitfield: %s", this,
         errno ? strerror(errno) : "remote closed");
       return -1;
     }
@@ -1136,9 +1132,9 @@ int btPeer::HandShake()
 int btPeer::Send_ShakeInfo()
 {
   if( stream.Send_Buffer((char *)BTCONTENT.GetShakeBuffer(), 68) < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
-  } else return 0;
+  }else return 0;
 }
 
 int btPeer::NeedWrite(int limited)
@@ -1158,8 +1154,8 @@ int btPeer::NeedWrite(int limited)
     yn = 1;                                          // can request a new piece
   }else if( request_q.NextSend() && m_req_out < m_req_send &&
             (m_req_out < 2 || !RateDL() ||
-             1 >= (m_req_out+1) * request_q.GetRequestLen() / (double)RateDL() -
-             m_latency) ){
+             (m_req_out+1) * request_q.GetRequestLen() / (double)RateDL() -
+               m_latency <= 1) ){
     yn = 1;                                        // can send a queued request
   }
 
@@ -1194,7 +1190,7 @@ int btPeer::AreYouOK()
 {
   m_f_keepalive = 1;
   if( stream.Send_Keepalive() < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }else return 0;
 }
@@ -1227,8 +1223,7 @@ int btPeer::RecvModule()
 //    this, r, (int)stream.PeekMessage());
   }
   if( r < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this,
-      errno ? strerror(errno) : "remote closed");
+    CONSOLE.Debug("%p: %s", this, errno ? strerror(errno) : "remote closed");
     return -1;
   }
 
@@ -1263,7 +1258,7 @@ int btPeer::SendModule()
   if( stream.out_buffer.Count() &&
       !respond_q.IsEmpty() && !CouldRespondSlice() ){
     if( stream.Flush() < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
     f_flushed = 1;
@@ -1297,7 +1292,7 @@ int btPeer::SendModule()
   }else if( this == WORLD.GetNextUL() ) WORLD.DontWaitUL(this);
 
   if( !f_flushed && stream.Flush() < 0 ){
-    if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+    CONSOLE.Debug("%p: %s", this, strerror(errno));
     return -1;
   }else return 0;
 }
@@ -1306,7 +1301,7 @@ int btPeer::SendHaves()
 {
   for( int i=0; i < HAVEQ_SIZE && m_haveq[i] < BTCONTENT.GetNPieces(); i++ ){
     if( stream.Send_Have(m_haveq[i]) < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
     m_haveq[i] = BTCONTENT.GetNPieces();
@@ -1319,7 +1314,7 @@ int btPeer::QueueHave(bt_index_t idx)
   if( m_haveq[HAVEQ_SIZE - 1] < BTCONTENT.GetNPieces() ){
     if( SendHaves() < 0 ) return -1;
     if( stream.Send_Have(idx) < 0 ){
-      if(*cfg_verbose) CONSOLE.Debug("%p: %s", this, strerror(errno));
+      CONSOLE.Debug("%p: %s", this, strerror(errno));
       return -1;
     }
   }else{
