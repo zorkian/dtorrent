@@ -50,6 +50,8 @@ class PeerList
   int InitialListenPort();
   int Accepter();
   int UnchokeCheck(btPeer *peer, btPeer *peer_array[]);
+  btPeer *SelectUnchoke(btPeer *peer1, btPeer *peer2);
+  void SetUnchokeIntervals();
   int FillFDSet(fd_set *rfd, fd_set *wfd, int f_keepalive_check,
     int f_unchoke_check, btPeer **UNCHOKER);
   void WaitBWQueue(PEERNODE **queue, btPeer *peer);
@@ -77,8 +79,6 @@ class PeerList
   void CloseAll();
 
   int IntervalCheck(fd_set *rfd, fd_set *wfd);
-
-  void SetUnchokeIntervals();
   void AnyPeerReady(fd_set *rfdp, fd_set *wfdp, int *nready,
     fd_set *rfdnextp, fd_set *wfdnextp);
 

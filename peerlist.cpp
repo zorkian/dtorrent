@@ -1240,87 +1240,43 @@ int PeerList::UnchokeCheck(btPeer *peer, btPeer *peer_array[])
 {
   dt_count_t i = 0, cancel_idx = 0;
   btPeer *loser = (btPeer *)0;
-  int f_seed = BTCONTENT.Seeding();
   int no_opt = 0;
-  int retval = 0;
+  int result = 0;
 
-  if( m_opt_timestamp ) no_opt = 1;
-  if( f_seed ) no_opt = 1 - no_opt;
+  if( m_opt_timestamp || BTCONTENT.Seeding() ) no_opt = 1;
 
-  // Find a slot for the candidate--the slowest peer, or an available slot.
+  // Find a slot for the candidate--the least-favored peer, or available slot.
   for( cancel_idx = i = 0; i < m_max_unchoke + no_opt; i++ ){
-    if( (btPeer *)0 == peer_array[i] ||
-        PEER_IS_FAILED(peer_array[i]) ){
+    if( !peer_array[i] || PEER_IS_FAILED(peer_array[i]) ){
       cancel_idx = i;
       break;
     }else{
       if( cancel_idx == i ) continue;
-
-      if( f_seed ){
-        // compare time unchoked
-        if( (!peer_array[i]->Is_Local_Unchoked() &&
-            (peer_array[cancel_idx]->Is_Local_Unchoked() ||
-              peer_array[cancel_idx]->GetLastUnchokeTime() <
-                peer_array[i]->GetLastUnchokeTime())) ||
-            (peer_array[i]->Is_Local_Unchoked() &&
-             peer_array[cancel_idx]->Is_Local_Unchoked() &&
-             peer_array[i]->GetLastUnchokeTime() <
-               peer_array[cancel_idx]->GetLastUnchokeTime()) ){
-          cancel_idx = i;
-        }
-      }else{
-        // compare download rate.
-        if( peer_array[cancel_idx]->RateDL() > peer_array[i]->RateDL() ||
-          // If equal reciprocate to the peer we've sent less to, proportionally
-            (peer_array[cancel_idx]->RateDL() == peer_array[i]->RateDL() &&
-             peer_array[cancel_idx]->TotalUL() /
-                 (peer_array[cancel_idx]->TotalDL()+.001) <
-               peer_array[i]->TotalUL() / (peer_array[i]->TotalDL()+.001)) ){
-          cancel_idx = i;
-        }
+      if( SelectUnchoke(peer_array[i], peer_array[cancel_idx]) ==
+            peer_array[cancel_idx] ){
+        cancel_idx = i;
       }
     }
-  }  // end for
+  }
 
-  if( (btPeer *)0 != peer_array[cancel_idx] &&
-      PEER_IS_SUCCESS(peer_array[cancel_idx]) ){
-    if( f_seed ){
-      if( (!peer_array[cancel_idx]->Is_Local_Unchoked() &&
-           (peer->Is_Local_Unchoked() ||
-             peer->GetLastUnchokeTime() <
-               peer_array[cancel_idx]->GetLastUnchokeTime())) ||
-           (peer_array[cancel_idx]->Is_Local_Unchoked() &&
-            peer->Is_Local_Unchoked() &&
-            peer_array[cancel_idx]->GetLastUnchokeTime() <
-              peer->GetLastUnchokeTime()) ){
-        loser = peer_array[cancel_idx];
-        peer_array[cancel_idx] = peer;
-      }else
-        loser = peer;
-    }else{
-      if( peer->RateDL() > peer_array[cancel_idx]->RateDL() ||
-        // If equal reciprocate to the peer we've sent less to, proportionally
-          (peer_array[cancel_idx]->RateDL() == peer->RateDL() &&
-           peer_array[cancel_idx]->TotalUL() /
-               (peer_array[cancel_idx]->TotalDL()+.001) >
-             peer->TotalUL() / (peer->TotalDL()+.001)) ){
-        loser = peer_array[cancel_idx];
-        peer_array[cancel_idx] = peer;
-      }else
-        loser = peer;
-    }
+  if( !peer_array[cancel_idx] || PEER_IS_FAILED(peer_array[cancel_idx]) )
+    peer_array[cancel_idx] = peer;
+  else{
+    if( SelectUnchoke(peer, peer_array[cancel_idx]) == peer ){
+      loser = peer_array[cancel_idx];
+      peer_array[cancel_idx] = peer;
+    }else loser = peer;
 
-    // opt unchoke
+    // opt unchoke (The last slot is for the optimistic unchoke.)
     if( no_opt ){
+      // no optimistic unchoke--we're done
       if( loser->SetLocal(BT_MSG_CHOKE) < 0 ){
         loser->CloseConnection();
-        if( peer==loser ) retval = -1;
+        if( peer == loser ) result = -1;
       }
-    }
-    else
-    // The last slot is for the optimistic unchoke.
-    if( (btPeer *)0 == peer_array[m_max_unchoke] ||
-        PEER_IS_FAILED(peer_array[m_max_unchoke]) ){
+    }else if( !peer_array[m_max_unchoke] ||
+              PEER_IS_FAILED(peer_array[m_max_unchoke]) ){
+      // slot is available, everybody wins
       peer_array[m_max_unchoke] = loser;
     }else{
       // If loser is empty and current is not, loser gets 75% chance.
@@ -1355,13 +1311,56 @@ int PeerList::UnchokeCheck(btPeer *peer, btPeer *peer_array[])
       }
       if( loser->SetLocal(BT_MSG_CHOKE) < 0 ){
         loser->CloseConnection();
-        if( peer==loser ) retval = -1;
+        if( peer == loser ) result = -1;
       }
     }
-  }else  // else if( (btPeer *)0 != peer_array[cancel_idx] ...)
-    peer_array[cancel_idx] = peer;
+  }
+  return result;
+}
 
-  return retval;
+btPeer *PeerList::SelectUnchoke(btPeer *peer1, btPeer *peer2)
+{
+  int half = BTCONTENT.GetNPieces() / 2;
+  int comp1, comp2, tmpint;
+  double dcomp1, dcomp2;
+  bool seeding = BTCONTENT.Seeding();
+
+  if( !seeding ){
+    // If total==0, rate==0 also.
+    if( peer1->TotalDL() == 0 ){
+      if( peer2->TotalDL() > 0 ) return peer2;
+      else seeding = true;
+    }else{
+      if( peer2->TotalDL() == 0 ) return peer1;
+
+      if( peer1->RateDL() > peer2->RateDL() ) return peer1;
+      if( peer2->RateDL() > peer1->RateDL() ) return peer2;
+    }
+  }
+
+  // Reciprocate to uploaders (to 1:1 ratio when seeding, else proactively)
+  dcomp1 = (!seeding || peer1->TotalDL() > peer1->TotalUL()) ?
+             (double)peer1->TotalUL() / peer1->TotalDL() : -1;
+  dcomp2 = (!seeding || peer2->TotalDL() > peer2->TotalUL()) ?
+             (double)peer2->TotalUL() / peer2->TotalDL() : -1;
+  if( dcomp1 >= 0 && (dcomp2 < 0 || dcomp1 < dcomp2) ) return peer1;
+  if( dcomp2 >= 0 && (dcomp1 < 0 || dcomp2 < dcomp1) ) return peer2;
+
+  // Unchoke those with the least pieces or nearest completion
+  // Based on Chow, Golubchik, Misra: "Improving BitTorrent: A Simple Approach"
+  comp1 = peer1->bitfield.Count();
+  tmpint = peer1->TotalUL() / BTCONTENT.GetPieceLength();
+  if( tmpint > comp1 ) comp1 = tmpint;
+
+  comp2 = peer2->bitfield.Count();
+  tmpint = peer2->TotalUL() / BTCONTENT.GetPieceLength();
+  if( tmpint > comp2 ) comp2 = tmpint;
+
+  if( abs(comp1 - half) < abs(comp2 - half) ||
+      (abs(comp1 - half) == abs(comp2 - half) && comp1 < comp2) ){
+    return peer2;
+  }
+  return peer1;
 }
 
 /* When we change what we're going after, we need to evaluate & set our
