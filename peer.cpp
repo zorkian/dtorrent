@@ -190,7 +190,7 @@ int btPeer::SetLocal(bt_msg_t s)
 int btPeer::RequestPiece()
 {
   bt_index_t idx;
-  Bitfield tmpBitfield;
+  Bitfield bf_need;
   const Bitfield *pfilter;
 
   dt_count_t qsize = request_q.Qsize();
@@ -203,11 +203,11 @@ int btPeer::RequestPiece()
     return 0;
   }
 
-  tmpBitfield = bitfield;
-  tmpBitfield.Except(*BTCONTENT.pBMasterFilter);
-  if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
-    tmpBitfield.UnSet(m_last_req_piece);
-  if( (idx = PENDINGQUEUE.Reassign(&request_q, tmpBitfield)) <
+  bf_need = bitfield;
+  bf_need.Except(*BTCONTENT.pBMasterFilter);
+  if( m_last_req_piece < BTCONTENT.GetNPieces() && bf_need.Count() > 1 )
+    bf_need.UnSet(m_last_req_piece);
+  if( (idx = PENDINGQUEUE.Reassign(&request_q, bf_need)) <
       BTCONTENT.GetNPieces() ){
     if(*cfg_verbose)
       CONSOLE.Debug("Assigning #%d to %p from Pending", (int)idx, this);
@@ -222,17 +222,17 @@ int btPeer::RequestPiece()
        in progress.  (Initial-piece mode) */
     pfilter = BTCONTENT.GetFilter();
     do{
-      tmpBitfield = bitfield;
+      bf_need = bitfield;
       if( pfilter ){
-        tmpBitfield.Except(*pfilter);
+        bf_need.Except(*pfilter);
         pfilter = BTCONTENT.GetNextFilter(pfilter);
       }
-    }while( pfilter && tmpBitfield.IsEmpty() );
+    }while( pfilter && bf_need.IsEmpty() );
     if( m_latency < 60 ){
       // Don't dup to very slow/high latency peers.
-      if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
-        tmpBitfield.UnSet(m_last_req_piece);
-      idx = WORLD.What_Can_Duplicate(tmpBitfield, this, BTCONTENT.GetNPieces());
+      if( m_last_req_piece < BTCONTENT.GetNPieces() && bf_need.Count() > 1 )
+        bf_need.UnSet(m_last_req_piece);
+      idx = WORLD.What_Can_Duplicate(bf_need, this, BTCONTENT.GetNPieces());
       if( idx < BTCONTENT.GetNPieces() ){
         if(*cfg_verbose) CONSOLE.Debug("Want to dup #%d to %p", (int)idx, this);
         btPeer *peer = WORLD.WhoHas(idx);
@@ -251,20 +251,20 @@ int btPeer::RequestPiece()
   // Doesn't have a piece that's already in progress--choose another.
   pfilter = BTCONTENT.GetFilter();
   do{
-    tmpBitfield = bitfield;
-    tmpBitfield.Except(*BTCONTENT.pBF);
+    bf_need = bitfield;
+    bf_need.Except(*BTCONTENT.pBF);
     if( pfilter ){
-      tmpBitfield.Except(*pfilter);
+      bf_need.Except(*pfilter);
       pfilter = BTCONTENT.GetNextFilter(pfilter);
     }
     // Don't go after pieces we might already have (but don't know yet)
-    tmpBitfield.And(*BTCONTENT.pBChecked);
-    // tmpBitfield tells what we need from this peer...
-  }while( pfilter && tmpBitfield.IsEmpty() );
-  if( m_last_req_piece < BTCONTENT.GetNPieces() && tmpBitfield.Count() > 1 )
-    tmpBitfield.UnSet(m_last_req_piece);
+    bf_need.And(*BTCONTENT.pBChecked);
+    // bf_need tells what we need from this peer...
+  }while( pfilter && bf_need.IsEmpty() );
+  if( m_last_req_piece < BTCONTENT.GetNPieces() && bf_need.Count() > 1 )
+    bf_need.UnSet(m_last_req_piece);
 
-  if( tmpBitfield.IsEmpty() ){
+  if( bf_need.IsEmpty() ){
     // We don't need to request anything from the peer.
     if( !Need_Remote_Data() )
       return SetLocal(BT_MSG_NOT_INTERESTED);
@@ -280,16 +280,17 @@ int btPeer::RequestPiece()
     }
   }
 
-  WORLD.CheckBitfield(tmpBitfield);
-  // [tmpBitfield] ...that we haven't requested from anyone.
-  if( tmpBitfield.IsEmpty() ){
+  Bitfield bf_unrequested = bf_need;
+  WORLD.CheckBitfield(bf_unrequested);
+  // [bf_unrequested] ...that we haven't requested from anyone.
+  if( bf_unrequested.IsEmpty() ){
     // Everything this peer has that I want, I've already requested.
     int endgame = WORLD.Endgame();
     if( endgame && m_latency < 60 ){
       // OK to duplicate a request, but not to very slow/high latency peers.
-      idx = 0;  // flag for Who_Can_Duplicate()
-      Bitfield tmpBitfield2 = tmpBitfield;
-      idx = WORLD.What_Can_Duplicate(tmpBitfield2, this, idx);
+      idx = 0;  // flag for What_Can_Duplicate()
+      Bitfield bf_choose = bf_need;
+      idx = WORLD.What_Can_Duplicate(bf_choose, this, idx);
       if( idx < BTCONTENT.GetNPieces() ){
         if(*cfg_verbose) CONSOLE.Debug("Want to dup #%d to %p", (int)idx, this);
         btPeer *peer = WORLD.WhoHas(idx);
@@ -323,20 +324,20 @@ int btPeer::RequestPiece()
   }else{
     /* Request something that we haven't requested yet (most common case).
        Try to make it something that has good trade value. */
-    Bitfield tmpBitfield2 = tmpBitfield;
-    WORLD.FindValuedPieces(tmpBitfield2, this, BTCONTENT.pBF->IsEmpty());
-    if( tmpBitfield2.IsEmpty() ) tmpBitfield2 = tmpBitfield;
+    Bitfield bf_choose = bf_unrequested;
+    WORLD.FindValuedPieces(bf_choose, this, BTCONTENT.pBF->IsEmpty());
+    if( bf_choose.IsEmpty() ) bf_choose = bf_unrequested;
 
     if( m_cached_idx < BTCONTENT.CheckedPieces() &&
-        tmpBitfield2.IsSet(m_cached_idx) ){
+        bf_choose.IsSet(m_cached_idx) ){
       // Prefer the piece indicated by a recent HAVE message.
       idx = m_cached_idx;
     }else idx = BTCONTENT.GetNPieces();
 
     if( BTCONTENT.pBF->Count() < BTCONTENT.GetNFiles() ||
-        (idx = BTCONTENT.ChoosePiece(tmpBitfield2, tmpBitfield, idx)) >=
+        (idx = BTCONTENT.ChoosePiece(bf_choose, bf_need, idx)) >=
           BTCONTENT.GetNPieces() ){
-      idx = tmpBitfield2.Random();
+      idx = bf_choose.Random();
     }
     if(*cfg_verbose) CONSOLE.Debug("Assigning #%d to %p", (int)idx, this);
     return ( request_q.CreateWithIdx(idx) < 0 ) ? -1 : SendRequest();
