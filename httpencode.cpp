@@ -73,12 +73,15 @@ int UrlSplit(const char *url, char **host, int *port, char **path)
       return -1;
     }
     *port = atoi(p);
-    if( *port > 65536 ) return -1;
+    if( *port > 65536 ){
+      errno = EINVAL;
+      return -1;
+    }
     p += r;
   }
 
   /* path */
-  if( *p != '/' ){
+  if( *p != '\0' && *p != '/' && *p != '?' ){
     errno = 0;
     return -1;
   }
