@@ -152,7 +152,7 @@ dt_result_t btTracker::ParseResponse(const char *buf, size_t bufsiz)
       failreason[1000] = '\0';
       strcat(failreason, "...");
     }
-    CONSOLE.Warning(1, "TRACKER FAILURE REASON: %s", failreason);
+    CONSOLE.Warning(1, "TRACKER FAILURE from %s:  %s", m_spec->url, failreason);
     return DT_FAILURE;
   }
   if( decode_query(buf, bufsiz, "warning message", &ps, &i, (int64_t *)0,
@@ -166,7 +166,7 @@ dt_result_t btTracker::ParseResponse(const char *buf, size_t bufsiz)
       warnmsg[1000] = '\0';
       strcat(warnmsg, "...");
     }
-    CONSOLE.Warning(2, "TRACKER WARNING: %s", warnmsg);
+    CONSOLE.Warning(2, "TRACKER WARNING from %s:  %s", m_spec->url, warnmsg);
   }
 
   m_peers_count = m_seeds_count = 0;
@@ -317,7 +317,7 @@ dt_result_t btTracker::CheckResponse()
   r = HttpGetStatusCode(m_response_buffer.BasePointer(), hlen);
   if( r != 200 ){
     if( r == 301 || r == 302 || r == 303 || r == 307 ){
-      char *tmpurl = (char *)0;
+      char *tmpurl = (char *)0, *c;
       tracker_spec *tmpspec;
 
       if( HttpGetHeader(m_response_buffer.BasePointer(), hlen, "Location",
@@ -343,6 +343,10 @@ dt_result_t btTracker::CheckResponse()
         return DT_FAILURE;
       }
 
+      if( (c = strstr(tmpurl, "?info_hash=")) ||
+          (c = strstr(tmpurl, "&info_hash=")) ){
+        *c = '\0';
+      }
       if( UrlSplit(tmpurl, &tmpspec->host, &tmpspec->port,
                    &tmpspec->request) < 0 ){
         CONSOLE.Warning(1,
@@ -352,14 +356,21 @@ dt_result_t btTracker::CheckResponse()
         delete []tmpurl;
         return DT_FAILURE;
       }else{
-        char *c;
         CONSOLE.Debug("tracker at %s redirected%s to %s",
           m_spec->url, (r == 301) ? " permanently" : "", tmpurl);
-        delete []tmpurl;
-        if( (c = strstr(tmpspec->request, "?info_hash=")) ||
-            (c = strstr(tmpspec->request, "&info_hash=")) ){
-          *c = '\0';
+        if( (tmpspec->url = new char[strlen(tmpurl) + 1]) )
+          strcpy(tmpspec->url, tmpurl);
+        else{
+          CONSOLE.Warning(1,
+            "warn, could not allocate memory for tracker redirect from %s",
+            m_spec->url);
+          errno = ENOMEM;
+          delete tmpspec;
+          delete []tmpurl;
+          return DT_FAILURE;
         }
+        delete []tmpurl;
+        Reset();
         m_redirect = m_spec;
         m_spec = tmpspec;
         if( BuildBaseRequest() < 0 ){
@@ -373,7 +384,6 @@ dt_result_t btTracker::CheckResponse()
         }
       }
 
-      Reset();
       if( Connect() < 0 ){
         Reset();
         delete m_spec;
@@ -384,7 +394,7 @@ dt_result_t btTracker::CheckResponse()
     }else if( r >= 400 ){
       CONSOLE.Warning(2, "Tracker response code %d from %s%s", r, m_spec->url,
         (r >= 500) ? "" :
-          "; The torrent is not registered on this tracker"
+          "; the torrent is not registered on this tracker"
           " or may have been removed.");
       if( pdata && dlen ){  // write(STDERR_FILENO, pdata, dlen);
         CONSOLE.Warning(0, "Tracker response data DUMP:");
