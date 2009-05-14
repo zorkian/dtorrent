@@ -400,6 +400,9 @@ int btFiles::MergeStaging(BTFILE *dst)
     goto done;
   }
 
+  // Prevent src from being closed during open of dst.
+  src->bf_last_timestamp = now + 1;
+
   if( (!dst->bf_flag_opened || dst->bf_flag_readonly) &&
       _btf_open(dst, 1) < 0 ){
     CONSOLE.Warning(1, "error, failed to open file \"%s\":  %s",
