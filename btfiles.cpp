@@ -515,6 +515,9 @@ int btFiles::FindAndMerge(int findall, int dostaging)
 
 /* Of the choices presented, select a piece that will help toward merging
    staged data.
+   choices:     The preferred set from which to choose.
+   available:   The perhaps wider set of all pieces which could be chosen.
+   preference:  Prefer this piece in a final random selection.
 */
 bt_index_t btFiles::ChoosePiece(const Bitfield &choices,
   const Bitfield &available, bt_index_t preference) const

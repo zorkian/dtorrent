@@ -335,7 +335,7 @@ int btPeer::RequestPiece()
     }else idx = BTCONTENT.GetNPieces();
 
     if( BTCONTENT.pBF->Count() < BTCONTENT.GetNFiles() ||
-        (idx = BTCONTENT.ChoosePiece(bf_choose, bf_need, idx)) >=
+        (idx = BTCONTENT.ChoosePiece(bf_choose, bf_unrequested, idx)) >=
           BTCONTENT.GetNPieces() ){
       idx = bf_choose.Random();
     }
