@@ -71,6 +71,8 @@ class btFiles
   char *m_staging_path;       // main staging directory
   char *m_stagedir;           // current staging subdir for new files
   int m_stagecount;           // count of files in staging subdir
+  bool m_write_failed;
+  time_t m_write_tried;
 
   uint8_t m_flag_automanage:1;
   uint8_t m_need_merge:1;
@@ -116,7 +118,7 @@ class btFiles
   dt_datalen_t GetFileSize(dt_count_t nfile) const;
   bt_index_t GetFilePieces(dt_count_t nfile) const;
 
-  int NeedMerge() const { return m_need_merge ? 1 : 0; }
+  int NeedMerge() const;
   int MergeNext(){ return FindAndMerge(0); }
   int MergeAll(){ return FindAndMerge(1); }
   bt_index_t ChoosePiece(const Bitfield &choices, const Bitfield &available,

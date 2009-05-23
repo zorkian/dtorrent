@@ -854,8 +854,8 @@ int btContent::WriteFail()
   CONSOLE.Warning(1,
     "You need to have at least %llu bytes free on this filesystem!",
     (unsigned long long)needbytes);
-  CONSOLE.Warning(1,
-    "This could also be caused by a conflict or disk error.");
+  CONSOLE.Warning(1, "This could also be caused by a conflict or disk error."
+    "will retry in %d seconds.", FLUSH_RETRY_INTERVAL);
   if( !IsFull() ||
       (!m_flush_failed && m_cache_size > (*cfg_cache_size)*1024U*1024U) ){
     CONSOLE.Warning(1, "Temporarily %s%s...",

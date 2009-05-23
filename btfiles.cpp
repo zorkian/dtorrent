@@ -31,6 +31,7 @@
 #define OPT_IO_SIZE (256*1024)           // optimal I/O size for large ops
 #define MAX_STAGEFILE_SIZE (2*1024*1024) // [soft] size limit of a staging file
 #define MAX_STAGEDIR_FILES 200           // max staging files per directory
+#define WRITE_RETRY_INTERVAL 300     // seconds to retry after disk write error
 
 btFiles::btFiles()
 {
@@ -44,6 +45,8 @@ btFiles::btFiles()
   m_directory = (char *)0;
   m_staging_path = m_stagedir = (char *)0;
   m_stagecount = 0;
+  m_write_failed = false;
+  m_write_tried = (time_t)0;
 }
 
 btFiles::~btFiles()
@@ -325,22 +328,24 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
         nio = (len <= pbf->bf_length - pos) ? len : (pbf->bf_length - pos);
       }
       errno = 0;
-      if( nio && 1 != fwrite(wbuf, nio, 1, pbf->bf_fp) ){
-        CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
-          (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-        goto done;
-      }
-      if( nio && fflush(pbf->bf_fp) == EOF ){
-        CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
-          (unsigned long long)pos, pbf->bf_filename, strerror(errno));
-        goto done;
+      if( nio ){
+        if( 1 != fwrite(wbuf, nio, 1, pbf->bf_fp) ||
+            fflush(pbf->bf_fp) == EOF ){
+          CONSOLE.Warning(1,
+            "error, write or flush failed at %llu on file \"%s\":  %s",
+            (unsigned long long)pos, pbf->bf_filename, strerror(errno));
+          m_write_failed = true;
+          m_write_tried = now;
+          goto done;
+        }
+        m_write_failed = false;
       }
       if( (dt_datalen_t)pos + nio > pbf->bf_size )
         pbf->bf_size = pos + nio;
       if( !pbf->bf_flag_staging && pbf->bf_size < pbf->bf_length &&
           pbf->bf_next && pbf->bf_next->bf_flag_staging &&
           pbf->bf_offset + pbf->bf_size >= pbf->bf_next->bf_offset ){
-          m_need_merge = 1;
+        m_need_merge = 1;
       }
       if( pbf->bf_size == 0 ) _btf_close(pbf);
     }
@@ -363,6 +368,13 @@ int btFiles::IO(char *rbuf, const char *wbuf, dt_datalen_t off, bt_length_t len)
  done:
   if( diskaccess ) DiskAccess();
   return result;
+}
+
+int btFiles::NeedMerge() const
+{
+  if( !m_need_merge ) return 0;
+  return ( m_write_failed && now < m_write_tried + WRITE_RETRY_INTERVAL ) ?
+    0 : 1;
 }
 
 int btFiles::MergeStaging(BTFILE *dst)
@@ -425,16 +437,18 @@ int btFiles::MergeStaging(BTFILE *dst)
         strerror(errno));
       goto done;
     }
-    if( 1 != fwrite(buf, nio, 1, dst->bf_fp) ){
-      CONSOLE.Warning(1, "error, write failed at %llu on file \"%s\":  %s",
+    if( 1 != fwrite(buf, nio, 1, dst->bf_fp) || fflush(dst->bf_fp) == EOF ){
+      CONSOLE.Warning(1,
+        "error, write or flush failed at %llu on file \"%s\":  %s",
         (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
+      CONSOLE.Warning(1,
+        "Error merging data; more available disk space may be needed--"
+        "will retry in %d seconds.", WRITE_RETRY_INTERVAL);
+      m_write_failed = true;
+      m_write_tried = now;
       goto done;
     }
-    if( fflush(dst->bf_fp) == EOF ){
-      CONSOLE.Warning(1, "error, flush failed at %llu on file \"%s\":  %s",
-        (unsigned long long)dst->bf_size, dst->bf_filename, strerror(errno));
-      goto done;
-    }
+    m_write_failed = false;
     remain -= nio;
     pos += nio;
     if( (dt_datalen_t)pos > dst->bf_size )
@@ -507,9 +521,9 @@ int btFiles::FindAndMerge(int findall, int dostaging)
       if( !findall ) goto done;
     }
   }
- done:
-  if( !merged || findall ) m_need_merge = 0;
+  m_need_merge = 0;
 
+ done:
   return merged;
 }
 
