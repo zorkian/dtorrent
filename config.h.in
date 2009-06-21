@@ -106,6 +106,9 @@
 /* Define to 1 if you have the <sha.h> header file. */
 #undef HAVE_SHA_H
 
+/* Define to 1 if you have the sig_atomic_t type. */
+#undef HAVE_SIG_ATOMIC_T
+
 /* Define to 1 if you have the `snprintf' function. */
 #undef HAVE_SNPRINTF
 

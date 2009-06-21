@@ -41,6 +41,7 @@ static const char SNOOZE_CHAR[4] = { '.', 'o', 'O', 'o' };
 Console CONSOLE;
 static bool g_console_ready = false;
 static bool g_daemon_parent = false;
+static volatile sig_atomic_t g_in_signal = 0;
 
 static struct condev_node{
   condev_node *next;
@@ -196,8 +197,13 @@ int ConStream::Associate(FILE *file, const char *name, bool reading,
     return -1;
   }
 
-  if( CanRead() || CanWrite() ) Resume();
-  else Suspend();
+  if( CanRead() || CanWrite() ){
+    if( IsSuspended() ){
+      Resume();
+    }
+  }else{
+    Suspend();
+  }
 
   if( old_name ) delete []old_name;
   return 0;
@@ -287,8 +293,8 @@ void ConStream::PreserveMode()
   r = gtty(Fileno(), &m_original);
 #endif
   if( r < 0 ){
-    Error(1, "Error preserving terminal mode on fd %d:  %s", Fileno(),
-      strerror(errno));
+    Error(1, "Error preserving terminal mode for %s:  %s",
+      m_name ? m_name : "console", strerror(errno));
   }else m_restore = 1;
 }
 
@@ -306,30 +312,43 @@ void ConStream::RestoreMode()
 #elif defined(USE_SGTTY)
   r = stty(Fileno(), &m_original);
 #endif
+
   if( r < 0 ){
-    Error(1, "Error restoring terminal mode on fd %d:  %s", Fileno(),
-      strerror(errno));
+    if( !g_in_signal ){
+      Error(1, "Error restoring terminal mode for %s:  %s",
+        m_name ? m_name : "console", strerror(errno));
+    }
+    return;
   }
 }
 
 
 void ConStream::SetInputMode(dt_conmode_t keymode)
 {
-  if( IsSuspended() ) return;
+  int r;
+
+  if( !CanRead() || IsSuspended() ) return;
 
   if( m_device ) m_device->SetInputMode(keymode);
   if( !IsTTY() || keymode == DT_CONMODE_NONE ) return;
 
 #if defined(USE_TERMIOS)
   struct termios termset;
-  tcgetattr(Fileno(), &termset);
+  r = tcgetattr(Fileno(), &termset);
 #elif defined(USE_TERMIO)
   struct termio termset;
-  ioctl(Fileno(), TCGETA, &termset);
+  r = ioctl(Fileno(), TCGETA, &termset);
 #elif defined(USE_SGTTY)
   struct sgttyb termset;
-  gtty(Fileno(), &termset);
+  r = gtty(Fileno(), &termset);
 #endif
+  if( r < 0 ){
+    if( !g_in_signal ){
+      Error(1, "Failed getting input mode for %s:  %s",
+        m_name ? m_name : "console", strerror(errno));
+    }
+    return;
+  }
 
   switch( keymode ){
   case DT_CONMODE_CHARS:  // read a char at a time, no echo
@@ -337,16 +356,16 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
     termset.c_lflag &= ~(ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
     termset.c_cc[VTIME] = 0;
-    tcsetattr(Fileno(), TCSANOW, &termset);
+    r = tcsetattr(Fileno(), TCSANOW, &termset);
 #elif defined(USE_TERMIO)
     termset.c_lflag &= ~(ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
     termset.c_cc[VTIME] = 0;
-    ioctl(Fileno(), TCSETA, &termset);
+    r = ioctl(Fileno(), TCSETA, &termset);
 #elif defined(USE_SGTTY)
     termset.sg_flags |= CBREAK;
     termset.sg_flags &= ~ECHO;
-    stty(Fileno(), &termset);
+    r = stty(Fileno(), &termset);
 #endif
     break;
 
@@ -355,21 +374,29 @@ void ConStream::SetInputMode(dt_conmode_t keymode)
     termset.c_lflag |= (ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
     termset.c_cc[VTIME] = 0;
-    tcsetattr(Fileno(), TCSANOW, &termset);
+    r = tcsetattr(Fileno(), TCSANOW, &termset);
 #elif defined(USE_TERMIO)
     termset.c_lflag |= (ICANON | ECHO);
     termset.c_cc[VMIN] = 1;
     termset.c_cc[VTIME] = 0;
-    ioctl(Fileno(), TCSETA, &termset);
+    r = ioctl(Fileno(), TCSETA, &termset);
 #elif defined(USE_SGTTY)
     termset.sg_flags &= ~CBREAK;
     termset.sg_flags |= ECHO;
-    stty(Fileno(), &termset);
+    r = stty(Fileno(), &termset);
 #endif
     break;
 
   default:
     break;
+  }
+
+  if( r < 0 ){
+    if( !g_in_signal ){
+      Error(1, "Failed setting input mode for %s:  %s",
+        m_name ? m_name : "console", strerror(errno));
+    }
+    return;
   }
 }
 
@@ -1932,18 +1959,21 @@ void Console::cpu()
 
 RETSIGTYPE Console::Signal(int sig_no)
 {
+  volatile sig_atomic_t already_signal = g_in_signal;
+
+  g_in_signal = 1;
   switch( sig_no ){
   case SIGTTOU:
+    m_conmode = m_channels[DT_CHAN_INPUT].GetInputMode();
     for( int i=0; i < DT_NCHANNELS; i++ ){
       if( m_channels[i].IsTTY() && m_channels[i].IsOutput() )
         m_channels[i].Suspend();
     }
-    m_conmode = m_channels[DT_CHAN_INPUT].GetInputMode();
     break;
   case SIGTTIN:
+    m_conmode = m_channels[DT_CHAN_INPUT].GetInputMode();
     if( m_channels[DT_CHAN_INPUT].IsTTY() )
       m_channels[DT_CHAN_INPUT].Suspend();
-    m_conmode = m_channels[DT_CHAN_INPUT].GetInputMode();
     break;
   case SIGCONT:
     for( int i=0; i < DT_NCHANNELS; i++ )
@@ -1962,6 +1992,7 @@ RETSIGTYPE Console::Signal(int sig_no)
   default:
     break;
   }
+  g_in_signal = already_signal;
 }
 
 

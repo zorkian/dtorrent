@@ -3,6 +3,10 @@
 
 #include "config.h"
 
+#ifndef HAVE_SIG_ATOMIC_T
+typedef unsigned short sig_atomic_t;
+#endif
+
 #ifdef WINDOWS  // if Windows ********************
 typedef int ssize_t;
 typedef int socklen_t;

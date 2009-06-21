@@ -44,6 +44,10 @@ AC_TYPE_UINT64_T
 AC_CHECK_TYPE([clockid_t],
 	[AC_DEFINE([HAVE_CLOCKID_T],1,
 		[Define to 1 if you have the clockid_t type.])])
+AC_CHECK_TYPE([sig_atomic_t],
+	[AC_DEFINE([HAVE_SIG_ATOMIC_T],1,
+		[Define to 1 if you have the sig_atomic_t type.])],,
+	[#include <signal.h>])
 AC_CHECK_DECL([INADDR_NONE],,
 	[AC_DEFINE([INADDR_NONE],[((unsigned long)-1)],
 		[Define to the unsuccessful return value of inet_addr().])],
