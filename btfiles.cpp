@@ -1419,9 +1419,8 @@ int btFiles::FillMetaInfo(FILE *fp)
 void btFiles::SetFilter(dt_count_t nfile, Bitfield *pFilter,
   bt_length_t pieceLength)
 {
-  BTFILE *p = m_btfhead;
+  BTFILE *p;
   dt_count_t id = 0;
-  dt_datalen_t sizeBuffer=0;
   bt_index_t index;
 
   if( nfile == 0 || nfile > m_nfiles ){
@@ -1429,26 +1428,37 @@ void btFiles::SetFilter(dt_count_t nfile, Bitfield *pFilter,
     return;
   }
 
-  pFilter->SetAll();
-  for( ; p; p = p->bf_nextreal ){
+  for( p = m_btfhead; p; p = p->bf_nextreal ){
     if( ++id == nfile ){
       if( 0 == p->bf_length ){
         p->bf_npieces = 0;
+        pFilter->SetAll();
         return;
       }
       bt_index_t start, stop;
-      start = sizeBuffer / pieceLength;
-      stop  = (sizeBuffer + p->bf_length) / pieceLength;
+      start = p->bf_offset / pieceLength;
+      stop  = (p->bf_offset + p->bf_length) / pieceLength;
       // calculation is off if file ends on a piece boundary
-      if( stop > start && 0 == (sizeBuffer + p->bf_length) % pieceLength )
+      if( stop > start && 0 == (p->bf_offset + p->bf_length) % pieceLength )
         --stop;
       p->bf_npieces = stop - start + 1;
-      for( index = start; index <= stop; index++ ){
-        pFilter->UnSet(index);
+
+      if( p->bf_npieces <= pFilter->NBits() / 2 ){
+        pFilter->SetAll();
+        for( index = start; index <= stop; index++ ){
+          pFilter->UnSet(index);
+        }
+      }else{
+        pFilter->Clear();
+        for( index = 0; index < start; index++ ){
+          pFilter->Set(index);
+        }
+        for( index = stop + 1; index < pFilter->NBits(); index++ ){
+          pFilter->Set(index);
+        }
       }
       break;
     }
-    sizeBuffer += p->bf_length;
   }
 }
 
