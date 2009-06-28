@@ -1309,10 +1309,10 @@ int btFiles::CreateFiles()
 int btFiles::ExtendAll()
 {
   BTFILE *pbf = m_btfhead;
-  int i = 0;
+  int i;
   Bitfield tmpFilter;
 
-  for( ; pbf; pbf = pbf->bf_nextreal, i++ ){
+  for( i = 1; pbf; pbf = pbf->bf_nextreal, i++ ){
     if( pbf->bf_size > 0 && pbf->bf_size >= pbf->bf_length ) continue;
     if( *cfg_file_to_download ){
       SetFilter(i, &tmpFilter, BTCONTENT.GetPieceLength());
