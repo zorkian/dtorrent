@@ -551,7 +551,7 @@ int PendingQueue::Pending(RequestQueue *prq)
     /* This shortcut relies on the fact that we don't add to a queue if it
        already contains a full piece. */
     prq->Empty();
-    return 0;
+    return 1;
   }
 
   for( ; i < PENDING_QUEUE_SIZE; i++ ){
