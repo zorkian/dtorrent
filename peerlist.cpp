@@ -721,7 +721,10 @@ void PeerList::CompareRequest(btPeer *proposer, bt_index_t idx)
 
   do{
     for( p = m_head; p; p = p->next ){
-      if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
+      if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ||
+          proposer == p->peer ){
+        continue;
+      }
       qs = p->peer->request_q.GetHead();
       for( ; qs && idx != qs->index; qs = qs->next );
       if( qs && ps->index == qs->index && ps->offset == qs->offset &&
@@ -814,7 +817,10 @@ void PeerList::CancelOneRequest(bt_index_t idx)
     else{
       CONSOLE.Debug("Cancel #%d on %p (%d B/s)", (int)idx, peer,
         (int)peer->NominalDL());
-      peer->CancelPiece(idx);
+      if( peer->CancelPiece(idx) < 0 ){
+        if(*cfg_verbose) CONSOLE.Debug("close: CancelOneRequest");
+        p->peer->CloseConnection();
+      }
     }
     if( dupcount == 2 ){  // was 2, now only 1
       m_dup_req_pieces--;
