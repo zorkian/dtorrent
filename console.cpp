@@ -553,7 +553,7 @@ void ConChannel::Init(dt_conchan_t channel, int mode, ConStream *stream,
 
 void ConChannel::Associate(ConStream *stream, bool notify)
 {
-  dt_conmode_t mode;
+  dt_conmode_t mode = DT_CONMODE_NONE;
 
   if( m_stream ){
     if( Fileno() >= 0 ) m_oldfd = Fileno();

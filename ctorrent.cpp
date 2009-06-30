@@ -139,7 +139,7 @@ int GetOpts(int argc, const char *const *argv, bool checkonly)
   char opt;
   int argn, noptions, optn;
   bool negate, *foundopt = (bool *)0, error = false;
-  size_t len;
+  size_t len = 0;
   char *tmp = (char *)0;
 
   errno = 0;

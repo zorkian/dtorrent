@@ -443,7 +443,7 @@ int btTracker::Initial()
 
 int btTracker::BuildBaseRequest()
 {
-  char ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1], *tmppath, *tmpreq;
+  char ih_buf[20 * 3 + 1], pi_buf[20 * 3 + 1], *tmppath, *tmpreq = (char *)0;
 
   if( !(tmppath = new char[strlen(m_spec->request) + 1]) ||
       !(tmpreq = new char[strlen(m_spec->request) + 256]) ){
@@ -970,7 +970,7 @@ const btTracker *MultiTracker::GetNext(const btTracker *tracker) const
     m_tier_iter = m_tier_iter->next;
     return m_tier_iter ? m_tier_iter->tracker : (btTracker *)0;
   }else{
-    tier_node *tier, *p;
+    tier_node *tier, *p = (tier_node *)0;
     for( tier = m_trackers; tier; tier = tier->next_tier ){
       for( p = tier; p; p = p->next ){
         if( tracker == p->tracker ) break;
