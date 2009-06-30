@@ -508,8 +508,6 @@ btPeer *PeerList::Who_Can_Abandon(btPeer *proposer)
 {
   PEERNODE *p;
   btPeer *peer = (btPeer *)0;
-  PSLICE ps;
-  bt_index_t idx;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) || p->peer == proposer ||
@@ -518,23 +516,12 @@ btPeer *PeerList::Who_Can_Abandon(btPeer *proposer)
     }
     if( (peer && p->peer->NominalDL() < peer->NominalDL()) ||
         (!peer && p->peer->NominalDL() * 1.5 < proposer->NominalDL()) ){
-      idx = p->peer->request_q.GetRequestIdx();
-      if( proposer->bitfield.IsSet(idx) && !proposer->request_q.HasIdx(idx) )
+      if( p->peer->request_q.FindCommonRequest(proposer->bitfield,
+            proposer->request_q) < BTCONTENT.GetNPieces() ){
         peer = p->peer;
-      else{
-        ps = p->peer->request_q.GetHead();
-        for( ; ps; ps = ps->next ){
-          if( idx == ps->index ) continue;
-          idx = ps->index;
-          if( proposer->bitfield.IsSet(idx) &&
-              !proposer->request_q.HasIdx(idx) ){
-            peer = p->peer;
-            break;
-          }
-        }
       }
     }
-  }  // end for
+  }
   if( peer && *cfg_verbose )
     CONSOLE.Debug("Abandoning %p (%d B/s) for %p (%d B/s)",
       peer, peer->NominalDL(), proposer, proposer->NominalDL());
@@ -554,7 +541,6 @@ bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
   struct qdata *data;
   int endgame, pass;
   PEERNODE *p;
-  PSLICE ps;
   bt_index_t piece;
   dt_count_t slots, qsize, i, mark;
   double work, best;
@@ -589,34 +575,31 @@ bt_index_t PeerList::What_Can_Duplicate(Bitfield &bf, const btPeer *proposer,
         p->peer->request_q.IsEmpty() ){
       continue;
     }
-    piece = BTCONTENT.GetNPieces();
-    ps = p->peer->request_q.GetHead();
-    for( ; ps; ps = ps->next ){
-      if( piece == ps->index ||
-          !bf.IsSet(ps->index) || proposer->request_q.HasIdx(ps->index) ){
-        continue;
-      }
-      piece = ps->index;
-      qsize = p->peer->request_q.Qlen(piece);
+    if( p->peer->request_q.Peek(&piece) ){
+      do{
+        if( !bf.IsSet(piece) || proposer->request_q.HasPiece(piece) )
+          continue;
+        qsize = p->peer->request_q.Qlen(piece);
 
-      // insert queue data into array at (idx % slots)
-      pass = 0;
-      i = piece % slots;
-      while( data[i].idx < BTCONTENT.GetNPieces() && pass < 2 ){
-        if( piece == data[i].idx ) break;
-        i++;
-        if( i >= slots ){
-          i = 0;
-          pass++;
+        // insert queue data into array at (idx % slots)
+        pass = 0;
+        i = piece % slots;
+        while( data[i].idx < BTCONTENT.GetNPieces() && pass < 2 ){
+          if( piece == data[i].idx ) break;
+          i++;
+          if( i >= slots ){
+            i = 0;
+            pass++;
+          }
         }
-      }
-      if( pass < 2 ){
-        if( data[i].idx == BTCONTENT.GetNPieces() ){
-          data[i].idx = piece;
-          data[i].qlen = qsize;
+        if( pass < 2 ){
+          if( data[i].idx == BTCONTENT.GetNPieces() ){
+            data[i].idx = piece;
+            data[i].qlen = qsize;
+          }
+          data[i].count++;
         }
-        data[i].count++;
-      }
+      }while( p->peer->request_q.PeekNextPiece(&piece) );
     }
   }  // end of measurement loop
 
@@ -686,7 +669,7 @@ btPeer *PeerList::WhoHas(bt_index_t idx) const
   btPeer *peer = (btPeer *)0;
 
   for( p = m_head; p; p = p->next ){
-    if( p->peer->request_q.HasIdx(idx) ){
+    if( p->peer->request_q.HasPiece(idx) ){
       peer = p->peer;
       break;
     }
@@ -694,7 +677,7 @@ btPeer *PeerList::WhoHas(bt_index_t idx) const
   return peer;
 }
 
-int PeerList::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const
+bool PeerList::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const
 {
   PEERNODE *p;
 
@@ -702,22 +685,21 @@ int PeerList::HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const
     if( p->peer->request_q.HasSlice(idx, off, len) )
       break;
   }
-  return p ? 1 : 0;
+  return p ? true : false;
 }
 
 /* If another peer has the same slice requested first, move the proposer's
    slice to the last position for the piece. */
 void PeerList::CompareRequest(btPeer *proposer, bt_index_t idx)
 {
-  PSLICE ps, qs;
   PEERNODE *p;
+  bt_offset_t off, peeroff;
+  bt_length_t len, peerlen;
   dt_count_t qlen, count=0;
 
-  ps = proposer->request_q.GetHead();
-  for( ; ps && idx != ps->index; ps = ps->next );
-  if( !ps ) return;
-
+  if( !proposer->request_q.PeekPiece(idx, &off, &len) ) return;
   qlen = proposer->request_q.Qlen(idx);
+  if( qlen == 1 ) return;
 
   do{
     for( p = m_head; p; p = p->next ){
@@ -725,14 +707,10 @@ void PeerList::CompareRequest(btPeer *proposer, bt_index_t idx)
           proposer == p->peer ){
         continue;
       }
-      qs = p->peer->request_q.GetHead();
-      for( ; qs && idx != qs->index; qs = qs->next );
-      if( qs && ps->index == qs->index && ps->offset == qs->offset &&
-          ps->length == qs->length ){
-        qs = ps->next;
-        proposer->request_q.MoveLast(ps);
-        ps = qs;
-        break;
+      if( p->peer->request_q.PeekPiece(idx, &peeroff, &peerlen) &&
+          off == peeroff && len == peerlen ){
+        proposer->request_q.MoveLast(idx, off, len);
+        proposer->request_q.PeekPiece(idx, &off, &len);
       }
     }
   }while( p && ++count < qlen );
@@ -782,12 +760,11 @@ int PeerList::CancelPiece(bt_index_t idx)
 void PeerList::CancelOneRequest(bt_index_t idx)
 {
   PEERNODE *p;
-  PSLICE ps;
   btPeer *peer = (btPeer *)0;
   int pending = 0;
   dt_count_t count, max = 0, dupcount = 0;
 
-  if( PENDINGQUEUE.Exist(idx) ){
+  if( PENDING.HasPiece(idx) ){
     pending = 1;
     dupcount++;
   }
@@ -795,13 +772,8 @@ void PeerList::CancelOneRequest(bt_index_t idx)
     if( !PEER_IS_SUCCESS(p->peer) ) continue;
 
     // select the peer with the most requests ahead of the target piece
-    count = 0;
-    ps = p->peer->request_q.GetHead();
-    for( ; ps; ps = ps->next ){
-      if( ps->index == idx ) break;
-      else count++;
-    }
-    if( ps ){
+    if( p->peer->request_q.HasPiece(idx) ){
+      count = p->peer->request_q.CountSlicesBeforePiece(idx);
       dupcount++;
       // in a tie, select the slower peer
       if( count > max || !peer ||
@@ -813,7 +785,7 @@ void PeerList::CancelOneRequest(bt_index_t idx)
     }
   }
   if( peer && dupcount > peer->request_q.Qlen(idx) ){
-    if( pending ) PENDINGQUEUE.Delete(idx);
+    if( pending ) PENDING.Delete(idx);
     else{
       CONSOLE.Debug("Cancel #%d on %p (%d B/s)", (int)idx, peer,
         (int)peer->NominalDL());
@@ -832,23 +804,18 @@ void PeerList::CancelOneRequest(bt_index_t idx)
 void PeerList::RecalcDupReqs()
 {
   PEERNODE *p;
-  PSLICE ps;
   bt_index_t idx;
   Bitfield rqbf, dupbf;
 
   for( p = m_head; p; p = p->next ){
     if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
-    ps = p->peer->request_q.GetHead();
-    idx = BTCONTENT.GetNPieces();
-    for( ; ps; ps = ps->next ){
-      if( idx == ps->index ) continue;
-      idx = ps->index;
+    if( p->peer->request_q.Peek(&idx) ) do{
       if( rqbf.IsSet(idx) ) dupbf.Set(idx);
       else{
         rqbf.Set(idx);
-        if( PENDINGQUEUE.Exist(idx) ) dupbf.Set(idx);
+        if( PENDING.HasPiece(idx) ) dupbf.Set(idx);
       }
-    }
+    }while( p->peer->request_q.PeekNextPiece(&idx) );
   }
   m_dup_req_pieces = dupbf.Count();
   CONSOLE.Debug("recalc: %d dup req pieces", (int)m_dup_req_pieces);
@@ -1020,31 +987,15 @@ bt_index_t PeerList::Pieces_I_Can_Get(Bitfield *ptmpBitfield) const
   return ptmpBitfield->Count();
 }
 
-int PeerList::AlreadyRequested(bt_index_t idx) const
-{
-  PEERNODE *p;
-  for( p = m_head; p; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
-    if( p->peer->request_q.HasIdx(idx) ) return 1;
-  }
-  return 0;
-}
-
 void PeerList::CheckBitfield(Bitfield &bf) const
 {
-  PEERNODE *p;
-  PSLICE ps;
-  bt_index_t idx;
+  const PEERNODE *p;
+  Bitfield tmpBitfield;
+
   for( p = m_head; p; p = p->next ){
-    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() ) continue;
-    ps = p->peer->request_q.GetHead();
-    idx = BTCONTENT.GetNPieces();
-    for( ; ps; ps = ps->next ){
-      if( ps->index != idx ){
-        bf.UnSet(ps->index);
-        idx = ps->index;
-      }
-    }
+    if( !PEER_IS_SUCCESS(p->peer) || p->peer->request_q.IsEmpty() )
+      continue;
+    bf.Except(p->peer->request_q.QueuedPieces(tmpBitfield));
   }
 }
 

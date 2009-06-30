@@ -118,14 +118,13 @@ class PeerList
   void FindValuedPieces(Bitfield &bf, const btPeer *proposer, int initial)
     const;
   btPeer *WhoHas(bt_index_t idx) const;
-  int HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
+  bool HasSlice(bt_index_t idx, bt_offset_t off, bt_length_t len) const;
   void CompareRequest(btPeer *proposer, bt_index_t idx);
   int CancelSlice(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int CancelPiece(bt_index_t idx);
   void CancelOneRequest(bt_index_t idx);
 
   void CheckBitfield(Bitfield &bf) const;
-  int AlreadyRequested(bt_index_t idx) const;
   bt_index_t Pieces_I_Can_Get(Bitfield *ptmpBitfield=(Bitfield *)0) const;
   void CheckInterest();
   btPeer *GetNextPeer(const btPeer *peer) const;

@@ -197,7 +197,9 @@ class btPeer:public btBasic
   int CancelRequest();
   int CancelSliceRequest(bt_index_t idx, bt_offset_t off, bt_length_t len);
   int CancelPiece(bt_index_t idx);
-  bt_index_t FindLastCommonRequest(const Bitfield &proposerbf) const;
+  bt_index_t FindLastCommonRequest(const Bitfield &proposerbf) const {
+    return request_q.FindLastCommonRequest(proposerbf);
+  }
 
   void SetStatus(dt_peerstatus_t s){ m_status = s; }
   dt_peerstatus_t GetStatus() const { return m_status; }
