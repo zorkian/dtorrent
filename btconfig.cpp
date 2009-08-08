@@ -8,7 +8,7 @@
 #include "peerlist.h"
 #include "ctcs.h"
 
-// btconfig.cpp:  Copyright 2008 Dennis Holmes  (dholmes@rahul.net)
+// btconfig.cpp:  Copyright 2008-2009 Dennis Holmes  (dholmes@rahul.net)
 
 #define MAX_PEER_PREFIX_LEN 8
 #define DEFAULT_PEER_PREFIX "-CD0303-"
@@ -1004,11 +1004,6 @@ Config<bool> cfg_convert_filenames = false;
 
 Config<int> cfg_status_format = 1;
 
-static void CfgStatusFormat(Config<int> *config)
-{
-  CONSOLE.Status(1);
-}
-
 static void InfoCfgStatusFormat(Config<int> *config)
 {
   char info[32];   
@@ -1198,7 +1193,7 @@ void InitConfig()
 
   sprintf(tmp, "0-%d", STATUSLINES - 1);
   cfg_status_format.Init("Status line format", tmp);
-  cfg_status_format.Setup(CfgStatusFormat, 0, InfoCfgStatusFormat);
+  cfg_status_format.Setup(0, 0, InfoCfgStatusFormat);
   cfg_status_format.SetMax(STATUSLINES - 1);
   CONFIG.Add("status.format", cfg_status_format);
 
