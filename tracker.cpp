@@ -397,8 +397,11 @@ dt_result_t btTracker::CheckResponse()
           "; the torrent is not registered on this tracker"
           " or may have been removed.");
       if( pdata && dlen ){  // write(STDERR_FILENO, pdata, dlen);
+        char data[dlen + 1];
+        memcpy(data, pdata, dlen);
+        data[dlen] = '\0';
         CONSOLE.Warning(0, "Tracker response data DUMP:");
-        CONSOLE.Warning(0, "%s", pdata);
+        CONSOLE.Warning(0, "%s", data);
         CONSOLE.Warning(0, "== DUMP OVER==");
       }
       m_interval = (m_default_interval > 300) ? m_default_interval : 300;
