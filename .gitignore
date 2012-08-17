@@ -1,0 +1,10 @@
+*.o
+.deps/
+autom4te.cache/
+config.h
+config.h.in~
+config.log
+config.status
+ctorrent
+stamp-h1
+Makefile

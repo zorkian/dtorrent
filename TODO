@@ -1,0 +1,13 @@
+TODO
+
+- Remove -fpermissive, fix warnings
+- Handle private addresses
+
+WISHLIST
+
+- Change granularity of seeding to seconds
+
+DONE
+
+- Added -fpermissive to handle const char* warnings (Makefile)
+- Fixed cases where Output was used but Print() was intended (console.cpp)

@@ -1770,10 +1770,10 @@ void Console::Warning(int sev, const char *message, ...)
 void Console::Error(int sev, const char *message, va_list ap)
 {
   vsnprintf(m_buffer, sizeof(m_buffer), message, ap);
-  m_channels[DT_CHAN_WARNING].Output("%s", m_buffer);
+  m_channels[DT_CHAN_WARNING].Print("%s", m_buffer);
   if( *cfg_verbose &&
       !m_channels[DT_CHAN_DEBUG].SameDev(&m_channels[DT_CHAN_WARNING]) ){
-    m_channels[DT_CHAN_DEBUG].Output("%s", m_buffer);
+    m_channels[DT_CHAN_DEBUG].Print("%s", m_buffer);
   }
   m_warnings.AddMessage(sev, m_buffer);
   if( sev && *cfg_ctcs ) CTCS.Send_Info(sev, m_buffer);
