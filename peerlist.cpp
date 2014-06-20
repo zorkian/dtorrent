@@ -935,6 +935,7 @@ int PeerList::InitialListenPort()
         cfg_listen_port--;
         if( *cfg_listen_port < m_min_listen_port ){
           CLOSE_SOCKET(m_listen_sock);
+          m_listen_sock = INVALID_SOCKET;
           CONSOLE.Warning(1, "error, couldn't bind port from %d to %d:  %s",
             m_min_listen_port, m_max_listen_port, strerror(errno));
           cfg_listen_port.Lock();
@@ -947,6 +948,7 @@ int PeerList::InitialListenPort()
 
   if( listen(m_listen_sock, 5) == -1 ){
     CLOSE_SOCKET(m_listen_sock);
+    m_listen_sock = INVALID_SOCKET;
     CONSOLE.Warning(1, "error, couldn't listen on port %d: %s",
       (int)*cfg_listen_port, strerror(errno));
     return -1;
@@ -954,6 +956,7 @@ int PeerList::InitialListenPort()
 
   if( setfd_nonblock(m_listen_sock) < 0 ){
     CLOSE_SOCKET(m_listen_sock);
+    m_listen_sock = INVALID_SOCKET;
     CONSOLE.Warning(1, "error, couldn't set socket to nonblock mode.");
     return -1;
   }
