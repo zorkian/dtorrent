@@ -659,7 +659,7 @@ int btTracker::IntervalCheck(fd_set *rfdp, fd_set *wfdp)
 {
   if( BTCONTENT.IsFull() && !m_f_completed && Self.TotalDL() > 0 ){
     // need to report completion
-    m_interval = 15;
+    m_interval = 0;
   }
 
   if( DT_TRACKER_FREE == m_status ){
