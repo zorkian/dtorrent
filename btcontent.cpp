@@ -28,7 +28,8 @@
 #include "util.h"
 #include "sha1.h"
 
-#define MAX_METAINFO_FILESIZ (4*1024*1024)
+// This filesize allows torrenting out ~250GB files.
+#define MAX_METAINFO_FILESIZ (16*1024*1024)
 #define FLUSH_RETRY_INTERVAL 300  // seconds to retry after disk write error
 
 #define meta_str(keylist, pstr, psiz) \
