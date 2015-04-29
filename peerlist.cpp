@@ -791,7 +791,7 @@ void PeerList::CancelOneRequest(bt_index_t idx)
         (int)peer->NominalDL());
       if( peer->CancelPiece(idx) < 0 ){
         if(*cfg_verbose) CONSOLE.Debug("close: CancelOneRequest");
-        p->peer->CloseConnection();
+        peer->CloseConnection();
       }
     }
     if( dupcount == 2 ){  // was 2, now only 1
