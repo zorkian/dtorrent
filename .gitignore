@@ -8,3 +8,4 @@ config.status
 ctorrent
 stamp-h1
 Makefile
+bazel-*
